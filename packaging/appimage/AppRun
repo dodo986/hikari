@@ -1,0 +1,75 @@
+#!/bin/sh
+set -eu
+
+here="${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
+bin="$here/usr/bin"
+qs_bin="$(command -v qs 2>/dev/null || true)"
+if [ -z "$qs_bin" ]; then qs_bin=/usr/sbin/qs; fi
+
+case "${1:-}" in
+	--hikari-version)
+		exec "$bin/hikarid" --version
+		;;
+esac
+
+if [ ! -x "$qs_bin" ]; then
+	echo "hikari: Quickshell (qs) is required; install it and run Hikari again" >&2
+	exit 1
+fi
+
+if [ -n "${APPIMAGE:-}" ]; then
+	HIKARI_APPIMAGE="$APPIMAGE"
+	export HIKARI_APPIMAGE
+fi
+HIKARI_APPIMAGE_DIR="$here"
+export HIKARI_APPIMAGE_DIR
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+cfg="$config/quickshell/hikari"
+src="$here/usr/share/hikari/quickshell"
+if [ -d "$src" ]; then
+	mkdir -p "$config/quickshell"
+	if ! diff -qr "$src" "$cfg" >/dev/null 2>&1; then
+		rm -rf "$cfg.new"
+		cp -a "$src" "$cfg.new"
+		rm -rf "$cfg.old"
+		if [ -d "$cfg" ]; then mv "$cfg" "$cfg.old"; fi
+		mv "$cfg.new" "$cfg"
+		rm -rf "$cfg.old"
+	fi
+fi
+
+if "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then
+	exit 0
+fi
+
+daemon_up() { "$bin/hikari" status >/dev/null 2>&1; }
+
+if ! daemon_up; then
+	if command -v systemd-run >/dev/null 2>&1; then
+		set -- --user --unit=hikarid-appimage --collect
+		if [ -n "${HIKARI_APPIMAGE:-}" ]; then
+			set -- "$@" --setenv=HIKARI_APPIMAGE="$HIKARI_APPIMAGE"
+		fi
+		if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+			set -- "$@" --setenv=XDG_CONFIG_HOME="$XDG_CONFIG_HOME"
+		fi
+		if [ -n "${XDG_DATA_HOME:-}" ]; then
+			set -- "$@" --setenv=XDG_DATA_HOME="$XDG_DATA_HOME"
+		fi
+		if [ -n "${XDG_CACHE_HOME:-}" ]; then
+			set -- "$@" --setenv=XDG_CACHE_HOME="$XDG_CACHE_HOME"
+		fi
+		systemd-run "$@" "$bin/hikarid" >/dev/null 2>&1 || true
+	elif command -v setsid >/dev/null 2>&1; then
+		setsid -f "$bin/hikarid" >/dev/null 2>&1 || true
+	else
+		"$bin/hikarid" >/dev/null 2>&1 &
+	fi
+fi
+for _ in $(seq 1 40); do
+	if daemon_up; then break; fi
+	sleep 0.1
+done
+
+exec "$qs_bin" -n -c hikari

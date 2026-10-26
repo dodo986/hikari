@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -euo pipefail
+stage=${1:?staged release directory}
+tag=${2:-}
+bin="${HIKARI_INSTALL_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+qs_bin="$(command -v qs 2>/dev/null || true)"
+if [ -z "$qs_bin" ]; then qs_bin=/usr/sbin/qs; fi
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+cfg="$config/quickshell/hikari"
+apps="$data/applications"
+icons="$data/icons/hicolor/scalable/apps"
+log="${HIKARI_UPDATE_LOG:-$data/update.log}"
+mkdir -p "$(dirname "$log")"
+exec >>"$log" 2>&1
+echo "[update] $(date -Is) release $tag from $stage (running ${HIKARI_UPDATE_FROM:-unknown})"
+
+start_daemon() {
+	systemctl --user stop hikarid >/dev/null 2>&1 || true
+	sleep 0.3
+	if ! systemctl --user start hikarid >/dev/null 2>&1; then
+		if command -v systemd-run >/dev/null 2>&1; then
+			systemd-run --user --unit=hikarid "$bin/hikarid" >/dev/null 2>&1 || true
+		else
+			setsid -f "$bin/hikarid" >/dev/null 2>&1 || true
+		fi
+	fi
+	for _ in $(seq 1 60); do
+		if "$bin/hikari" status >/dev/null 2>&1; then return 0; fi
+		sleep 0.1
+	done
+	return 1
+}
+
+daemon_version() {
+	"$bin/hikarid" --version 2>/dev/null | awk '{print $2}'
+}
+
+start_ui() {
+	if command -v systemd-run >/dev/null 2>&1; then
+		systemctl --user stop hikari-ui >/dev/null 2>&1 || true
+		systemd-run --user --unit=hikari-ui --collect "${ui_env[@]}" "$bin/hikari-app" >>"$log" 2>&1 || true
+	fi
+	if ! pgrep -f "qs .* -c hikari" >/dev/null 2>&1; then
+		setsid -f "$bin/hikari-app" >>"$log" 2>&1 || true
+	fi
+}
+
+want="${tag#v}"
+current="$(daemon_version)"
+if ! printf '%s\n' "$want" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+	echo "[update] release tag $tag has no usable version; nothing to do"
+	start_daemon || true
+	exit 0
+fi
+newer() {
+	[ "$1" != "$2" ] || return 1
+	[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]
+}
+if ! newer "$want" "${current:-0.0.0}"; then
+	echo "[update] already at ${current:-unknown} (release $tag); nothing to do"
+	start_daemon || true
+	exit 0
+fi
+
+sock="${XDG_RUNTIME_DIR:-/tmp}/hikari.sock"
+for _ in $(seq 1 100); do
+	if [ ! -S "$sock" ]; then break; fi
+	sleep 0.1
+done
+
+ui_was_running=0
+if "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then ui_was_running=1; fi
+ui_env=()
+for k in WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP QT_QPA_PLATFORM; do
+	v="${!k:-}"
+	if [ -n "$v" ]; then ui_env+=(--setenv="$k=$v"); fi
+done
+
+backup="$(mktemp -d)"
+for f in hikarid hikari hikari-app hikari-update; do
+	if [ -f "$bin/$f" ]; then cp -a "$bin/$f" "$backup/$f"; fi
+done
+if [ -d "$cfg" ]; then cp -a "$cfg" "$backup/quickshell"; fi
+
+rollback() {
+	echo "[update] $1; restoring the previous install"
+	for f in hikarid hikari hikari-app hikari-update; do
+		if [ -f "$backup/$f" ]; then install -m755 "$backup/$f" "$bin/$f"; fi
+	done
+	if [ -d "$backup/quickshell" ]; then
+		rm -rf "$cfg"
+		cp -a "$backup/quickshell" "$cfg"
+	fi
+	start_daemon || true
+	if [ "$ui_was_running" = 1 ]; then start_ui; fi
+	exit 1
+}
+
+install_file() {
+	install -m755 "$1" "$2.tmp"
+	mv -f "$2.tmp" "$2"
+}
+
+changed=0
+for f in hikarid hikari hikari-app hikari-update; do
+	if [ ! -f "$stage/$f" ]; then continue; fi
+	if cmp -s "$stage/$f" "$bin/$f"; then continue; fi
+	install_file "$stage/$f" "$bin/$f"
+	changed=1
+done
+if [ -d "$stage/quickshell" ] && ! diff -qr "$stage/quickshell" "$cfg" >/dev/null 2>&1; then
+	rm -rf "$cfg.tmp"
+	cp -a "$stage/quickshell" "$cfg.tmp"
+	rm -rf "$cfg.old"
+	if [ -d "$cfg" ]; then mv "$cfg" "$cfg.old"; fi
+	mv "$cfg.tmp" "$cfg"
+	rm -rf "$cfg.old"
+	changed=1
+fi
+if [ -f "$stage/hikari.desktop" ]; then install -Dm644 "$stage/hikari.desktop" "$apps/hikari.desktop"; fi
+if [ -f "$stage/hikari.svg" ]; then install -Dm644 "$stage/hikari.svg" "$icons/hikari.svg"; fi
+if [ -f "$apps/hikari.desktop" ]; then
+	sed -i "s|^Exec=.*|Exec=$bin/hikari-app|" "$apps/hikari.desktop"
+fi
+
+got="$(daemon_version)"
+if [ "$got" != "$want" ]; then
+	rollback "installed binary reports $got, expected $want"
+fi
+if [ "$changed" -eq 0 ]; then
+	echo "[update] files already up to date; restarting the daemon only"
+	if ! start_daemon; then rollback "the daemon did not start"; fi
+	exit 0
+fi
+
+if ! start_daemon; then rollback "the new daemon did not start"; fi
+running="$("$bin/hikari" status 2>/dev/null | head -1 | awk '{print $2}' | tr -d ,)"
+if [ "$running" != "$want" ]; then
+	rollback "running daemon reports ${running:-nothing}, expected $want"
+fi
+if [ "$ui_was_running" = 1 ]; then
+	"$qs_bin" -c hikari ipc call hikari close >/dev/null 2>&1 || true
+	sleep 0.5
+	start_ui
+fi
+echo "[update] done: $current -> $want"

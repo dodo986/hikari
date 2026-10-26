@@ -1,0 +1,16 @@
+[Unit]
+Description=Hikari game launcher daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hikarid
+# The daemon owns its socket lifecycle (stale-socket takeover, umask-0700
+# bind), so no socket activation; SIGTERM is handled in-process and stops
+# running games' process groups on the way out.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

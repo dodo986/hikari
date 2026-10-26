@@ -1,0 +1,15 @@
+[
+  {
+    "app_name": "1207658919",
+    "runner": "gog",
+    "title": "Wasabi Wars",
+    "developer": "Another Fake Studio",
+    "is_installed": false,
+    "install": {
+      "platform": "windows",
+      "version": "2.1",
+      "is_dlc": false
+    },
+    "store_url": "https://store.example.test/wasabiwars"
+  }
+]

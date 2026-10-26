@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+bin="$(cd "$(dirname "$0")" && pwd)"
+qs_bin="$(command -v qs 2>/dev/null || true)"
+if [ -z "$qs_bin" ]; then qs_bin=/usr/sbin/qs; fi
+
+daemon_up() { "$bin/hikari" status >/dev/null 2>&1; }
+
+if ! daemon_up; then
+	if systemctl --user start hikarid >/dev/null 2>&1; then
+		:
+	elif command -v systemd-run >/dev/null 2>&1 && systemd-run --user --unit=hikarid "$bin/hikarid" >/dev/null 2>&1; then
+		:
+	else
+		setsid -f "$bin/hikarid" >/dev/null 2>&1 || true
+	fi
+fi
+for _ in $(seq 1 40); do
+	if daemon_up; then break; fi
+	sleep 0.1
+done
+
+if "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then
+	exit 0
+fi
+exec "$qs_bin" -n -c hikari

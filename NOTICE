@@ -1,0 +1,22 @@
+Hikari
+
+Hikari is distributed under the GNU General Public License version 3 or
+later (see LICENSE).
+
+Hikari is an independent implementation of a game launcher for the Ryoku
+Linux desktop. It re-implements orchestration behaviour documented by the
+following projects, whose source was used as a behavioural reference only
+(no source code is copied from them):
+
+- Heroic Games Launcher (GPL-3.0) — engine invocation (legendary, gogdl,
+  nile, comet), on-disk config formats, launch pipeline, install progress
+  parsing. https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher
+- OptiTux (no license file; behaviour reference only) — OptiScaler
+  integration behaviour: GPU detection, per-game install layout, INI
+  profile patching. https://github.com/Spexxl/OptiTux
+- Ryoku (GPL-3.0) — daemon socket conventions, TOML config persistence
+  pattern, packaging conventions. https://github.com/Ryoku-dev/ryoku
+
+Hikari runs, but does not distribute, the following third-party tools:
+legendary, gogdl, nile, comet, umu-launcher, Proton, Wine. Their licenses
+apply to themselves.

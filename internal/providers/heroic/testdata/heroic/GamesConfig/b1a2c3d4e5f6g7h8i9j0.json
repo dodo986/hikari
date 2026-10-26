@@ -1,0 +1,19 @@
+{
+  "b1a2c3d4e5f6g7h8i9j0": {
+    "winePrefix": "/home/tester/Games/Heroic/Prefixes/Sushi Racer",
+    "wineVersion": {
+      "bin": "/usr/share/steam/compatibilitytools.d/proton-fake/proton",
+      "name": "proton-fake",
+      "type": "proton"
+    },
+    "useGameMode": true,
+    "showMangohud": true,
+    "enviromentOptions": [{ "key": "WINEDEBUG", "value": "-all" }],
+    "wrapperOptions": [{ "exe": "mangohud", "args": "--dlsym" }],
+    "launcherArgs": "-windowed",
+    "enableEsync": true,
+    "maxSharpness": 2
+  },
+  "version": "v0",
+  "explicit": true
+}

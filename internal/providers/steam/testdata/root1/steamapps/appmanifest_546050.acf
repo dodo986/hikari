@@ -1,0 +1,15 @@
+"AppState"
+{
+	"appid"		"546050"
+	"Universe"		"1"
+	"name"		"Half-Life 2: Ep One"
+	"StateFlags"		"4"
+	"installdir"		"Half-Life 2 Episode One"
+	"LastUpdated"		"1700000000"
+	"SizeOnDisk"		"789101112"
+	"buildid"		"1354211"
+	"InstalledDepots"
+	{
+		"546051"		"4021982332912345678"
+	}
+}

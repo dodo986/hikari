@@ -1,0 +1,46 @@
+name: snapshot
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check for a new commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh api "repos/${{ github.repository }}/actions/workflows/snapshot.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "no new commits since the last snapshot"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build snapshot
+        if: steps.gate.outputs.skip != 'true'
+        run: scripts/release.sh "0.0.0-snapshot-${GITHUB_SHA::7}" x86_64
+        shell: bash
+      - name: Build snapshot AppImage
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool.AppImage" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/appimagetool.AppImage"
+          APPIMAGETOOL="$RUNNER_TEMP/appimagetool.AppImage" scripts/build-appimage.sh "0.0.0-snapshot-${GITHUB_SHA::7}" x86_64
+      - if: steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hikari-snapshot-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error

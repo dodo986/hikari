@@ -1,0 +1,9 @@
+[
+  {
+    "app_name": "amzn-tamago",
+    "runner": "nile",
+    "title": "Tamago Quest",
+    "is_installed": false,
+    "install": { "is_dlc": false }
+  }
+]

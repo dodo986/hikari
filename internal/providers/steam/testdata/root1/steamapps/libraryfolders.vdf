@@ -1,0 +1,20 @@
+"libraryfolders"
+{
+	"0"
+	{
+		"path"		"REPLACED_ROOT1"
+		"apps"
+		{
+			"546050"		"987654321"
+		}
+	}
+	"1"
+	{
+		"path"		"REPLACED_ROOT2"
+		"label"		"Games"
+		"apps"
+		{
+			"1593500"		"1234567890"
+		}
+	}
+}
