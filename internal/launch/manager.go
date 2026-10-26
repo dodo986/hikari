@@ -40,6 +40,7 @@ type RunLog struct {
 	Running   bool      `json:"running"`
 	State     string    `json:"state"`
 	ExitCode  int       `json:"exit_code"`
+	Canceled  bool      `json:"canceled,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	StartedAt time.Time `json:"started_at"`
 	EndedAt   time.Time `json:"ended_at,omitempty"`
@@ -101,7 +102,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 		if plan.Prepare != nil {
 			if err := plan.Prepare(runCtx); err != nil {
 				m.log.Error("launch preparation failed", "game", key, "err", err)
-				m.finish(key, StateCrashed, 0, err)
+				m.finish(key, StateCrashed, 0, false, err)
 				if onState != nil {
 					onState(StateCrashed, 0)
 				}
@@ -177,7 +178,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 			state = StateCrashed
 			m.log.Error("game exited with error", "game", key, "err", err)
 		}
-		m.finish(key, state, res.ExitCode, err)
+		m.finish(key, state, res.ExitCode, res.Canceled, err)
 		if onState != nil {
 			onState(state, 0)
 		}
@@ -185,7 +186,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 	return nil
 }
 
-func (m *Manager) finish(key, state string, code int, err error) {
+func (m *Manager) finish(key, state string, code int, canceled bool, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.running, key)
@@ -196,6 +197,7 @@ func (m *Manager) finish(key, state string, code int, err error) {
 	rec.Running = false
 	rec.State = state
 	rec.ExitCode = code
+	rec.Canceled = canceled
 	rec.EndedAt = time.Now()
 	if err != nil {
 		rec.Error = err.Error()
@@ -317,7 +319,7 @@ func (m *Manager) LaunchFake(ctx context.Context, store, id string, life time.Du
 		case <-time.After(life):
 			cancel()
 		}
-		m.finish(key, StateStopped, 0, nil)
+		m.finish(key, StateStopped, 0, false, nil)
 		if onState != nil {
 			onState(StateStopped, 0)
 		}
