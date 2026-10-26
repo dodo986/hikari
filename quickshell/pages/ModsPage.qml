@@ -668,14 +668,20 @@ PageBase {
                     }
                 }
 
-                // What the health check found, newest run only.
-                ColumnLayout {
+                // What the health check found, newest run only. A Column, not a
+                // ColumnLayout: an empty layout here swallows the list's height.
+                Column {
+                    id: healthBlock
                     Layout.fillWidth: true
                     spacing: Tokens.s1
                     visible: Daemon.modsHealthBusy || Daemon.modsHealth !== null
 
+                    property var problems: (Daemon.modsHealth || []).filter(function (f) {
+                        return f.severity !== "info";
+                    })
+
                     Text {
-                        Layout.fillWidth: true
+                        width: parent.width
                         text: Daemon.modsHealthBusy
                               ? I18n.tr("Checking that every mod loader is really in the game folder…")
                               : ""
@@ -686,12 +692,10 @@ PageBase {
                     }
 
                     Repeater {
-                        model: (Daemon.modsHealth || []).filter(function (f) {
-                            return f.severity !== "info";
-                        })
+                        model: healthBlock.problems
                         Text {
                             required property var modelData
-                            Layout.fillWidth: true
+                            width: parent.width
                             text: modelData.detail + (modelData.mod ? "  ·  " + modelData.mod : "")
                             color: modelData.severity === "error" ? Tokens.alert : Tokens.inkFaint
                             font.family: Tokens.ui
@@ -699,16 +703,26 @@ PageBase {
                             wrapMode: Text.WordWrap
                         }
                     }
+
+                    Text {
+                        width: parent.width
+                        text: I18n.tr("Nothing missing: every loader file is in the game folder and each loader has a log.")
+                        visible: !Daemon.modsHealthBusy && Daemon.modsHealth !== null
+                                 && healthBlock.problems.length === 0
+                        color: Tokens.inkFaint
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                    }
                 }
 
                 // Nexus requirements the profile does not have yet.
-                ColumnLayout {
+                Column {
                     Layout.fillWidth: true
                     spacing: Tokens.s1
                     visible: Daemon.modsMissingBusy || Daemon.modsMissing !== null
 
                     Text {
-                        Layout.fillWidth: true
+                        width: parent.width
                         text: Daemon.modsMissingBusy
                               ? I18n.tr("Asking Nexus what these mods need…")
                               : (Daemon.modsMissing && Daemon.modsMissing.length === 0
@@ -724,7 +738,7 @@ PageBase {
                         model: Daemon.modsMissing || []
                         RowLayout {
                             required property var modelData
-                            Layout.fillWidth: true
+                            width: parent.width
                             spacing: Tokens.s3
                             Text {
                                 Layout.fillWidth: true
