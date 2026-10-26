@@ -50,6 +50,13 @@ Usage:
   hikari wine releases                   downloadable Proton builds
   hikari wine install <tag> [--follow]   download + verify + extract a build
   hikari wine remove <name>              delete a Hikari-installed build
+  hikari mods status                     is the Amethyst modding backend ready?
+  hikari mods setup                      install Amethyst's Python packages for Hikari
+  hikari mods games                      games Amethyst can mod, with their profiles
+  hikari mods deploy <game> [--profile P]  apply a profile to the game
+  hikari mods restore <game>             strip the deployed mods again
+  hikari mods install <game> --archive PATH | --url nxm://…  [--profile P] [--name N]
+                                         install one mod archive (FOMOD: defaults)
   hikari shutdown                        stop the daemon
 
 Every command also accepts --json and --socket PATH.
@@ -782,6 +789,9 @@ func dispatch(cmd string, args []string) error {
 			fmt.Printf("%-10s %s\n", name, state)
 		}
 		return nil
+
+	case "mods":
+		return modsCmd(args)
 
 	case "shutdown":
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)

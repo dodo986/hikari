@@ -21,6 +21,7 @@ import (
 	"hikari/internal/launch"
 	"hikari/internal/library"
 	"hikari/internal/logging"
+	"hikari/internal/mods"
 	"hikari/internal/opti"
 	"hikari/internal/providers/amazon"
 	"hikari/internal/providers/demo"
@@ -60,6 +61,7 @@ type daemon struct {
 	demo     map[string]*demo.Provider
 	local    *local.Provider
 	opti     opti.Manager
+	mods     mods.Service
 	tools    *dxvk.Installer
 	runtimes *runtimes.Installer
 
@@ -67,6 +69,10 @@ type daemon struct {
 
 	jobsMu sync.Mutex
 	jobs   map[string]*installJob
+
+	modsMu     sync.Mutex
+	modsJob    string
+	modsCancel context.CancelFunc
 }
 
 type installJob struct {
@@ -149,6 +155,18 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 		optiMgr = opti.NewFake()
 	}
 
+	var modsService mods.Service = mods.NewFake()
+	if !demoMode {
+		modsService = mods.New(mods.Options{
+			Root:      filepath.Join(paths.DataDir, "mods"),
+			Source:    settings.Mods.SourceDir,
+			Python:    settings.Mods.Python,
+			Filegraph: settings.Mods.Filegraph,
+			Log:       log,
+			Runner:    runner,
+		})
+	}
+
 	return &daemon{
 		log:      log,
 		paths:    paths,
@@ -167,6 +185,7 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 		fetchPending: map[string]bool{},
 		demo:         demoProviders,
 		opti:         optiMgr,
+		mods:         modsService,
 		local:        localGames,
 		tools:        dxvk.NewInstaller(filepath.Join(paths.DataDir, "tools"), log),
 		runtimes:     runtimes.NewInstaller(filepath.Join(paths.DataDir, "runtimes"), log),
@@ -186,6 +205,7 @@ func (d *daemon) register(srv *api.Server, ctx context.Context) {
 	d.registerLocal(srv)
 	d.registerArtwork(srv)
 	d.registerOpti(srv)
+	d.registerMods(srv)
 	srv.Register("engine.versions", func(c context.Context, params json.RawMessage) (any, error) {
 		return map[string]any{"engines": d.eng.Status(c)}, nil
 	})

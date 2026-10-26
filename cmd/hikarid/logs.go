@@ -96,6 +96,17 @@ func (d *daemon) report(ctx context.Context) string {
 		}
 	}
 
+	if d.mods != nil {
+		probe, cancel := context.WithTimeout(ctx, 10*time.Second)
+		modsStatus := d.mods.Status(probe)
+		cancel()
+		if modsStatus.Available {
+			fmt.Fprintf(&b, "\nMods backend: Amethyst ready (%s)\n", modsStatus.Source)
+		} else {
+			fmt.Fprintf(&b, "\nMods backend: unavailable — %s\n", modsStatus.Reason)
+		}
+	}
+
 	def := d.settings.Defaults
 	fmt.Fprintf(&b, "\nLaunch defaults: wine_type=%s prefix=%s\n",
 		def.WineVersion.Type, def.WinePrefix)

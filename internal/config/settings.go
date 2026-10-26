@@ -15,6 +15,13 @@ type Settings struct {
 	Library  LibrarySettings  `toml:"library"`
 	Defaults DefaultsSettings `toml:"defaults"`
 	Launch   LaunchSettings   `toml:"launch"`
+	Mods     ModsSettings     `toml:"mods"`
+}
+
+type ModsSettings struct {
+	SourceDir string `toml:"source_dir"`
+	Python    string `toml:"python"`
+	Filegraph string `toml:"filegraph_extension"`
 }
 
 type LaunchSettings struct {
