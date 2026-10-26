@@ -76,6 +76,8 @@ func modsCmd(args []string) error {
 		})
 	case "nxm":
 		return modsNxmCmd(args[1:])
+	case "downloads":
+		return modsDownloadsCmd(args[1:])
 	case "scheme":
 		return modsSchemeCmd(args[1:])
 	case "install":
@@ -141,6 +143,41 @@ func nxmDomain(link string) string {
 }
 
 const nxmDesktop = "hikari-nxm.desktop"
+
+// modsDownloadsCmd answers "has the browser download finished?" so a script
+// can wait for it and then install the archive.
+func modsDownloadsCmd(args []string) error {
+	fs := flag.NewFlagSet("mods downloads", flag.ExitOnError)
+	c := addCommon(fs)
+	modID := fs.Int("mod-id", 0, "")
+	fileID := fs.Int("file-id", 0, "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 || *modID <= 0 {
+		return errors.New("usage: hikari mods downloads <game> --mod-id N [--file-id N]")
+	}
+	params := map[string]any{"game": pos[0], "mod_id": *modID}
+	if *fileID > 0 {
+		params["file_id"] = *fileID
+	}
+	var out struct {
+		Found string `json:"found"`
+	}
+	if err := dial(c).Call("mods.downloads", params, &out); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(out)
+	}
+	if out.Found == "" {
+		fmt.Println("downloads: nothing yet")
+		return nil
+	}
+	fmt.Println(out.Found)
+	return nil
+}
 
 // modsSchemeCmd points the desktop's nxm:// handler at this binary.
 func modsSchemeCmd(args []string) error {

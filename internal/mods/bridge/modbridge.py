@@ -379,6 +379,26 @@ def _size(kb: int) -> str:
     return f"{kb} KB"
 
 
+def cmd_downloads(opts: dict) -> dict:
+    """Is one of the mod's files already sitting in the browser's folder?
+
+    A free account installs by downloading the archive by hand; this tells the
+    UI when that download has landed so it can install it."""
+    api, _ = _nexus_api()
+    game, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+    mod_id = int(opts.get("mod-id", "0") or 0)
+    file_id = int(opts.get("file-id", "0") or 0)
+    if mod_id <= 0:
+        raise BridgeError("usage", "downloads needs --mod-id")
+    from Nexus.manual_download_watch import find_existing_archive
+    files = api.get_mod_files(domain, mod_id).files
+    if file_id > 0:
+        wanted = [f for f in files if int(f.file_id or 0) == file_id]
+        files = wanted or files
+    hit = find_existing_archive(mod_id, files)
+    return {"found": str(hit[0]) if hit else ""}
+
+
 def cmd_account(_opts: dict) -> dict:
     try:
         api, mode = _nexus_api()
@@ -451,6 +471,12 @@ def cmd_installed(opts: dict) -> dict:
         for entry in entries if not entry.is_separator]}
 
 
+def _file_page(domain: str, mod_id: int, file_id: int) -> str:
+    """The page whose buttons mint a download key; free accounts need it."""
+    return (f"https://www.nexusmods.com/{domain}/mods/{mod_id}"
+            f"?tab=files&file_id={file_id}")
+
+
 def _download_file(domain: str, mod_id: int, file_id: int) -> str:
     """Fetch one browsed file; Nexus hands direct links to premium accounts."""
     import requests
@@ -464,8 +490,9 @@ def _download_file(domain: str, mod_id: int, file_id: int) -> str:
             raise BridgeError(
                 "unsupported",
                 "Nexus hands direct download links to premium accounts only; "
-                "press Mod manager download on the mod page and Hikari takes "
-                "the link from there")
+                "press Mod manager download on "
+                f"{_file_page(domain, mod_id, file_id)} and Hikari takes the "
+                "link from there")
         raise
     if not links:
         raise BridgeError("failure", "Nexus returned no download mirror")
@@ -553,6 +580,7 @@ COMMANDS = {
     "nexus": cmd_nexus,
     "search": cmd_search,
     "files": cmd_files,
+    "downloads": cmd_downloads,
     "account": cmd_account,
     "login": cmd_login,
     "logout": cmd_logout,

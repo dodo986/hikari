@@ -107,15 +107,26 @@ PageBase {
         if (!Daemon.modsFiles || !Daemon.modsFiles.files) return 0;
         return Daemon.modsFiles.files.length - page.usableFiles().length;
     }
+    // Premium accounts get the file straight from the API. Free accounts press
+    // "Mod manager download" on the Nexus page; the archive then lands in the
+    // download folder and gets installed without another click.
     function directDownloads() {
         return !Daemon.modsAccount || Daemon.modsAccount.premium !== false;
     }
-    function installLink() {
-        var url = nxmField.text.trim();
-        if (url.indexOf("nxm://") !== 0) return;
-        Daemon.installNxm(page.game.id, page.profileFor(page.game), url);
-        nxmField.text = "";
-        filesSheet.shown = false;
+    function nexusFileURL(mod, fileId) {
+        if (!page.game || !page.game.nexus_domain || !mod) return "";
+        return "https://www.nexusmods.com/" + page.game.nexus_domain + "/mods/" + mod.mod_id
+               + "?tab=files&file_id=" + fileId;
+    }
+    function installFile(file) {
+        if (page.directDownloads()) {
+            Daemon.installNexusMod(page.game.id, page.profileFor(page.game),
+                                   page.installingFile.mod_id, file.file_id);
+            return;
+        }
+        Qt.openUrlExternally(page.nexusFileURL(page.installingFile, file.file_id));
+        Daemon.waitForDownload(page.game.id, page.profileFor(page.game),
+                               page.installingFile.mod_id, file.file_id, file.name);
     }
     function pickFile(mod) {
         page.installingFile = mod;
@@ -549,6 +560,37 @@ PageBase {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Tokens.s3
+                visible: Daemon.modsWait !== null
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: waitText.implicitHeight + Tokens.s3 * 2
+                    radius: Tokens.radius
+                    color: Tokens.tint5
+                    border.width: Tokens.border
+                    border.color: Tokens.lineSoft
+                    Text {
+                        id: waitText
+                        anchors.fill: parent
+                        anchors.margins: Tokens.s3
+                        text: I18n.tr("Nexus needs Premium for a direct download, so the file's page is open in your browser. Press “Mod manager download” (or the slow download) — Hikari installs it as soon as it lands.")
+                              + "  " + (Daemon.modsWait && Daemon.modsWait.name ? Daemon.modsWait.name : "")
+                        color: Tokens.inkDim
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Cancel")
+                    onAct: Daemon.stopWaiting()
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.s3
                 visible: Daemon.modsError !== ""
 
                 Rectangle {
@@ -977,68 +1019,6 @@ PageBase {
             anchors.margins: Tokens.s6
             spacing: Tokens.s2
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Tokens.s2
-                visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
-                         && Daemon.modsAccount.premium !== true
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: linkText.implicitHeight + Tokens.s3 * 2
-                    radius: Tokens.radius
-                    color: Tokens.tint5
-                    border.width: Tokens.border
-                    border.color: Tokens.lineSoft
-                    Text {
-                        id: linkText
-                        anchors.fill: parent
-                        anchors.margins: Tokens.s3
-                        text: I18n.tr("Nexus only gives direct download links to premium accounts. Press “Mod manager download” on the mod page — Hikari opens it and installs the file. A link can be pasted here too.")
-                        color: Tokens.inkDim
-                        font.family: Tokens.ui
-                        font.pixelSize: Tokens.fTiny
-                        wrapMode: Text.WordWrap
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Tokens.s3
-                visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
-                         && Daemon.modsAccount.premium !== true
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: Tokens.ctlH
-                    radius: Tokens.radius
-                    color: Tokens.paper
-                    border.width: Tokens.border
-                    border.color: nxmField.activeFocus ? Tokens.line : Tokens.lineSoft
-                    TextField {
-                        id: nxmField
-                        anchors.fill: parent
-                        anchors.leftMargin: Tokens.s3
-                        anchors.rightMargin: Tokens.s3
-                        background: null
-                        color: Tokens.ink
-                        font.family: Tokens.ui
-                        font.pixelSize: Tokens.fSmall
-                        placeholderText: "nxm://…"
-                        placeholderTextColor: Tokens.inkFaint
-                        selectByMouse: true
-                        onAccepted: page.installLink()
-                    }
-                }
-                Btn {
-                    compact: true
-                    text: I18n.tr("Install link")
-                    armed: nxmField.text.indexOf("nxm://") === 0 && !Daemon.modsBusy
-                    onAct: page.installLink()
-                }
-            }
-
             Repeater {
                 model: page.usableFiles()
                 Rectangle {
@@ -1076,12 +1056,10 @@ PageBase {
                             compact: true
                             text: I18n.tr("Install")
                             primary: modelData.primary
-                            // A free account cannot fetch direct links; the note above says why.
-                            armed: !Daemon.modsBusy && page.directDownloads()
+                            armed: !Daemon.modsBusy
                             onAct: {
-                                Daemon.installNexusMod(page.game.id, page.profileFor(page.game),
-                                                       page.installingFile.mod_id, modelData.file_id);
                                 filesSheet.shown = false;
+                                page.installFile(modelData);
                             }
                         }
                     }

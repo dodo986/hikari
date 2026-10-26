@@ -170,5 +170,6 @@ type Service interface {
 	Logout(ctx context.Context) error
 	Browse(ctx context.Context, game, query, sort string, page int) (Browse, error)
 	Files(ctx context.Context, game string, modID int) (Mod, []ModFile, error)
+	Downloads(ctx context.Context, game string, modID, fileID int) (string, error)
 	Installed(ctx context.Context, game, profile string) (Installed, error)
 }

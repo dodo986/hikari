@@ -164,6 +164,23 @@ func (d *daemon) registerMods(srv *api.Server) {
 		return map[string]any{"mod": mod, "files": files}, nil
 	})
 
+	// A free account installs from the browser; this says when it landed.
+	srv.Register("mods.downloads", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game   string `json:"game"`
+			ModID  int    `json:"mod_id"`
+			FileID int    `json:"file_id"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.ModID <= 0 {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, mod_id, file_id?}")
+		}
+		load()
+		found, err := d.mods.Downloads(c, p.Game, p.ModID, p.FileID)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"found": found}, nil
+	})
 	srv.Register("mods.installed", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Game    string `json:"game"`

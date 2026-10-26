@@ -63,6 +63,8 @@ Usage:
   hikari mods account                    who is signed in, and are they premium?
   hikari mods nxm <nxm://url>            what the browser hands over: install that link
   hikari mods scheme [status|set]        make Hikari the nxm:// handler
+  hikari mods downloads <game> --mod-id N [--file-id N]
+                                         has the browser download landed yet?
   hikari mods browse <game> [query] [--sort downloads|endorsements|created|updated]
                                          search a game's mods on Nexus
   hikari mods files <game> <mod-id>      the files a browsed mod offers

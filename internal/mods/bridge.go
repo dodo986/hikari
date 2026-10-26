@@ -457,6 +457,32 @@ func (b *Bridge) Files(ctx context.Context, game string, modID int) (Mod, []ModF
 	return out.Mod, out.Files, nil
 }
 
+// Downloads reports the archive of a browsed file that already finished
+// downloading in the browser, so a free account can install it without
+// copying a link around.
+func (b *Bridge) Downloads(ctx context.Context, game string, modID, fileID int) (string, error) {
+	if modID <= 0 {
+		return "", &Error{Kind: KindUsage, Message: "mod id missing"}
+	}
+	args := append(gameArgs(game, ""), "--mod-id", strconv.Itoa(modID))
+	if fileID > 0 {
+		args = append(args, "--file-id", strconv.Itoa(fileID))
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	raw, err := b.run(probeCtx, "downloads", args, Sink{})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Found string `json:"found"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable download answer"}
+	}
+	return out.Found, nil
+}
+
 // Installed reads a profile's modlist, highest priority first.
 func (b *Bridge) Installed(ctx context.Context, game, profile string) (Installed, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)

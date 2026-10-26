@@ -9,6 +9,10 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Install on a free account now works from the sheet: **Install** opens that
+  file's Nexus page and Hikari watches the download folder, installing the
+  archive as soon as the browser finishes with it — no link copying. Premium
+  accounts still get the file straight from the API.
 - Hikari is the `nxm://` handler: `hikari mods scheme set` writes the desktop
   entry and takes the default, so "Mod manager download" on the site opens
   Hikari on that game's Mods page and installs the file. `hikari mods nxm <url>`

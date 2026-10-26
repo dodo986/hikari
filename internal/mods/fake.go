@@ -199,6 +199,13 @@ func (f *Fake) Files(_ context.Context, game string, modID int) (Mod, []ModFile,
 	return Mod{}, nil, &Error{Kind: KindNotFound, Message: fmt.Sprintf("no Nexus mod %d for %s", modID, game)}
 }
 
+func (f *Fake) Downloads(_ context.Context, game string, modID, fileID int) (string, error) {
+	if f.find(game) == nil {
+		return "", &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
+	}
+	return "", nil
+}
+
 func (f *Fake) Installed(_ context.Context, game, profile string) (Installed, error) {
 	known := f.find(game)
 	if known == nil {

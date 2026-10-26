@@ -281,6 +281,17 @@ func TestModsBrowsingEndpoints(t *testing.T) {
 	if files.Mod.ModID != page.Results[0].ModID || len(files.Files) == 0 {
 		t.Fatalf("mods.files returned %+v", files)
 	}
+	// The browser-download probe the free-account install flow polls.
+	var found struct {
+		Found string `json:"found"`
+	}
+	if err := client.Call("mods.downloads", map[string]any{"game": "skyrim_se", "mod_id": files.Mod.ModID, "file_id": files.Files[0].FileID}, &found); err != nil {
+		t.Fatalf("mods.downloads: %v", err)
+	}
+	if found.Found != "" {
+		t.Fatalf("mods.downloads invented a download: %+v", found)
+	}
+
 	// Newest build first, and each row says when it was uploaded: the sheet
 	// shows both without asking for anything else.
 	for i, file := range files.Files {

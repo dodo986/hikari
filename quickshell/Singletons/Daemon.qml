@@ -34,6 +34,7 @@ Singleton {
     property string modsError: ""
     property bool modsSearching: false
     property bool modsFilesBusy: false
+    property var modsWait: null
 
     signal gameState(var ev)
     signal updateProgress(var ev)
@@ -130,10 +131,6 @@ Singleton {
         rpc.modsFiles = null;
         modsJob("mods.install", { game: game, profile: profile || "", mod_id: modId, file_id: fileId });
     }
-    function installNxm(game, profile, url) {
-        rpc.modsFiles = null;
-        modsJob("mods.install", { game: game, profile: profile || "", url: url });
-    }
     function loginNexus() {
         rpc.modsAuthLink = "";
         modsJob("mods.login", {});
@@ -180,6 +177,42 @@ Singleton {
     function restoreMods(game) { modsJob("mods.restore", { game: game }); }
     function installMod(game, profile, archive) {
         modsJob("mods.install", { game: game, profile: profile || "", archive: archive });
+    }
+    function installFromFile(game, profile, archive, name) {
+        modsJob("mods.install", { game: game, profile: profile || "",
+                                  archive: archive, name: name || "" });
+    }
+    // A free account installs by downloading the archive in the browser: watch
+    // the download folder until it lands, then hand it to the normal install.
+    function waitForDownload(game, profile, modId, fileId, name) {
+        rpc.modsWait = { game: game, profile: profile || "", mod_id: modId,
+                         file_id: fileId, name: name || "", ticks: 0 };
+        rpc.modsError = "";
+        waitPoller.start();
+        pollDownload();
+    }
+    function stopWaiting() {
+        waitPoller.stop();
+        rpc.modsWait = null;
+    }
+    function pollDownload() {
+        var w = rpc.modsWait;
+        if (!w) return;
+        w.ticks++;
+        if (w.ticks > 300) {
+            rpc.stopWaiting();
+            rpc.modsError = "Nothing arrived from the browser in 15 minutes; the Nexus page is still open if you want to try again.";
+            return;
+        }
+        rpc.call("mods.downloads", { game: w.game, mod_id: w.mod_id, file_id: w.file_id }, (r, e) => {
+            if (e || !r || !r.found) return;
+            // The archive keeps sitting there; install it once the slot is free.
+            if (rpc.modsBusy) return;
+            var path = String(r.found);
+            var name = w.name;
+            rpc.stopWaiting();
+            rpc.installFromFile(w.game, w.profile, path, name);
+        });
     }
     function setupMods() { modsJob("mods.setup", {}); }
     function cancelMods() { call("mods.cancel", null, () => {}); }
@@ -264,6 +297,13 @@ Singleton {
                 rpc.connected = false;
             }
         }
+    }
+
+    Timer {
+        id: waitPoller
+        interval: 3000
+        repeat: true
+        onTriggered: rpc.pollDownload()
     }
 
     Timer {
