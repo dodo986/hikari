@@ -9,6 +9,11 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Install from Nexus on a free account too: press "Mod manager download" on
+  the mod page, paste the `nxm://` link into the files sheet (or
+  `hikari mods install <game> --url nxm://…`) and Hikari downloads and
+  installs it through Amethyst's own downloader. A failed job now says what
+  went wrong instead of looking like nothing happened.
 - Sign in to Nexus the way Amethyst does: `hikari mods login` (or Sign in on
   the Mods page) opens Nexus in your browser, you approve there, and the
   tokens land in the same store Amethyst reads — one sign-in covers both

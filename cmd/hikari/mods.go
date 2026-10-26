@@ -74,23 +74,7 @@ func modsCmd(args []string) error {
 			return map[string]any{"game": pos[0]}, nil
 		})
 	case "install":
-		return modsJobCmd("mods.install", "install", []string{"profile", "archive", "url", "name", "mod-id", "file-id"}, args[1:], func(fs *flag.FlagSet, pos []string) (map[string]any, error) {
-			if len(pos) < 1 {
-				return nil, errors.New("usage: hikari mods install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N) [--profile NAME] [--name NAME]")
-			}
-			params := map[string]any{"game": pos[0]}
-			copyFlags(fs, params, "profile", "archive", "url", "name")
-			if params["mod-id"] != nil || params["file-id"] != nil {
-				if params["mod-id"] == nil || params["file-id"] == nil {
-					return nil, errors.New("--mod-id and --file-id go together")
-				}
-				return params, nil
-			}
-			if params["archive"] == nil && params["url"] == nil {
-				return nil, errors.New("pass --archive PATH, --url nxm://… or --mod-id N --file-id N to install")
-			}
-			return params, nil
-		})
+		return modsJobCmd("mods.install", "install", []string{"profile", "archive", "url", "name", "mod-id", "file-id"}, args[1:], installParams)
 	}
 	return fmt.Errorf("unknown mods command %q", args[0])
 }
@@ -481,6 +465,36 @@ func modsJobCmd(method, label string, names []string, args []string, build func(
 	}
 	fmt.Println(label + ": ok")
 	return nil
+}
+
+// installParams turns the flags into the daemon's params: the wire speaks
+// snake_case, and ids travel as numbers, so both are translated here.
+func installParams(fs *flag.FlagSet, pos []string) (map[string]any, error) {
+	if len(pos) < 1 {
+		return nil, errors.New("usage: hikari mods install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N) [--profile NAME] [--name NAME]")
+	}
+	params := map[string]any{"game": pos[0]}
+	copyFlags(fs, params, "profile", "archive", "url", "name")
+	modID, fileID := fs.Lookup("mod-id").Value.String(), fs.Lookup("file-id").Value.String()
+	if modID == "" && fileID == "" {
+		if params["archive"] == nil && params["url"] == nil {
+			return nil, errors.New("pass --archive PATH, --url nxm://… or --mod-id N --file-id N to install")
+		}
+		return params, nil
+	}
+	if modID == "" || fileID == "" {
+		return nil, errors.New("--mod-id and --file-id go together")
+	}
+	id, err := strconv.Atoi(modID)
+	if err != nil || id <= 0 {
+		return nil, fmt.Errorf("--mod-id %q is not a Nexus mod id", modID)
+	}
+	file, err := strconv.Atoi(fileID)
+	if err != nil || file <= 0 {
+		return nil, fmt.Errorf("--file-id %q is not a Nexus file id", fileID)
+	}
+	params["mod_id"], params["file_id"] = id, file
+	return params, nil
 }
 
 func copyFlags(fs *flag.FlagSet, params map[string]any, names ...string) {

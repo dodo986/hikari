@@ -125,7 +125,7 @@ func (f *Fake) Account(context.Context) (Account, error) {
 	if !f.signedIn {
 		return Account{}, nil
 	}
-	return Account{Stored: true, Mode: "oauth", User: "demo", Premium: true}, nil
+	return Account{Stored: true, Mode: "oauth", User: "demoplayer"}, nil
 }
 
 // Login stands in for the browser round trip so the page can be seen signed in.
@@ -135,7 +135,7 @@ func (f *Fake) Login(_ context.Context, sink Sink) (Account, error) {
 	f.mu.Lock()
 	f.signedIn = true
 	f.mu.Unlock()
-	return Account{Stored: true, Mode: "oauth", User: "demo", Premium: true}, nil
+	return Account{Stored: true, Mode: "oauth", User: "demoplayer"}, nil
 }
 
 func (f *Fake) Logout(context.Context) error {

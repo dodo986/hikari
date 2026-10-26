@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import pathlib
 import sys
 import threading
 import time
@@ -305,13 +306,8 @@ def _download(url: str) -> str:
         raise BridgeError("unsupported",
                           "only mod downloads are supported; install "
                           "collections from Amethyst itself")
-    from Nexus.nexus_api import NexusAPI, load_api_key
     from Nexus.nexus_download import NexusDownloader
-    key = load_api_key()
-    if not key:
-        raise BridgeError("config",
-                          "no Nexus API key is stored; add one in Amethyst ▸ "
-                          "Settings ▸ Nexus")
+    api, _mode = _nexus_api()
     target = os.environ.get("HIKARI_MODS_DOWNLOADS", "")
     if not target:
         target = os.path.join(
@@ -319,7 +315,7 @@ def _download(url: str) -> str:
             os.path.join(os.path.expanduser("~"), ".cache"),
             "hikari", "mods", "downloads")
     os.makedirs(target, exist_ok=True)
-    downloader = NexusDownloader(NexusAPI(key), target)
+    downloader = NexusDownloader(api, pathlib.Path(target))
     result = downloader.download_from_nxm(
         link, progress_cb=lambda done, total: progress(done, total))
     if not result.success or not result.file_path:
@@ -467,9 +463,9 @@ def _download_file(domain: str, mod_id: int, file_id: int) -> str:
         if "403" in text or "premium" in text.lower():
             raise BridgeError(
                 "unsupported",
-                "Nexus only hands direct download links to premium accounts; "
-                "press Mod manager download on the mod page to send it to "
-                "Hikari instead")
+                "Nexus hands direct download links to premium accounts only; "
+                "press Mod manager download on the mod page and paste the "
+                "nxm:// link into Hikari, or let Amethyst take it")
         raise
     if not links:
         raise BridgeError("failure", "Nexus returned no download mirror")

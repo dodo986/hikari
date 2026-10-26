@@ -129,6 +129,10 @@ Singleton {
         rpc.modsFiles = null;
         modsJob("mods.install", { game: game, profile: profile || "", mod_id: modId, file_id: fileId });
     }
+    function installNxm(game, profile, url) {
+        rpc.modsFiles = null;
+        modsJob("mods.install", { game: game, profile: profile || "", url: url });
+    }
     function loginNexus() {
         rpc.modsAuthLink = "";
         modsJob("mods.login", {});
@@ -339,6 +343,8 @@ Singleton {
             rpc.modsBusy = false;
             rpc.modsProgress = null;
             rpc.modsAuthLink = "";
+            // A job that fails after it started answers here, not in call().
+            if (!ev.ok && ev.error) rpc.modsError = ev.error;
             rpc.modsChanged(ev);
             if (ev.ok) {
                 rpc.refreshMods();

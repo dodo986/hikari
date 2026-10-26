@@ -107,6 +107,16 @@ PageBase {
         if (!Daemon.modsFiles || !Daemon.modsFiles.files) return 0;
         return Daemon.modsFiles.files.length - page.usableFiles().length;
     }
+    function directDownloads() {
+        return !Daemon.modsAccount || Daemon.modsAccount.premium !== false;
+    }
+    function installLink() {
+        var url = nxmField.text.trim();
+        if (url.indexOf("nxm://") !== 0) return;
+        Daemon.installNxm(page.game.id, page.profileFor(page.game), url);
+        nxmField.text = "";
+        filesSheet.shown = false;
+    }
     function pickFile(mod) {
         page.installingFile = mod;
         page.showArchived = false;
@@ -536,6 +546,37 @@ PageBase {
                 onAction: Qt.openUrlExternally(Daemon.modsAuthLink)
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.s3
+                visible: Daemon.modsError !== ""
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: alertText.implicitHeight + Tokens.s3 * 2
+                    radius: Tokens.radius
+                    color: Tokens.tint5
+                    border.width: Tokens.border
+                    border.color: Tokens.alert
+                    Text {
+                        id: alertText
+                        anchors.fill: parent
+                        anchors.margins: Tokens.s3
+                        text: Daemon.modsError
+                        color: Tokens.ink
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                        wrapMode: Text.WordWrap
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Dismiss")
+                    onAct: Daemon.modsError = ""
+                }
+            }
+
             // Installed -----------------------------------------------------
             ColumnLayout {
                 Layout.fillWidth: true
@@ -936,6 +977,68 @@ PageBase {
             anchors.margins: Tokens.s6
             spacing: Tokens.s2
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.s2
+                visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
+                         && Daemon.modsAccount.premium !== true
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: linkText.implicitHeight + Tokens.s3 * 2
+                    radius: Tokens.radius
+                    color: Tokens.tint5
+                    border.width: Tokens.border
+                    border.color: Tokens.lineSoft
+                    Text {
+                        id: linkText
+                        anchors.fill: parent
+                        anchors.margins: Tokens.s3
+                        text: I18n.tr("Nexus only gives direct download links to premium accounts. Press “Mod manager download” on the mod page, then paste the nxm:// link here.")
+                        color: Tokens.inkDim
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fTiny
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.s3
+                visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
+                         && Daemon.modsAccount.premium !== true
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: Tokens.ctlH
+                    radius: Tokens.radius
+                    color: Tokens.paper
+                    border.width: Tokens.border
+                    border.color: nxmField.activeFocus ? Tokens.line : Tokens.lineSoft
+                    TextField {
+                        id: nxmField
+                        anchors.fill: parent
+                        anchors.leftMargin: Tokens.s3
+                        anchors.rightMargin: Tokens.s3
+                        background: null
+                        color: Tokens.ink
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                        placeholderText: "nxm://…"
+                        placeholderTextColor: Tokens.inkFaint
+                        selectByMouse: true
+                        onAccepted: page.installLink()
+                    }
+                }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Install link")
+                    armed: nxmField.text.indexOf("nxm://") === 0 && !Daemon.modsBusy
+                    onAct: page.installLink()
+                }
+            }
+
             Repeater {
                 model: page.usableFiles()
                 Rectangle {
@@ -973,7 +1076,8 @@ PageBase {
                             compact: true
                             text: I18n.tr("Install")
                             primary: modelData.primary
-                            armed: !Daemon.modsBusy
+                            // A free account cannot fetch direct links; the note above says why.
+                            armed: !Daemon.modsBusy && page.directDownloads()
                             onAct: {
                                 Daemon.installNexusMod(page.game.id, page.profileFor(page.game),
                                                        page.installingFile.mod_id, modelData.file_id);
