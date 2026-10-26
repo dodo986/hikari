@@ -199,6 +199,39 @@ func filegraphDirs(source string) []string {
 	}
 }
 
+// adoptFilegraph copies Amethyst's native filegraph next to the bridge. It is a
+// hard requirement of Amethyst's deploy path, so a setup that cannot find it has
+// to say so before the first deploy fails inside Amethyst.
+func (b *Bridge) adoptFilegraph() error {
+	if b.filegraph != "" {
+		return nil
+	}
+	cfg := b.snapshot()
+	for _, dir := range append([]string{cfg.source}, filegraphDirs(cfg.source)...) {
+		for _, name := range filegraphNames {
+			src := filepath.Join(dir, name)
+			if !isFile(src) {
+				continue
+			}
+			dst := filepath.Join(b.root, name)
+			content, err := os.ReadFile(src)
+			if err != nil {
+				return fmt.Errorf("cannot read Amethyst's filegraph from %s: %v", src, err)
+			}
+			if err := writeIfChanged(dst, content); err != nil {
+				return fmt.Errorf("cannot copy Amethyst's filegraph into %s: %v", b.root, err)
+			}
+			b.mu.Lock()
+			b.filegraph = dst
+			b.mu.Unlock()
+			return nil
+		}
+	}
+	return fmt.Errorf("Amethyst's filegraph component was not found; install Amethyst " +
+		"from its package, or build it with `python native/amethyst_filegraph/build_extension.py` " +
+		"in the Amethyst checkout")
+}
+
 func (b *Bridge) materialize() error {
 	if !isFile(filepath.Join(b.source, "cli.py")) {
 		return fmt.Errorf("%q is not Amethyst's src directory (cli.py is missing)", b.source)
@@ -660,6 +693,9 @@ func (b *Bridge) Setup(ctx context.Context, sink Sink) error {
 	b.mu.Lock()
 	b.python = python
 	b.mu.Unlock()
+	if err := b.adoptFilegraph(); err != nil {
+		return &Error{Kind: KindConfig, Message: err.Error()}
+	}
 	b.prepare()
 	return nil
 }
