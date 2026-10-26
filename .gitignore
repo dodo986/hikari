@@ -3,6 +3,12 @@
 /dist/
 *.test
 
+# Wine/Proton leftovers written into whatever directory a game was started from
+vkd3d-proton.cache*
+*.reg.old
+# REDengine crash-info dumps
+*.exe-[0-9]*.txt
+
 # Python leftovers from local checks
 __pycache__/
 *.pyc

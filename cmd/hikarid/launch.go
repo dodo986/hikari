@@ -109,6 +109,7 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 			}
 		}
 		launchOpts.UmuID = umuID
+		launchOpts.ModOverrides = d.modOverrides(c, g)
 		plan, err := launch.Build(g, settings, d.paths, d.eng, launchOpts)
 		if err != nil {
 			return nil, api.Errorf(api.CodeNotAvailable, "%s", err)

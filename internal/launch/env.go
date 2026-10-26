@@ -3,6 +3,7 @@ package launch
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -58,6 +59,43 @@ func SetupEnvVars(s config.GameSettings, installPath string, base map[string]str
 	if _, ok := base["LD_PRELOAD"]; !ok {
 		base["LD_PRELOAD"] = ""
 	}
+}
+
+// MergeDLLOverrides folds mod-required Wine DLL overrides into
+// WINEDLLOVERRIDES, keeping whatever the game's own settings already asked for.
+// Wine reads "name=order" pairs separated by semicolons, and the later entry
+// wins, so the ones mods need go last.
+func MergeDLLOverrides(env map[string]string, overrides map[string]string) {
+	if len(overrides) == 0 {
+		return
+	}
+	names := make([]string, 0, len(overrides))
+	for name := range overrides {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	seen := map[string]bool{}
+	parts := make([]string, 0, len(overrides)+1)
+	for _, part := range strings.Split(env["WINEDLLOVERRIDES"], ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name, _, _ := strings.Cut(part, "=")
+		if _, ok := overrides[strings.ToLower(name)]; ok {
+			continue // the mod's value replaces this one
+		}
+		seen[strings.ToLower(name)] = true
+		parts = append(parts, part)
+	}
+	for _, name := range names {
+		if seen[name] {
+			continue
+		}
+		parts = append(parts, name+"="+overrides[name])
+	}
+	env["WINEDLLOVERRIDES"] = strings.Join(parts, ";")
 }
 
 func SetupWineEnvVars(s config.GameSettings, wineType string, gameID string, home string) (map[string]string, error) {

@@ -47,6 +47,9 @@ type Options struct {
 	Args          []string
 	UmuID         string
 	AppIDOverride string
+	// ModOverrides are Wine DLL overrides the installed mods need (proxy DLLs
+	// such as version.dll or winmm.dll only load when forced to native).
+	ModOverrides map[string]string
 }
 
 func Build(game library.Game, settings config.GameSettings, paths config.Paths, eng *engine.Manager, opts Options) (*Plan, error) {
@@ -90,6 +93,7 @@ func Build(game library.Game, settings config.GameSettings, paths config.Paths, 
 			env[k] = v
 		}
 		SetupWineLibEnv(settings, plan.WineType, wineBin, env)
+		MergeDLLOverrides(env, opts.ModOverrides)
 		if settings.EacRuntime {
 			env["PROTON_EAC_RUNTIME"] = filepath.Join(paths.DataDir, "runtimes", "eac_runtime")
 		}
@@ -194,6 +198,15 @@ func buildLocal(game library.Game, settings config.GameSettings, wrappers []stri
 	exe := settings.TargetExe
 	if exe == "" {
 		exe = game.Executable
+	}
+	// A relative target ("bin/x64/Game.exe") is relative to the install folder,
+	// and the game must start there: Wine and crash reporters drop their files
+	// in the working directory.
+	if exe != "" && !filepath.IsAbs(exe) && game.InstallPath != "" {
+		exe = filepath.Join(game.InstallPath, exe)
+	}
+	if exe != "" {
+		plan.Cwd = filepath.Dir(exe)
 	}
 	var argv []string
 	argv = append(argv, wrappers...)

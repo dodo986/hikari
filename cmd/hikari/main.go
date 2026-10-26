@@ -72,6 +72,7 @@ Usage:
   hikari mods toggle <game> <name>       enable or disable one mod
   hikari mods remove <game> <name>       delete a mod and its files
   hikari mods missing <game>             requirements the profile is missing
+  hikari mods overrides <game>           Wine DLL overrides the mods need
   hikari mods nexus [status|set|clear]   a Nexus API key, if you have one instead
   hikari shutdown                        stop the daemon
 

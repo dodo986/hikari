@@ -515,6 +515,22 @@ def cmd_remove(opts: dict) -> dict:
     return {"removed": wanted}
 
 
+def cmd_overrides(opts: dict) -> dict:
+    """Wine DLL overrides this game's mods need, straight from its handler.
+
+    MelonLoader, script extenders and anything else shipping a proxy DLL in the
+    game folder only loads under Wine when its name is forced to native."""
+    games = _bootstrap()
+    key = opts.get("game", "")
+    game = _require(games, key)
+    table = getattr(game, "wine_dll_overrides", None) or {}
+    try:
+        table = dict(table)
+    except Exception:
+        table = {}
+    return {"overrides": {str(k): str(v) for k, v in table.items()}}
+
+
 def cmd_missing(opts: dict) -> dict:
     """Nexus-listed requirements that the installed mods do not satisfy."""
     game = _require(_bootstrap(), opts.get("game", ""))
@@ -663,6 +679,7 @@ COMMANDS = {
     "toggle": cmd_toggle,
     "remove": cmd_remove,
     "missing": cmd_missing,
+    "overrides": cmd_overrides,
 }
 
 

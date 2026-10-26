@@ -269,6 +269,13 @@ func (f *Fake) Missing(_ context.Context, game, profile string) ([]Missing, erro
 	}}, nil
 }
 
+func (f *Fake) Overrides(_ context.Context, game string) (map[string]string, error) {
+	if f.find(game) == nil {
+		return nil, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
+	}
+	return map[string]string{"version": "native,builtin", "winmm": "native,builtin"}, nil
+}
+
 func (f *Fake) Downloads(_ context.Context, game string, modID, fileID int) (string, error) {
 	if f.find(game) == nil {
 		return "", &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}

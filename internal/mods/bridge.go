@@ -505,6 +505,23 @@ func (b *Bridge) Missing(ctx context.Context, game, profile string) ([]Missing, 
 	return res.Missing, nil
 }
 
+// Overrides are the Wine DLL overrides a game's mods need to load at all.
+func (b *Bridge) Overrides(ctx context.Context, game string) (map[string]string, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	out, err := b.run(probeCtx, "overrides", gameArgs(game, ""), Sink{})
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Overrides map[string]string `json:"overrides"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend sent unreadable DLL overrides"}
+	}
+	return res.Overrides, nil
+}
+
 // Downloads reports the archive of a browsed file that already finished
 // downloading in the browser, so a free account can install it without
 // copying a link around.

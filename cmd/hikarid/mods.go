@@ -194,6 +194,20 @@ func (d *daemon) registerMods(srv *api.Server) {
 			return "", d.mods.Remove(ctx, p.Game, p.Profile, p.Name, sink)
 		})
 	})
+	srv.Register("mods.overrides", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game string `json:"game"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game}")
+		}
+		load()
+		overrides, err := d.mods.Overrides(c, p.Game)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"overrides": overrides}, nil
+	})
 	srv.Register("mods.missing", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Game    string `json:"game"`
@@ -331,6 +345,40 @@ func (d *daemon) annotateModsGames(ctx context.Context, games []mods.Game) []mod
 		views = append(views, view)
 	}
 	return views
+}
+
+// modsKeyFor finds the Amethyst handler for a library game, so launching can
+// pick up that game's Wine DLL overrides.
+func (d *daemon) modsKeyFor(ctx context.Context, g library.Game) string {
+	games, err := d.mods.Games(ctx)
+	if err != nil {
+		d.log.Debug("mods: no handlers for launch overrides", "err", err)
+		return ""
+	}
+	for _, game := range games {
+		if match, ok := matchLibraryGame([]library.Game{g}, game); ok && match.ID == g.ID {
+			return game.ID
+		}
+	}
+	return ""
+}
+
+// modOverrides asks the mods backend which DLLs the game's mods need forced to
+// native under Wine. An unreachable backend just means no overrides.
+func (d *daemon) modOverrides(ctx context.Context, g library.Game) map[string]string {
+	key := d.modsKeyFor(ctx, g)
+	if key == "" {
+		return nil
+	}
+	overrides, err := d.mods.Overrides(ctx, key)
+	if err != nil {
+		d.log.Debug("mods: no DLL overrides for launch", "game", g.Key(), "err", err)
+		return nil
+	}
+	if len(overrides) > 0 {
+		d.log.Info("mods: launch DLL overrides", "game", g.Key(), "overrides", overrides)
+	}
+	return overrides
 }
 
 // Amethyst's handler and Hikari's library entry have no shared id, so the join

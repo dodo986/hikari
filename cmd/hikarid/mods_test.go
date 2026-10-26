@@ -425,3 +425,23 @@ func TestModsToggleRemoveAndRequirements(t *testing.T) {
 		t.Fatalf("mods.missing returned %+v", missing)
 	}
 }
+
+// The loader DLLs mods ship (winmm.dll, version.dll) only load under Wine when
+// their names are forced native; the launch path asks for them here.
+func TestModsOverridesReportTheLoaderTable(t *testing.T) {
+	d, client := startDaemon(t)
+	d.mods = mods.NewFake()
+
+	var res struct {
+		Overrides map[string]string `json:"overrides"`
+	}
+	if err := client.Call("mods.overrides", map[string]any{"game": "skyrim_se"}, &res); err != nil {
+		t.Fatalf("mods.overrides: %v", err)
+	}
+	if res.Overrides["version"] != "native,builtin" || res.Overrides["winmm"] != "native,builtin" {
+		t.Fatalf("overrides = %+v", res.Overrides)
+	}
+	if err := client.Call("mods.overrides", map[string]any{"game": "nope"}, &res); err == nil {
+		t.Fatal("an unknown game should be an error")
+	}
+}

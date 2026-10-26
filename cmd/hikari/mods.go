@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +83,8 @@ func modsCmd(args []string) error {
 		return modsToggleCmd(args[1:])
 	case "missing":
 		return modsMissingCmd(args[1:])
+	case "overrides":
+		return modsOverridesCmd(args[1:])
 	case "downloads":
 		return modsDownloadsCmd(args[1:])
 	case "scheme":
@@ -244,6 +247,41 @@ func modsMissingCmd(args []string) error {
 				fmt.Printf("%s needs %s\n", item.Mod, name)
 			}
 		}
+	}
+	return nil
+}
+
+// modsOverridesCmd prints the Wine DLL overrides a game's mods need.
+func modsOverridesCmd(args []string) error {
+	fs := flag.NewFlagSet("mods overrides", flag.ExitOnError)
+	c := addCommon(fs)
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods overrides <game>")
+	}
+	var out struct {
+		Overrides map[string]string `json:"overrides"`
+	}
+	if err := dial(c).Call("mods.overrides", map[string]any{"game": pos[0]}, &out); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(out)
+	}
+	if len(out.Overrides) == 0 {
+		fmt.Println("this game's mods need no DLL overrides")
+		return nil
+	}
+	names := make([]string, 0, len(out.Overrides))
+	for name := range out.Overrides {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fmt.Printf("%s=%s\n", name, out.Overrides[name])
 	}
 	return nil
 }
@@ -473,7 +511,8 @@ func modsInstalledCmd(args []string) error {
 	fs := flag.NewFlagSet("mods installed", flag.ExitOnError)
 	c := addCommon(fs)
 	profile := fs.String("profile", "", "")
-	if err := fs.Parse(args); err != nil {
+	// Flags after the game name are common ("installed <game> --json").
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	pos := fs.Args()

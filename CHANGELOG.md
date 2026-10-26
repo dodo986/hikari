@@ -9,6 +9,13 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Launching a modded game now sets the Wine DLL overrides those mods need
+  (`WINEDLLOVERRIDES`, from Amethyst's per-game table), merged after whatever
+  the game's settings already ask for. Proxy loaders such as RED4ext's
+  `winmm.dll` and CET's `version.dll` only load when Wine prefers the native
+  copy, so a game launched straight from Hikari used to start with no mods at
+  all — silent, since nothing in the log mentioned it. `hikari mods overrides
+  <game>` prints the table.
 - Mods can be uninstalled and switched off where they are listed: click a row
   in Installed to enable or disable it, **Uninstall** asks once and then
   removes the files, plugins and staging folder the way Amethyst does.

@@ -189,5 +189,6 @@ type Service interface {
 	Toggle(ctx context.Context, game, profile, name string) (bool, error)
 	Remove(ctx context.Context, game, profile, name string, sink Sink) error
 	Missing(ctx context.Context, game, profile string) ([]Missing, error)
+	Overrides(ctx context.Context, game string) (map[string]string, error)
 	Installed(ctx context.Context, game, profile string) (Installed, error)
 }
