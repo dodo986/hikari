@@ -994,7 +994,7 @@ PageBase {
                         id: linkText
                         anchors.fill: parent
                         anchors.margins: Tokens.s3
-                        text: I18n.tr("Nexus only gives direct download links to premium accounts. Press “Mod manager download” on the mod page, then paste the nxm:// link here.")
+                        text: I18n.tr("Nexus only gives direct download links to premium accounts. Press “Mod manager download” on the mod page — Hikari opens it and installs the file. A link can be pasted here too.")
                         color: Tokens.inkDim
                         font.family: Tokens.ui
                         font.pixelSize: Tokens.fTiny

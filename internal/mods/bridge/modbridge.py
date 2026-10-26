@@ -464,8 +464,8 @@ def _download_file(domain: str, mod_id: int, file_id: int) -> str:
             raise BridgeError(
                 "unsupported",
                 "Nexus hands direct download links to premium accounts only; "
-                "press Mod manager download on the mod page and paste the "
-                "nxm:// link into Hikari, or let Amethyst take it")
+                "press Mod manager download on the mod page and Hikari takes "
+                "the link from there")
         raise
     if not links:
         raise BridgeError("failure", "Nexus returned no download mirror")
