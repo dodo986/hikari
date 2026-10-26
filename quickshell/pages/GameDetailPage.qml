@@ -24,7 +24,7 @@ PageBase {
     readonly property bool epicGame: info ? info.store === "epic" : false
     readonly property string statusLine: page.launching ? I18n.tr("Starting the game")
         : (page.running ? I18n.tr("Session active")
-        : (page.crashed ? I18n.tr("The last session crashed")
+        : (page.crashed ? (page.crashNote !== "" ? page.crashNote : I18n.tr("The last session crashed"))
         : (page.installed ? I18n.tr("Ready when you are") : I18n.tr("Choose your install options"))))
     readonly property string key: Daemon.gameKey(game.store, game.id)
     readonly property int detailPanelWidth: content.width > Tokens.px(640)
@@ -45,6 +45,7 @@ PageBase {
     property bool commandSheetOpen: false
     property bool logSheetOpen: false
     property var lastLog: null
+    property string crashNote: ""
 
     readonly property bool sheetOpen: settingsSheetOpen || commandSheetOpen || logSheetOpen
 
@@ -224,9 +225,15 @@ PageBase {
     function loadLastLog(cb) {
         Daemon.call("game.log", { store: game.store, id: game.id }, (r, e) => {
             page.lastLog = e ? null : r;
+            var note = (!e && r && r.mod_stop && r.mod_stop.message) ? r.mod_stop.message : "";
+            if (note !== page.crashNote) page.crashNote = note;
             if (cb) cb(e ? null : r);
         });
     }
+
+    // A launch that ended early has an answer in the game's own loader logs, so
+    // ask for it as soon as the session dies rather than waiting for a click.
+    onCrashedChanged: page.crashed ? page.loadLastLog() : (page.crashNote = "")
 
     function openLogSheet() {
         page.logSheetOpen = true;

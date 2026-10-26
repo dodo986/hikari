@@ -543,6 +543,26 @@ func (b *Bridge) Health(ctx context.Context, game, profile string, network bool)
 	return res.Findings, nil
 }
 
+// StopNote reads the logs a launch wrote, to explain a game that ended early.
+func (b *Bridge) StopNote(ctx context.Context, root string, from, to time.Time) (*StopNote, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	args := []string{"--root", root,
+		"--after", strconv.FormatInt(from.Unix(), 10),
+		"--until", strconv.FormatInt(to.Add(launchSlack).Unix(), 10)}
+	out, err := b.run(probeCtx, "lastlog", args, Sink{})
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Logs []LoaderLog `json:"logs"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend sent unreadable loader logs"}
+	}
+	return StopNoteFrom(res.Logs), nil
+}
+
 // Downloads reports the archive of a browsed file that already finished
 // downloading in the browser, so a free account can install it without
 // copying a link around.

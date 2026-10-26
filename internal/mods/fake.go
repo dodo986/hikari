@@ -276,6 +276,10 @@ func (f *Fake) Overrides(_ context.Context, game string) (map[string]string, err
 	return map[string]string{"version": "native,builtin", "winmm": "native,builtin"}, nil
 }
 
+func (f *Fake) StopNote(_ context.Context, root string, from, to time.Time) (*StopNote, error) {
+	return nil, nil
+}
+
 func (f *Fake) Health(_ context.Context, game, profile string, network bool) ([]Finding, error) {
 	if f.find(game) == nil {
 		return nil, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}

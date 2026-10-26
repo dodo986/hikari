@@ -3,6 +3,7 @@ package mods
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // Kinds carry the backend's own classification of a failure so the daemon can
@@ -222,5 +223,6 @@ type Service interface {
 	Missing(ctx context.Context, game, profile string) ([]Missing, error)
 	Overrides(ctx context.Context, game string) (map[string]string, error)
 	Health(ctx context.Context, game, profile string, network bool) ([]Finding, error)
+	StopNote(ctx context.Context, root string, from, to time.Time) (*StopNote, error)
 	Installed(ctx context.Context, game, profile string) (Installed, error)
 }

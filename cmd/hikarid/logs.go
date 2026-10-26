@@ -12,7 +12,9 @@ import (
 
 	"hikari/internal/api"
 	"hikari/internal/config"
+	"hikari/internal/launch"
 	"hikari/internal/library"
+	"hikari/internal/mods"
 )
 
 func (d *daemon) registerLogs(srv *api.Server) {
@@ -51,8 +53,42 @@ func (d *daemon) registerLogs(srv *api.Server) {
 				"lines": []string{}, "exit_code": 0,
 			}, nil
 		}
-		return rec, nil
+		return logResponse{RunLog: rec, ModStop: d.stopNote(c, p.Store, p.ID, rec)}, nil
 	})
+}
+
+// logResponse is a run record plus, for a launch that ended at once, the loader
+// log sentence that explains it.
+type logResponse struct {
+	launch.RunLog
+	ModStop *mods.StopNote `json:"mod_stop,omitempty"`
+}
+
+// shortRun is how soon a finished launch still counts as "it never got going".
+const shortRun = 30 * time.Second
+
+// stopNote reads the loader logs of a launch that ended at once, so the answer
+// to "why did nothing happen" is in the log the player is already looking at.
+func (d *daemon) stopNote(ctx context.Context, store, id string, rec launch.RunLog) *mods.StopNote {
+	// A game the player stopped is not a mystery, and a long session that
+	// crashed says nothing about the loaders it got past.
+	if rec.Running || rec.Canceled || rec.State != launch.StateCrashed && time.Since(rec.StartedAt) > shortRun {
+		return nil
+	}
+	g, err := d.library.Get(ctx, store, id)
+	if err != nil || g.InstallPath == "" {
+		return nil
+	}
+	end := rec.EndedAt
+	if end.IsZero() {
+		end = time.Now()
+	}
+	note, err := d.mods.StopNote(ctx, g.InstallPath, rec.StartedAt, end)
+	if err != nil {
+		d.log.Debug("mod stop note unavailable", "game", store+"/"+id, "err", err)
+		return nil
+	}
+	return note
 }
 
 func (d *daemon) report(ctx context.Context) string {

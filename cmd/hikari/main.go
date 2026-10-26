@@ -294,6 +294,13 @@ func dispatch(cmd string, args []string) error {
 				ExitCode int      `json:"exit_code"`
 				Running  bool     `json:"running"`
 				State    string   `json:"state"`
+				ModStop  *struct {
+					Loader  string `json:"loader"`
+					Plugin  string `json:"plugin"`
+					Log     string `json:"log"`
+					Message string `json:"message"`
+					Fix     string `json:"fix"`
+				} `json:"mod_stop"`
 			}
 			if err := dial(c).Call("game.log", map[string]any{"store": pos[0], "id": pos[1]}, &rec); err != nil {
 				return err
@@ -306,6 +313,16 @@ func dispatch(cmd string, args []string) error {
 			}
 			for _, line := range rec.Lines {
 				fmt.Println(line)
+			}
+			if note := rec.ModStop; note != nil && note.Message != "" {
+				fmt.Println()
+				fmt.Println(note.Message)
+				if note.Fix != "" {
+					fmt.Println(note.Fix)
+				}
+				if note.Log != "" {
+					fmt.Printf("(%s: %s)\n", note.Loader, note.Log)
+				}
 			}
 			return nil
 		}

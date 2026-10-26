@@ -49,6 +49,42 @@ Sheet {
         font.pixelSize: Tokens.fSmall
         wrapMode: Text.WordWrap
     }
+    ColumnLayout {
+        Layout.fillWidth: true
+        visible: page.lastLog !== null && page.lastLog.mod_stop !== undefined && page.lastLog.mod_stop !== null
+        spacing: Tokens.s1
+        Text {
+            Layout.fillWidth: true
+            text: page.lastLog && page.lastLog.mod_stop ? page.lastLog.mod_stop.message : ""
+            color: Tokens.sunDeep
+            font.family: Tokens.ui
+            font.pixelSize: Tokens.fSmall
+            wrapMode: Text.WordWrap
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: page.lastLog && page.lastLog.mod_stop && page.lastLog.mod_stop.fix !== undefined
+            text: page.lastLog && page.lastLog.mod_stop ? (page.lastLog.mod_stop.fix || "") : ""
+            color: Tokens.inkDim
+            font.family: Tokens.ui
+            font.pixelSize: Tokens.fSmall
+            wrapMode: Text.WordWrap
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: page.lastLog && page.lastLog.mod_stop && page.lastLog.mod_stop.log !== undefined
+            text: {
+                var note = page.lastLog ? page.lastLog.mod_stop : null;
+                if (!note || !note.log) return "";
+                var parts = note.log.split("/");
+                return I18n.tr("from") + " " + (note.loader || "") + ": " + parts[parts.length - 1];
+            }
+            color: Tokens.inkFaint
+            font.family: Tokens.ui
+            font.pixelSize: Tokens.fSmall
+            elide: Text.ElideMiddle
+        }
+    }
     LogView {
         id: logText
         preferredHeight: Tokens.px(340)

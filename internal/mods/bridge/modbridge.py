@@ -30,7 +30,8 @@ REQUIRED_MODULES = (
 LOGIN_TIMEOUT = 300
 
 FLAGS = {"--game", "--profile", "--archive", "--url", "--name", "--action",
-         "--query", "--sort", "--page", "--mod-id", "--file-id"}
+         "--query", "--sort", "--page", "--mod-id", "--file-id", "--root",
+         "--after", "--until"}
 
 
 class BridgeError(Exception):
@@ -70,7 +71,8 @@ def _parse(argv: list) -> tuple:
     if not argv:
         raise BridgeError("usage", "usage: modbridge.py <doctor|games|deploy|"
                                    "restore|install|nexus|search|files|"
-                                   "account|installed> [--flag value]")
+                                   "account|installed|health|lastlog>"
+                                   " [--flag value]")
     command, rest = argv[0], argv[1:]
     opts: dict = {}
     index = 0
@@ -531,32 +533,105 @@ def cmd_overrides(opts: dict) -> dict:
     return {"overrides": {str(k): str(v) for k, v in table.items()}}
 
 
+_LOADER_SUFFIXES = {".dll", ".asi", ".exe", ".so", ".dylib", ".esp", ".esm",
+                    ".esl", ".bsa", ".ba2", ".pak", ".vpk", ".jar", ".lua"}
+
+
 def _loader_files(mod_dir, staging):
-    """A mod's Wine-side loaders: the files that decide whether it loads."""
+    """A mod's loaders: the files that decide whether it loads at all."""
     out = []
-    for sub in ("bin", "red4ext", "engine", "r6", "mods"):
-        root = mod_dir / sub
-        if not root.is_dir():
+    for path in mod_dir.rglob("*"):
+        if not path.is_file() or len(path.relative_to(mod_dir).parts) > 8:
             continue
-        for path in root.rglob("*"):
-            if path.is_file() and path.suffix.lower() in (".dll", ".asi", ".exe"):
-                out.append(path.relative_to(mod_dir).as_posix())
+        if {suffix.lower() for suffix in path.suffixes} & _LOADER_SUFFIXES:
+            out.append(path.relative_to(mod_dir).as_posix())
     return out
 
 
+_LOG_SKIP = {"content", "archive", "deriveddatacache", "packs", "steamapps",
+             "node_modules", ".git", "__pycache__", "shadercache"}
+_LOG_TAIL_BYTES = 1 << 18
+
+# Display names for the loaders that are common enough to recognise; anything
+# else is named after the folder that holds its log.
+_LOG_LOADERS = (("archivexl", "ArchiveXL"), ("cyber_engine_tweaks", "CET"),
+                ("redscript", "redscript"), ("red4ext", "RED4ext"),
+                ("skse", "SKSE"), ("f4se", "F4SE"), ("nvse", "NVSE"),
+                ("scriptextender", "the script extender"))
+
+
+def _loader_name(path: pathlib.Path, root: pathlib.Path) -> str:
+    """Which loader wrote a log, judging by the folder it sits in."""
+    text = path.as_posix().lower()
+    for needle, name in _LOG_LOADERS:
+        if needle in text:
+            return name
+    try:
+        return path.parent.relative_to(root).as_posix()
+    except Exception:
+        return path.parent.name
+
+
+def _tail(path: pathlib.Path, count: int) -> list:
+    """The last lines of a log, without reading a whole gigabyte of it."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - _LOG_TAIL_BYTES))
+            raw = handle.read()
+    except OSError:
+        return []
+    lines = raw.decode("utf-8", "replace").splitlines()
+    if size > _LOG_TAIL_BYTES and lines:
+        lines = lines[1:]
+    return [line.rstrip() for line in lines[-count:]]
+
+
+def _walk_logs(root, after=0.0, until=0.0):
+    """Logs under a game folder, newest first, without crawling the whole game."""
+    found, seen = [], 0
+    for here, dirs, names in os.walk(root):
+        seen += 1
+        if seen > 60000:
+            break
+        dirs[:] = [d for d in dirs if d.lower() not in _LOG_SKIP]
+        if len(pathlib.Path(here).relative_to(root).parts) >= 5:
+            dirs[:] = []
+        for name in names:
+            if not name.endswith(".log"):
+                continue
+            path = pathlib.Path(here) / name
+            try:
+                stamp = path.stat().st_mtime
+            except OSError:
+                continue
+            if stamp >= after and (until <= 0 or stamp <= until):
+                found.append((stamp, path))
+    found.sort(key=lambda item: item[0], reverse=True)
+    return found
+
+
 def _newest_log(root):
-    """The newest log under a loader folder, so "did it even run" has an answer."""
-    newest, when = "", 0.0
+    """The newest log under a folder, so "did it even run" has an answer."""
     if not root.is_dir():
-        return newest, when
-    for path in root.rglob("*.log"):
-        try:
-            stamp = path.stat().st_mtime
-        except OSError:
-            continue
-        if stamp > when:
-            newest, when = path.as_posix(), stamp
-    return newest, when
+        return "", 0.0
+    found = _walk_logs(root)
+    if not found:
+        return "", 0.0
+    return found[0][1].as_posix(), found[0][0]
+
+
+def cmd_lastlog(opts: dict) -> dict:
+    """Every log one launch wrote, newest first, so a game that dies has a last word."""
+    root = pathlib.Path(opts.get("root", "")).expanduser()
+    if not root.is_dir():
+        raise BridgeError("notfound", f"there is no folder at {root}")
+    found = _walk_logs(root, float(opts.get("after") or 0),
+                       float(opts.get("until") or 0))
+    return {"logs": [{"path": path.as_posix(), "loader": _loader_name(path, root),
+                      "when": stamp, "lines": _tail(path, 40)}
+                     for stamp, path in found[:8]]}
 
 
 def cmd_health(opts: dict) -> dict:
@@ -591,30 +666,21 @@ def cmd_health(opts: dict) -> dict:
                 findings.append({
                     "id": "loader-not-deployed", "severity": "error",
                     "mod": entry.name, "file": rel, "fixable": True,
-                    "detail": "this file is what makes the mod load and it is "
-                              "missing from the game folder; the mod is running "
-                              "as if it were not installed",
+                    "detail": "part of this mod is missing from the game folder, "
+                              "so the game runs as if it were not installed",
                 })
 
-    for name, sub in (("CET", "bin/x64/plugins/cyber_engine_tweaks"),
-                      ("RED4ext", "red4ext")):
-        folder = root / sub
-        if not folder.is_dir():
-            continue
-        log, when = _newest_log(folder)
-        if not log:
-            findings.append({
-                "id": "loader-not-run", "severity": "warning", "mod": name,
-                "file": sub, "fixable": False,
-                "detail": f"{name} is installed but has never written a log, so "
-                          "it has not loaded yet — launch the game once",
-            })
-        else:
-            findings.append({
-                "id": "loader-ok", "severity": "info", "mod": name,
-                "file": log, "fixable": False,
-                "detail": "last log " + _iso(when, ""),
-            })
+    # Did the game get as far as writing anything? A game folder that has never
+    # produced a log cannot say whether its mods load, whatever engine it runs.
+    log_path, log_when = _newest_log(root)
+    findings.append({
+        "id": "loader-log" if log_path else "loader-never-ran",
+        "severity": "info" if log_path else "warning", "mod": "",
+        "file": log_path, "fixable": False,
+        "detail": ("newest log the game wrote: " + _iso(log_when, "")) if log_path else
+                  "this game has written no log at all, so nothing here can tell "
+                  "whether its mods load — launch it once",
+    })
 
     overrides = getattr(game, "wine_dll_overrides", None) or {}
     if overrides:
@@ -814,6 +880,7 @@ COMMANDS = {
     "remove": cmd_remove,
     "missing": cmd_missing,
     "health": cmd_health,
+    "lastlog": cmd_lastlog,
     "overrides": cmd_overrides,
 }
 
