@@ -2,3 +2,7 @@
 /hikarid
 /dist/
 *.test
+
+# Python leftovers from local checks
+__pycache__/
+*.pyc

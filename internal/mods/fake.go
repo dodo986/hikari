@@ -148,17 +148,17 @@ func (f *Fake) Logout(context.Context) error {
 // demoMods is the demo daemon's Nexus catalogue, so the page has something to list.
 var demoMods = map[string][]Mod{
 	"skyrimspecialedition": {
-		{ModID: 12604, Name: "SkyUI", Author: "SkyUI Team", Version: "5.2", Downloads: 41_000_000, Endorsements: 480_000, Summary: "A user interface for Skyrim that is both more powerful and more console friendly."},
-		{ModID: 266, Name: "Unofficial Skyrim Special Edition Patch", Author: "Unofficial Patch Project Team", Version: "4.3.9a", Downloads: 22_400_000, Endorsements: 320_000, Summary: "Comprehensive bugfixing for Skyrim Special Edition."},
-		{ModID: 19518, Name: "Address Library for SKSE Plugins", Author: "meh321", Version: "12", Downloads: 18_900_000, Endorsements: 210_000, Summary: "Version independent addresses for SKSE plugins."},
-		{ModID: 75978, Name: "Alternate Start - Live Another Life", Author: "Arthmoor", Version: "4.2.1", Downloads: 12_100_000, Endorsements: 130_000, Summary: "Change the way you start a new game."},
-		{ModID: 1137, Name: "Static Mesh Improvement Mod", Author: "Brumbek", Version: "2.08", Downloads: 9_600_000, Endorsements: 120_000, Summary: "Replaces 900+ meshes with improved models."},
-		{ModID: 242, Name: "Total Character Makeover", Author: "ltho", Version: "1.2", Downloads: 4_300_000, Endorsements: 60_000, Summary: "High resolution face and body textures."},
+		{ModID: 12604, Name: "SkyUI", Author: "SkyUI Team", Version: "5.2", Downloads: 41_000_000, Endorsements: 480_000, Category: "User Interface", Created: "2024-02-01T00:00:00Z", Updated: "2026-03-11T18:30:00Z", Summary: "A user interface for Skyrim that is both more powerful and more console friendly."},
+		{ModID: 266, Name: "Unofficial Skyrim Special Edition Patch", Author: "Unofficial Patch Project Team", Version: "4.3.9a", Downloads: 22_400_000, Endorsements: 320_000, Category: "Bugfixes", Created: "2024-02-01T00:00:00Z", Updated: "2026-10-19T07:15:00Z", Summary: "Comprehensive bugfixing for Skyrim Special Edition."},
+		{ModID: 19518, Name: "Address Library for SKSE Plugins", Author: "meh321", Version: "12", Downloads: 18_900_000, Endorsements: 210_000, Category: "Utilities", Created: "2024-02-01T00:00:00Z", Updated: "2026-08-30T21:40:00Z", Summary: "Version independent addresses for SKSE plugins."},
+		{ModID: 75978, Name: "Alternate Start - Live Another Life", Author: "Arthmoor", Version: "4.2.1", Downloads: 12_100_000, Endorsements: 130_000, Category: "Quests", Created: "2024-02-01T00:00:00Z", Updated: "2026-05-14T11:05:00Z", Summary: "Change the way you start a new game."},
+		{ModID: 1137, Name: "Static Mesh Improvement Mod", Author: "Brumbek", Version: "2.08", Downloads: 9_600_000, Endorsements: 120_000, Category: "Models and Textures", Created: "2024-02-01T00:00:00Z", Updated: "2026-07-02T16:20:00Z", Summary: "Replaces 900+ meshes with improved models."},
+		{ModID: 242, Name: "Total Character Makeover", Author: "ltho", Version: "1.2", Downloads: 4_300_000, Endorsements: 60_000, Category: "Models and Textures", Created: "2024-02-01T00:00:00Z", Updated: "2025-12-09T13:45:00Z", Summary: "High resolution face and body textures."},
 	},
 	"cyberpunk2077": {
-		{ModID: 107, Name: "Cyber Engine Tweaks", Author: "Yamashi", Version: "1.34.0", Downloads: 6_800_000, Endorsements: 90_000, Summary: "Scripting framework for Cyberpunk 2077, with a console and a Lua API."},
-		{ModID: 3421, Name: "RED4ext", Author: "WopsS", Version: "1.25.0", Downloads: 5_400_000, Endorsements: 74_000, Summary: "A library that extends REDengine 4 by hooking into scripts."},
-		{ModID: 7080, Name: "ArchiveXL", Author: "psiberx", Version: "1.19.0", Downloads: 4_100_000, Endorsements: 58_000, Summary: "Archive extension loader."},
+		{ModID: 107, Name: "Cyber Engine Tweaks", Author: "Yamashi", Version: "1.34.0", Downloads: 6_800_000, Endorsements: 90_000, Category: "Gameplay", Created: "2024-02-01T00:00:00Z", Updated: "2026-10-20T10:00:00Z", Summary: "Scripting framework for Cyberpunk 2077, with a console and a Lua API."},
+		{ModID: 3421, Name: "RED4ext", Author: "WopsS", Version: "1.25.0", Downloads: 5_400_000, Endorsements: 74_000, Category: "Utilities", Created: "2024-02-01T00:00:00Z", Updated: "2026-10-22T19:10:00Z", Summary: "A library that extends REDengine 4 by hooking into scripts."},
+		{ModID: 7080, Name: "ArchiveXL", Author: "psiberx", Version: "1.19.0", Downloads: 4_100_000, Endorsements: 58_000, Category: "Utilities", Created: "2024-02-01T00:00:00Z", Updated: "2026-09-28T08:35:00Z", Summary: "Archive extension loader."},
 	},
 }
 
@@ -190,8 +190,9 @@ func (f *Fake) Files(_ context.Context, game string, modID int) (Mod, []ModFile,
 	for _, mod := range demoMods[known.NexusDomain] {
 		if mod.ModID == modID {
 			return mod, []ModFile{
-				{FileID: 1, Name: mod.Name, Version: mod.Version, Category: "MAIN", Size: "12.4 MB", Primary: true},
-				{FileID: 2, Name: mod.Name + " - optional files", Version: mod.Version, Category: "OPTIONAL", Size: "820 KB"},
+				{FileID: 3, Name: mod.Name + " - optional files", Version: mod.Version, Category: "OPTIONAL", Size: "820 KB", Uploaded: "2026-10-24T09:00:00Z"},
+				{FileID: 1, Name: mod.Name, Version: mod.Version, Category: "MAIN", Size: "12.4 MB", Uploaded: "2026-03-11T18:30:00Z", Primary: true},
+				{FileID: 2, Name: mod.Name + " - 1.9 archive", Version: "1.9", Category: "OLD_VERSION", Size: "11.8 MB", Uploaded: "2025-06-02T12:00:00Z"},
 			}, nil
 		}
 	}

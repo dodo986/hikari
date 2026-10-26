@@ -14,6 +14,11 @@
   tokens land in the same store Amethyst reads — one sign-in covers both
   apps. `hikari mods logout` forgets it, and a pasted API key
   (`hikari mods nexus set`) still works if you have one.
+- Browse Nexus as a grid of cards — artwork, author, category, when it was
+  last updated, downloads — the way the Nexus site arranges mods, with New /
+  Updated / Popular / Endorsed chips above it instead of one sort button.
+  Files are listed newest first, and retired builds stay hidden unless you
+  ask for them.
 - Browse Nexus from the Mods page (or `hikari mods browse`): search a game's
   mods, sort by downloads/endorsements/newest/updated, see a mod's files and
   install one — using the API key Amethyst already stores. The profile's own

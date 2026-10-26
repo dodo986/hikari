@@ -281,6 +281,20 @@ func TestModsBrowsingEndpoints(t *testing.T) {
 	if files.Mod.ModID != page.Results[0].ModID || len(files.Files) == 0 {
 		t.Fatalf("mods.files returned %+v", files)
 	}
+	// Newest build first, and each row says when it was uploaded: the sheet
+	// shows both without asking for anything else.
+	for i, file := range files.Files {
+		if file.Uploaded == "" {
+			t.Fatalf("file %d has no upload date: %+v", i, file)
+		}
+		if i > 0 && files.Files[i-1].Uploaded < file.Uploaded {
+			t.Fatalf("files are not newest first: %s then %s",
+				files.Files[i-1].Uploaded, file.Uploaded)
+		}
+	}
+	if page.Results[0].Category == "" || page.Results[0].Updated == "" {
+		t.Fatalf("browse results lost their category or update date: %+v", page.Results[0])
+	}
 
 	var list mods.Installed
 	if err := client.Call("mods.installed", map[string]any{"game": "skyrim_se"}, &list); err != nil {

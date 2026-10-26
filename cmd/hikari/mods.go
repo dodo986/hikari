@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"hikari/internal/mods"
 )
 
 const modsJobTimeout = 24 * time.Hour
@@ -96,7 +98,7 @@ func modsCmd(args []string) error {
 func modsAccountCmd(args []string) error {
 	fs := flag.NewFlagSet("mods account", flag.ExitOnError)
 	c := addCommon(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	var res struct {
@@ -130,7 +132,7 @@ func modsAccountCmd(args []string) error {
 func modsLogoutCmd(args []string) error {
 	fs := flag.NewFlagSet("mods logout", flag.ExitOnError)
 	c := addCommon(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	if err := dial(c).Call("mods.logout", nil, nil); err != nil {
@@ -145,7 +147,7 @@ func modsBrowseCmd(args []string) error {
 	c := addCommon(fs)
 	sort := fs.String("sort", "", "")
 	page := fs.Int("page", 0, "")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	pos := fs.Args()
@@ -156,21 +158,7 @@ func modsBrowseCmd(args []string) error {
 	if len(pos) > 1 {
 		params["query"] = strings.Join(pos[1:], " ")
 	}
-	var res struct {
-		Game    string `json:"game"`
-		Domain  string `json:"domain"`
-		Page    int    `json:"page"`
-		More    bool   `json:"more"`
-		Results []struct {
-			ModID        int    `json:"mod_id"`
-			Name         string `json:"name"`
-			Author       string `json:"author"`
-			Version      string `json:"version"`
-			Downloads    int    `json:"downloads"`
-			Endorsements int    `json:"endorsements"`
-			Summary      string `json:"summary"`
-		} `json:"results"`
-	}
+	var res mods.Browse
 	if err := dial(c).Call("mods.browse", params, &res); err != nil {
 		return err
 	}
@@ -190,7 +178,7 @@ func modsBrowseCmd(args []string) error {
 func modsFilesCmd(args []string) error {
 	fs := flag.NewFlagSet("mods files", flag.ExitOnError)
 	c := addCommon(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	pos := fs.Args()
@@ -201,20 +189,7 @@ func modsFilesCmd(args []string) error {
 	if err != nil {
 		return fmt.Errorf("mod id %q is not a number", pos[1])
 	}
-	var res struct {
-		Mod struct {
-			ModID int    `json:"mod_id"`
-			Name  string `json:"name"`
-		} `json:"mod"`
-		Files []struct {
-			FileID   int    `json:"file_id"`
-			Name     string `json:"name"`
-			Version  string `json:"version"`
-			Category string `json:"category"`
-			Size     string `json:"size"`
-			Primary  bool   `json:"primary"`
-		} `json:"files"`
-	}
+	var res mods.Files
 	if err := dial(c).Call("mods.files", map[string]any{"game": pos[0], "mod_id": modID}, &res); err != nil {
 		return err
 	}
@@ -227,7 +202,12 @@ func modsFilesCmd(args []string) error {
 		if file.Primary {
 			marker = "*"
 		}
-		fmt.Printf("%s %-8d %-44.44s %-12s %-10s %s\n", marker, file.FileID, file.Name, file.Version, file.Category, file.Size)
+		uploaded := ""
+		if date, err := time.Parse(time.RFC3339, file.Uploaded); err == nil {
+			uploaded = date.Format("2006-01-02")
+		}
+		fmt.Printf("%s %-8d %-40.40s %-12s %-14s %-10s %s\n",
+			marker, file.FileID, file.Name, file.Version, file.Category, file.Size, uploaded)
 	}
 	return nil
 }

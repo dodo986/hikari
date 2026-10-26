@@ -24,13 +24,19 @@ PageBase {
     property string sort: "downloads"
     property string pendingGame: ""
     property var installingFile: null
+    property bool showArchived: false
 
-    readonly property var sorts: [
-        { key: "downloads", label: I18n.tr("Downloads") },
-        { key: "endorsements", label: I18n.tr("Endorsements") },
-        { key: "created", label: I18n.tr("Newest") },
-        { key: "updated", label: I18n.tr("Updated") }
-    ]
+    readonly property var sortKeys: ["created", "updated", "downloads", "endorsements"]
+    readonly property var sortLabels: ({
+        "created": I18n.tr("New"),
+        "updated": I18n.tr("Updated"),
+        "downloads": I18n.tr("Popular"),
+        "endorsements": I18n.tr("Endorsed")
+    })
+    // Cards are a fixed size, like the library's tiles: whole columns, no stretching.
+    readonly property int cardW: Tokens.px(224)
+    readonly property int cardH: Math.round(cardW * 0.56) + Tokens.px(176)
+    readonly property int columns: Math.max(1, Math.floor((browsePane.width + Tokens.s4) / (cardW + Tokens.s4)))
 
     function selectedGame() {
         var id = app.modGame;
@@ -59,17 +65,16 @@ PageBase {
         page.chosen = copy;
         Daemon.loadModsInstalled(entry.id, next);
     }
-    function sortLabel() {
-        for (var i = 0; i < page.sorts.length; i++)
-            if (page.sorts[i].key === page.sort) return page.sorts[i].label;
-        return page.sort;
-    }
-    function cycleSort() {
-        var index = 0;
-        for (var i = 0; i < page.sorts.length; i++)
-            if (page.sorts[i].key === page.sort) index = i;
-        page.sort = page.sorts[(index + 1) % page.sorts.length].key;
+    function pickSort(key) {
+        if (page.sort === key) return;
+        page.sort = key;
         page.search(0);
+    }
+    function shortDate(value) {
+        if (!value) return "";
+        var date = new Date(value);
+        if (isNaN(date.getTime())) return "";
+        return Qt.formatDateTime(date, "d MMM yyyy");
     }
     function search(pageIndex) {
         if (!Daemon.modsAccount || !Daemon.modsAccount.stored) return;
@@ -91,8 +96,20 @@ PageBase {
         page.pendingGame = entry.id;
         archivePicker.open();
     }
+    function usableFiles() {
+        if (!Daemon.modsFiles || !Daemon.modsFiles.files) return [];
+        return Daemon.modsFiles.files.filter(function (file) {
+            var retired = file.category === "ARCHIVED" || file.category === "REMOVED";
+            return page.showArchived || !retired;
+        });
+    }
+    function hiddenFiles() {
+        if (!Daemon.modsFiles || !Daemon.modsFiles.files) return 0;
+        return Daemon.modsFiles.files.length - page.usableFiles().length;
+    }
     function pickFile(mod) {
         page.installingFile = mod;
+        page.showArchived = false;
         Daemon.loadModFiles(page.game.id, mod.mod_id);
         filesSheet.shown = true;
     }
@@ -634,6 +651,7 @@ PageBase {
 
             // Browse --------------------------------------------------------
             ColumnLayout {
+                id: browsePane
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: Tokens.s3
@@ -692,14 +710,31 @@ PageBase {
                     }
                     Btn {
                         compact: true
-                        text: page.sortLabel()
-                        onAct: page.cycleSort()
-                    }
-                    Btn {
-                        compact: true
                         text: Daemon.modsSearching ? I18n.tr("Searching…") : I18n.tr("Search")
                         armed: !Daemon.modsSearching
                         onAct: page.search(0)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Tokens.s2
+                    visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
+
+                    Chips {
+                        options: page.sortKeys
+                        labels: page.sortLabels
+                        current: page.sort
+                        onChose: key => page.pickSort(key)
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: Daemon.modsBrowse && Daemon.modsBrowse.results
+                              ? Daemon.modsBrowse.results.length + " " + I18n.tr("mods")
+                              : ""
+                        color: Tokens.inkFaint
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fTiny
                     }
                 }
 
@@ -717,96 +752,133 @@ PageBase {
                         width: parent.width
                         spacing: Tokens.s2
 
-                        Repeater {
-                            model: (Daemon.modsBrowse ? Daemon.modsBrowse.results : [])
-                            Rectangle {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                implicitHeight: Tokens.px(78)
-                                radius: Tokens.radius
-                                color: hitHover.containsMouse ? Tokens.paperLift : Tokens.paper
-                                border.width: Tokens.border
-                                border.color: Tokens.lineSoft
+                        Grid {
+                            id: modGrid
+                            Layout.fillWidth: true
+                            columns: page.columns
+                            columnSpacing: Tokens.s4
+                            rowSpacing: Tokens.s4
 
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: Tokens.s3
-                                    spacing: Tokens.s4
+                            Repeater {
+                                model: (Daemon.modsBrowse ? Daemon.modsBrowse.results : [])
+                                Rectangle {
+                                    required property var modelData
+                                    width: page.cardW
+                                    height: page.cardH
+                                    radius: Tokens.radius
+                                    color: cardHover.containsMouse ? Tokens.paperLift : Tokens.paper
+                                    border.width: Tokens.border
+                                    border.color: cardHover.containsMouse ? Tokens.line : Tokens.lineSoft
+                                    clip: true
 
-                                    Rectangle {
-                                        Layout.preferredWidth: Tokens.px(54)
-                                        Layout.preferredHeight: Tokens.px(54)
-                                        radius: Tokens.px(2)
-                                        color: Tokens.tint10
-                                        clip: true
-                                        Text {
-                                            anchors.centerIn: parent
-                                            visible: thumb.status !== Image.Ready
-                                            text: modelData.name.charAt(0).toUpperCase()
-                                            color: Tokens.inkFaint
-                                            font.family: Tokens.display
-                                            font.pixelSize: Tokens.fRow
-                                        }
-                                        Image {
-                                            id: thumb
-                                            anchors.fill: parent
-                                            source: modelData.picture_url || ""
-                                            asynchronous: true
-                                            fillMode: Image.PreserveAspectCrop
-                                            cache: true
-                                        }
-                                    }
                                     ColumnLayout {
-                                        spacing: Tokens.s1
-                                        Layout.fillWidth: true
-                                        Text {
-                                            text: modelData.name
-                                            color: Tokens.ink
-                                            font.family: Tokens.ui
-                                            font.pixelSize: Tokens.fRow
-                                            font.weight: Font.Medium
-                                            elide: Text.ElideRight
+                                        anchors.fill: parent
+                                        spacing: 0
+
+                                        Rectangle {
                                             Layout.fillWidth: true
+                                            Layout.preferredHeight: Math.round(page.cardW * 0.56)
+                                            color: Tokens.tint10
+                                            clip: true
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                visible: cover.status !== Image.Ready
+                                                text: modelData.name.charAt(0).toUpperCase()
+                                                color: Tokens.inkFaint
+                                                font.family: Tokens.display
+                                                font.pixelSize: Math.round(Tokens.fRow * 1.4)
+                                            }
+                                            Image {
+                                                id: cover
+                                                anchors.fill: parent
+                                                source: modelData.picture_url || ""
+                                                // Decode at the drawn size: Nexus serves 1920px artwork.
+                                                sourceSize.width: page.cardW * 2
+                                                sourceSize.height: page.cardW * 2
+                                                asynchronous: true
+                                                fillMode: Image.PreserveAspectCrop
+                                                cache: true
+                                            }
+                                            Badge {
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                anchors.margins: Tokens.s2
+                                                visible: modelData.adult === true
+                                                text: I18n.tr("ADULT")
+                                                danger: true
+                                            }
                                         }
-                                        Text {
-                                            text: (modelData.author || I18n.tr("unknown author")) +
-                                                  (modelData.version ? "  ·  " + modelData.version : "") +
-                                                  "  ·  " + page.compact(modelData.downloads) + " " + I18n.tr("downloads") +
-                                                  "  ·  " + page.compact(modelData.endorsements) + " " + I18n.tr("endorsements")
-                                            color: Tokens.inkFaint
-                                            font.family: Tokens.ui
-                                            font.pixelSize: Tokens.fTiny
-                                            elide: Text.ElideRight
+
+                                        ColumnLayout {
                                             Layout.fillWidth: true
-                                        }
-                                        Text {
-                                            text: modelData.summary || ""
-                                            color: Tokens.inkDim
-                                            font.family: Tokens.ui
-                                            font.pixelSize: Tokens.fSmall
-                                            elide: Text.ElideRight
-                                            wrapMode: Text.Wrap
-                                            maximumLineCount: 2
-                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            Layout.margins: Tokens.s3
+                                            spacing: Tokens.s1
+
+                                            Text {
+                                                text: modelData.name
+                                                color: Tokens.ink
+                                                font.family: Tokens.ui
+                                                font.pixelSize: Tokens.fRow
+                                                font.weight: Font.Medium
+                                                wrapMode: Text.Wrap
+                                                maximumLineCount: 2
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                            Text {
+                                                text: (modelData.author || I18n.tr("unknown author"))
+                                                      + (modelData.category ? "  ·  " + modelData.category : "")
+                                                color: Tokens.inkFaint
+                                                font.family: Tokens.ui
+                                                font.pixelSize: Tokens.fTiny
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                            Text {
+                                                text: modelData.updated
+                                                      ? I18n.tr("updated") + " " + page.shortDate(modelData.updated)
+                                                      : (modelData.created
+                                                         ? I18n.tr("added") + " " + page.shortDate(modelData.created) : "")
+                                                color: Tokens.inkFaint
+                                                font.family: Tokens.ui
+                                                font.pixelSize: Tokens.fTiny
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                            Text {
+                                                text: modelData.summary || ""
+                                                color: Tokens.inkDim
+                                                font.family: Tokens.ui
+                                                font.pixelSize: Tokens.fSmall
+                                                wrapMode: Text.Wrap
+                                                maximumLineCount: 3
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                                Layout.fillHeight: true
+                                                verticalAlignment: Text.AlignTop
+                                            }
+                                            Text {
+                                                text: (modelData.version ? modelData.version + "  ·  " : "")
+                                                      + page.compact(modelData.downloads) + " " + I18n.tr("downloads")
+                                                      + "  ·  " + page.compact(modelData.endorsements) + " " + I18n.tr("endorsements")
+                                                color: Tokens.inkDim
+                                                font.family: Tokens.ui
+                                                font.pixelSize: Tokens.fTiny
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
                                         }
                                     }
-                                    Badge {
-                                        visible: modelData.adult === true
-                                        text: I18n.tr("ADULT")
-                                        danger: true
+
+                                    MouseArea {
+                                        id: cardHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: page.pickFile(modelData)
                                     }
-                                    Btn {
-                                        compact: true
-                                        text: I18n.tr("Files")
-                                        armed: !Daemon.modsBusy
-                                        onAct: page.pickFile(modelData)
-                                    }
-                                }
-                                MouseArea {
-                                    id: hitHover
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    acceptedButtons: Qt.NoButton
                                 }
                             }
                         }
@@ -865,7 +937,7 @@ PageBase {
             spacing: Tokens.s2
 
             Repeater {
-                model: Daemon.modsFiles && Daemon.modsFiles.files ? Daemon.modsFiles.files : []
+                model: page.usableFiles()
                 Rectangle {
                     required property var modelData
                     Layout.fillWidth: true
@@ -889,7 +961,8 @@ PageBase {
                             }
                             Text {
                                 text: (modelData.category || "") + "  ·  " + (modelData.version || "") +
-                                      "  ·  " + (modelData.size || "")
+                                      "  ·  " + (modelData.size || "") +
+                                      (modelData.uploaded ? "  ·  " + page.shortDate(modelData.uploaded) : "")
                                 color: Tokens.inkFaint
                                 font.family: Tokens.ui
                                 font.pixelSize: Tokens.fTiny
@@ -908,6 +981,23 @@ PageBase {
                             }
                         }
                     }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: page.hiddenFiles() > 0
+                Text {
+                    text: page.hiddenFiles() + " " + I18n.tr("archived builds hidden")
+                    color: Tokens.inkFaint
+                    font.family: Tokens.ui
+                    font.pixelSize: Tokens.fTiny
+                }
+                Item { Layout.fillWidth: true }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Show archived")
+                    onAct: page.showArchived = true
                 }
             }
 

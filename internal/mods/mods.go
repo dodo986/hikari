@@ -56,7 +56,9 @@ type Mod struct {
 	Downloads    int    `json:"downloads"`
 	Endorsements int    `json:"endorsements"`
 	Adult        bool   `json:"adult,omitempty"`
+	Created      string `json:"created,omitempty"`
 	Updated      string `json:"updated,omitempty"`
+	Category     string `json:"category,omitempty"`
 	PictureURL   string `json:"picture_url,omitempty"`
 }
 
@@ -67,6 +69,7 @@ type ModFile struct {
 	Version  string `json:"version,omitempty"`
 	Category string `json:"category,omitempty"`
 	Size     string `json:"size,omitempty"`
+	Uploaded string `json:"uploaded,omitempty"`
 	Primary  bool   `json:"primary,omitempty"`
 }
 
@@ -77,6 +80,12 @@ type Browse struct {
 	Page    int    `json:"page"`
 	More    bool   `json:"more"`
 	Results []Mod  `json:"results"`
+}
+
+// Files is one mod's file listing, newest upload first.
+type Files struct {
+	Mod   Mod       `json:"mod"`
+	Files []ModFile `json:"files"`
 }
 
 // InstalledMod is one entry of a profile's modlist, highest priority first.

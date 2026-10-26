@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import threading
+import time
 import traceback
 
 sys.dont_write_bytecode = True  # the Amethyst tree is never written to
@@ -198,6 +199,17 @@ def _nexus_game(games: dict, key: str):
     return game, domain
 
 
+def _iso(stamp, text) -> str:
+    """Nexus hands either an ISO string or a unix stamp; clients get one shape."""
+    text = str(text or "")
+    if text:
+        return text
+    try:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(stamp or 0))) if stamp else ""
+    except (TypeError, ValueError, OSError):
+        return ""
+
+
 def _entry(info) -> dict:
     return {
         "mod_id": int(getattr(info, "mod_id", 0) or 0),
@@ -208,7 +220,9 @@ def _entry(info) -> dict:
         "downloads": int(info.downloads_total or 0),
         "endorsements": int(info.endorsement_count or 0),
         "adult": bool(info.contains_adult_content),
-        "updated": getattr(info, "updated_at", "") or "",
+        "updated": _iso(getattr(info, "updated_timestamp", 0), getattr(info, "updated_at", "")),
+        "created": _iso(getattr(info, "created_timestamp", 0), getattr(info, "created_at", "")),
+        "category": getattr(info, "category_name", "") or "",
         "picture_url": info.picture_url or "",
     }
 
@@ -347,12 +361,16 @@ def cmd_files(opts: dict) -> dict:
         raise BridgeError("usage", "files needs --mod-id")
     info = api.get_mod(domain, mod_id)
     files = api.get_mod_files(domain, mod_id).files
+    # Nexus lists files oldest first; anyone installing wants the newest build on top.
+    files = sorted(files, key=lambda f: (int(f.uploaded_timestamp or 0), int(f.file_id or 0)),
+                   reverse=True)
     return {"mod": _entry(info), "files": [{
         "file_id": int(file.file_id),
         "name": file.name or "",
         "version": file.version or file.mod_version or "",
         "category": file.category_name or "",
         "size": _size(file.size_kb or 0),
+        "uploaded": _iso(file.uploaded_timestamp, ""),
         "primary": bool(file.is_primary),
     } for file in files]}
 
