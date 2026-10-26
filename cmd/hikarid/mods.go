@@ -115,6 +115,53 @@ func (d *daemon) registerMods(srv *api.Server) {
 		cancel()
 		return map[string]any{"canceled": true}, nil
 	})
+	srv.Register("mods.account", func(c context.Context, params json.RawMessage) (any, error) {
+		load()
+		return d.mods.Account(c)
+	})
+
+	srv.Register("mods.browse", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game  string `json:"game"`
+			Query string `json:"query"`
+			Sort  string `json:"sort"`
+			Page  int    `json:"page"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, query?, sort?, page?}")
+		}
+		load()
+		return d.mods.Browse(c, p.Game, p.Query, p.Sort, p.Page)
+	})
+
+	srv.Register("mods.files", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game  string `json:"game"`
+			ModID int    `json:"mod_id"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.ModID <= 0 {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, mod_id}")
+		}
+		load()
+		mod, files, err := d.mods.Files(c, p.Game, p.ModID)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"mod": mod, "files": files}, nil
+	})
+
+	srv.Register("mods.installed", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
+		}
+		load()
+		return d.mods.Installed(c, p.Game, p.Profile)
+	})
+
 	srv.Register("mods.install", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Game    string `json:"game"`
@@ -122,18 +169,21 @@ func (d *daemon) registerMods(srv *api.Server) {
 			Archive string `json:"archive"`
 			URL     string `json:"url"`
 			Name    string `json:"name"`
+			ModID   int    `json:"mod_id"`
+			FileID  int    `json:"file_id"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
-			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, archive|url, profile?, name?}")
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, archive|url|mod_id+file_id, profile?, name?}")
 		}
 		phase := "installing"
-		if p.URL != "" {
+		if p.URL != "" || p.ModID > 0 {
 			phase = "downloading"
 		}
 		load()
 		return d.startModsJob(c, srv, p.Game, phase, func(ctx context.Context, sink mods.Sink) (string, error) {
 			return d.mods.Install(ctx, mods.InstallRequest{
-				Game: p.Game, Profile: p.Profile, Archive: p.Archive, URL: p.URL, Name: p.Name,
+				Game: p.Game, Profile: p.Profile, Archive: p.Archive, URL: p.URL,
+				Name: p.Name, ModID: p.ModID, FileID: p.FileID,
 			}, sink)
 		})
 	})

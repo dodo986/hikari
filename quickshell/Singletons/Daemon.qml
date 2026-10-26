@@ -26,6 +26,13 @@ Singleton {
     property var modsProgress: null
     property var modsLog: []
     property bool modsBusy: false
+    property var modsInstalled: null
+    property var modsBrowse: null
+    property var modsFiles: null
+    property var modsAccount: null
+    property string modsError: ""
+    property bool modsSearching: false
+    property bool modsFilesBusy: false
 
     signal gameState(var ev)
     signal updateProgress(var ev)
@@ -89,15 +96,54 @@ Singleton {
         call("mods.status", null, r => rpc.modsStatus = r);
         call("mods.games", null, r => rpc.modsGames = (r && r.games) || []);
     }
+    function refreshModsAccount() {
+        call("mods.account", null, r => rpc.modsAccount = r);
+    }
+    function loadModsInstalled(game, profile) {
+        if (!game) return;
+        rpc.modsInstalled = null;
+        call("mods.installed", { game: game, profile: profile || "" },
+             r => rpc.modsInstalled = r);
+    }
+    function browseMods(game, query, sort, page) {
+        if (!game) return;
+        rpc.modsSearching = true;
+        call("mods.browse", { game: game, query: query || "", sort: sort || "", page: page || 0 },
+             (r, e) => {
+            rpc.modsSearching = false;
+            rpc.modsBrowse = e ? { game: game, results: [], error: e.message } : r;
+        });
+    }
+    function loadModFiles(game, modId) {
+        if (!game || !modId) return;
+        rpc.modsFilesBusy = true;
+        rpc.modsFiles = null;
+        call("mods.files", { game: game, mod_id: modId }, (r, e) => {
+            rpc.modsFilesBusy = false;
+            rpc.modsFiles = e ? { error: e.message } : r;
+        });
+    }
+    function installNexusMod(game, profile, modId, fileId) {
+        rpc.modsFiles = null;
+        modsJob("mods.install", { game: game, profile: profile || "", mod_id: modId, file_id: fileId });
+    }
+    function setNexusKey(key) {
+        call("mods.nexus", { action: "set", key: key }, r => {
+            rpc.modsChanged({ ok: true, action: "nexus" });
+            rpc.refreshModsAccount();
+        });
+    }
 
     function modsJob(method, params) {
         if (modsBusy) return;
         modsBusy = true;
         modsLog = [];
         modsProgress = null;
+        modsError = "";
         call(method, params, (r, e) => {
             if (e) {
                 modsBusy = false;
+                modsError = e.message;
                 modsChanged({ ok: false, error: e.message });
             }
         });

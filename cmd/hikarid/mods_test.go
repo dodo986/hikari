@@ -254,3 +254,50 @@ func TestModsSettingsApplyWithoutARestart(t *testing.T) {
 		t.Fatalf("status source = %q after editing settings.toml, want %q", after.Source, source)
 	}
 }
+
+func TestModsBrowsingEndpoints(t *testing.T) {
+	d, client := startDaemon(t)
+	d.mods = mods.NewFake()
+
+	var page mods.Browse
+	if err := client.Call("mods.browse", map[string]any{"game": "skyrim_se"}, &page); err != nil {
+		t.Fatalf("mods.browse: %v", err)
+	}
+	if len(page.Results) == 0 || page.Domain == "" {
+		t.Fatalf("mods.browse returned %+v", page)
+	}
+
+	var files struct {
+		Mod   mods.Mod       `json:"mod"`
+		Files []mods.ModFile `json:"files"`
+	}
+	if err := client.Call("mods.files", map[string]any{"game": "skyrim_se", "mod_id": page.Results[0].ModID}, &files); err != nil {
+		t.Fatalf("mods.files: %v", err)
+	}
+	if files.Mod.ModID != page.Results[0].ModID || len(files.Files) == 0 {
+		t.Fatalf("mods.files returned %+v", files)
+	}
+
+	var list mods.Installed
+	if err := client.Call("mods.installed", map[string]any{"game": "skyrim_se"}, &list); err != nil {
+		t.Fatalf("mods.installed: %v", err)
+	}
+	if len(list.Mods) == 0 {
+		t.Fatalf("mods.installed returned %+v", list)
+	}
+
+	var account mods.Account
+	if err := client.Call("mods.account", nil, &account); err != nil {
+		t.Fatalf("mods.account: %v", err)
+	}
+	if !account.Stored {
+		t.Fatalf("mods.account returned %+v", account)
+	}
+
+	if err := client.Call("mods.browse", map[string]any{}, nil); err == nil {
+		t.Fatal("mods.browse accepted params without a game")
+	}
+	if err := client.Call("mods.files", map[string]any{"game": "skyrim_se"}, nil); err == nil {
+		t.Fatal("mods.files accepted no mod id")
+	}
+}

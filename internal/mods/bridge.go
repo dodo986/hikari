@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,8 @@ var filegraphNames = []string{"amethyst_filegraph.abi3.so", "amethyst_filegraph.
 
 const (
 	probeTimeout = 90 * time.Second
+	// nexusTimeout covers one API round trip, thumbnails excluded.
+	nexusTimeout = 45 * time.Second
 	bridgeDir    = "bridge"
 )
 
@@ -306,8 +309,8 @@ func (b *Bridge) Restore(ctx context.Context, game string, sink Sink) error {
 }
 
 func (b *Bridge) Install(ctx context.Context, req InstallRequest, sink Sink) (string, error) {
-	if req.Archive == "" && req.URL == "" {
-		return "", &Error{Kind: KindUsage, Message: "install needs an archive path or an nxm:// url"}
+	if req.Archive == "" && req.URL == "" && (req.ModID <= 0 || req.FileID <= 0) {
+		return "", &Error{Kind: KindUsage, Message: "install needs an archive path, an nxm:// url or a Nexus mod id and file id"}
 	}
 	args := gameArgs(req.Game, req.Profile)
 	if req.Archive != "" {
@@ -318,6 +321,9 @@ func (b *Bridge) Install(ctx context.Context, req InstallRequest, sink Sink) (st
 	}
 	if req.Name != "" {
 		args = append(args, "--name", req.Name)
+	}
+	if req.ModID > 0 && req.FileID > 0 {
+		args = append(args, "--mod-id", strconv.Itoa(req.ModID), "--file-id", strconv.Itoa(req.FileID))
 	}
 	raw, err := b.run(ctx, "install", args, sink)
 	if err != nil {
@@ -357,6 +363,91 @@ func (b *Bridge) Nexus(ctx context.Context, action, key string) (bool, error) {
 		return false, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable result"}
 	}
 	return out.Stored, nil
+}
+
+// Account reports who the stored Nexus key belongs to and whether it may pull files.
+func (b *Bridge) Account(ctx context.Context) (Account, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	raw, err := b.run(probeCtx, "account", nil, Sink{})
+	if err != nil {
+		return Account{}, err
+	}
+	var out Account
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Account{}, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable account"}
+	}
+	return out, nil
+}
+
+// Browse runs one page of Nexus search against the game's own domain.
+func (b *Bridge) Browse(ctx context.Context, game, query, sort string, page int) (Browse, error) {
+	args := gameArgs(game, "")
+	if query != "" {
+		args = append(args, "--query", query)
+	}
+	if sort != "" {
+		args = append(args, "--sort", sort)
+	}
+	if page > 0 {
+		args = append(args, "--page", strconv.Itoa(page))
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	raw, err := b.run(probeCtx, "search", args, Sink{})
+	if err != nil {
+		return Browse{}, err
+	}
+	var out Browse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Browse{}, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable search page"}
+	}
+	if out.Results == nil {
+		out.Results = []Mod{}
+	}
+	return out, nil
+}
+
+// Files lists what can be downloaded for one mod.
+func (b *Bridge) Files(ctx context.Context, game string, modID int) (Mod, []ModFile, error) {
+	if modID <= 0 {
+		return Mod{}, nil, &Error{Kind: KindUsage, Message: "mod id missing"}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	raw, err := b.run(probeCtx, "files", append(gameArgs(game, ""), "--mod-id", strconv.Itoa(modID)), Sink{})
+	if err != nil {
+		return Mod{}, nil, err
+	}
+	var out struct {
+		Mod   Mod       `json:"mod"`
+		Files []ModFile `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Mod{}, nil, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable file list"}
+	}
+	if out.Files == nil {
+		out.Files = []ModFile{}
+	}
+	return out.Mod, out.Files, nil
+}
+
+// Installed reads a profile's modlist, highest priority first.
+func (b *Bridge) Installed(ctx context.Context, game, profile string) (Installed, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	raw, err := b.run(probeCtx, "installed", gameArgs(game, profile), Sink{})
+	if err != nil {
+		return Installed{}, err
+	}
+	var out Installed
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Installed{}, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable modlist"}
+	}
+	if out.Mods == nil {
+		out.Mods = []InstalledMod{}
+	}
+	return out, nil
 }
 
 func gameArgs(game, profile string) []string {

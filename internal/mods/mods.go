@@ -43,6 +43,60 @@ type Game struct {
 	Profiles        []string `json:"profiles"`
 	DeployedProfile string   `json:"deployed_profile,omitempty"`
 	DeployActive    bool     `json:"deploy_active"`
+	NexusDomain     string   `json:"nexus_domain,omitempty"`
+}
+
+// Mod is one Nexus search hit, as much of it as a list needs.
+type Mod struct {
+	ModID        int    `json:"mod_id"`
+	Name         string `json:"name"`
+	Summary      string `json:"summary,omitempty"`
+	Author       string `json:"author,omitempty"`
+	Version      string `json:"version,omitempty"`
+	Downloads    int    `json:"downloads"`
+	Endorsements int    `json:"endorsements"`
+	Adult        bool   `json:"adult,omitempty"`
+	Updated      string `json:"updated,omitempty"`
+	PictureURL   string `json:"picture_url,omitempty"`
+}
+
+// ModFile is one downloadable file of a mod.
+type ModFile struct {
+	FileID   int    `json:"file_id"`
+	Name     string `json:"name"`
+	Version  string `json:"version,omitempty"`
+	Category string `json:"category,omitempty"`
+	Size     string `json:"size,omitempty"`
+	Primary  bool   `json:"primary,omitempty"`
+}
+
+// Browse is one page of Nexus search results.
+type Browse struct {
+	Game    string `json:"game"`
+	Domain  string `json:"domain,omitempty"`
+	Page    int    `json:"page"`
+	More    bool   `json:"more"`
+	Results []Mod  `json:"results"`
+}
+
+// InstalledMod is one entry of a profile's modlist, highest priority first.
+type InstalledMod struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+}
+
+// Installed is a profile's modlist.
+type Installed struct {
+	Game    string         `json:"game"`
+	Profile string         `json:"profile"`
+	Mods    []InstalledMod `json:"mods"`
+}
+
+// Account is who the stored Nexus key belongs to.
+type Account struct {
+	Stored  bool   `json:"stored"`
+	User    string `json:"user,omitempty"`
+	Premium bool   `json:"premium"`
 }
 
 type Status struct {
@@ -81,6 +135,8 @@ type InstallRequest struct {
 	Archive string
 	URL     string
 	Name    string
+	ModID   int
+	FileID  int
 }
 
 type Service interface {
@@ -91,4 +147,8 @@ type Service interface {
 	Restore(ctx context.Context, game string, sink Sink) error
 	Install(ctx context.Context, req InstallRequest, sink Sink) (string, error)
 	Nexus(ctx context.Context, action, key string) (bool, error)
+	Account(ctx context.Context) (Account, error)
+	Browse(ctx context.Context, game, query, sort string, page int) (Browse, error)
+	Files(ctx context.Context, game string, modID int) (Mod, []ModFile, error)
+	Installed(ctx context.Context, game, profile string) (Installed, error)
 }

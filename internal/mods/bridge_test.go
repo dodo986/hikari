@@ -295,3 +295,92 @@ echo '{"t":"result","data":{"stored":true}}'
 		t.Fatal("Nexus(set) accepted an empty key")
 	}
 }
+
+func TestBrowseSendsQuerySortAndPage(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo "argv=$*"
+echo '{"t":"result","data":{"game":"Skyrim Special Edition","domain":"skyrimspecialedition","page":2,"more":true,"results":[{"mod_id":12604,"name":"SkyUI","downloads":41000000,"endorsements":480000,"picture_url":"https://example.test/a.png"}]}}'
+`)
+	page, err := bridge.Browse(context.Background(), "skyrim_se", "ui", "endorsements", 2)
+	if err != nil {
+		t.Fatalf("Browse returned %v", err)
+	}
+	if page.More != true || page.Page != 2 || len(page.Results) != 1 {
+		t.Fatalf("Browse returned %+v", page)
+	}
+	if got := page.Results[0]; got.ModID != 12604 || got.Endorsements != 480000 || got.PictureURL == "" {
+		t.Fatalf("result not parsed: %+v", got)
+	}
+}
+
+func TestBrowseRefusesWithoutAKey(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo '{"t":"error","kind":"config","m":"no Nexus API key is stored"}'
+`)
+	if _, err := bridge.Browse(context.Background(), "skyrim_se", "", "", 0); err == nil {
+		t.Fatal("Browse without a key returned no error")
+	} else if KindOf(err) != KindConfig {
+		t.Fatalf("Browse error kind = %q, want config", KindOf(err))
+	}
+}
+
+func TestFilesNeedsAModID(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo '{"t":"result","data":{"mod":{"mod_id":0},"files":[]}}'
+`)
+	if _, _, err := bridge.Files(context.Background(), "skyrim_se", 0); err == nil {
+		t.Fatal("Files accepted mod id 0")
+	}
+}
+
+func TestInstallFromBrowsePassesBothIDs(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo "argv=$*"
+echo '{"t":"result","data":{"mod":"SkyUI","archive":"/tmp/skyui.7z"}}'
+`)
+	name, err := bridge.Install(context.Background(), InstallRequest{
+		Game: "skyrim_se", ModID: 12604, FileID: 1,
+	}, Sink{})
+	if err != nil {
+		t.Fatalf("Install returned %v", err)
+	}
+	if name != "SkyUI" {
+		t.Fatalf("Install returned %q", name)
+	}
+	if _, err := bridge.Install(context.Background(), InstallRequest{Game: "skyrim_se"}, Sink{}); err == nil {
+		t.Fatal("Install without a source returned no error")
+	}
+}
+
+func TestInstalledReadsTheModlist(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo "argv=$*"
+echo '{"t":"result","data":{"game":"Cyberpunk 2077","profile":"default","mods":[{"name":"CET","enabled":true},{"name":"RED4ext","enabled":false}]}}'
+`)
+	list, err := bridge.Installed(context.Background(), "cyberpunk_2077", "default")
+	if err != nil {
+		t.Fatalf("Installed returned %v", err)
+	}
+	if len(list.Mods) != 2 || !list.Mods[0].Enabled || list.Mods[1].Enabled {
+		t.Fatalf("modlist not parsed: %+v", list)
+	}
+}
+
+func TestFakeBackendAnswersBrowsing(t *testing.T) {
+	fake := NewFake()
+	page, err := fake.Browse(context.Background(), "skyrim_se", "", "downloads", 0)
+	if err != nil {
+		t.Fatalf("fake Browse returned %v", err)
+	}
+	if len(page.Results) == 0 {
+		t.Fatal("the demo catalogue is empty")
+	}
+	mod, files, err := fake.Files(context.Background(), "skyrim_se", page.Results[0].ModID)
+	if err != nil || mod.ModID == 0 || len(files) == 0 {
+		t.Fatalf("fake Files returned %+v %+v %v", mod, files, err)
+	}
+	list, err := fake.Installed(context.Background(), "skyrim_se", "default")
+	if err != nil || len(list.Mods) == 0 {
+		t.Fatalf("fake Installed returned %+v %v", list, err)
+	}
+}

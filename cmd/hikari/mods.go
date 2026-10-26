@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,7 +16,7 @@ const modsJobTimeout = 24 * time.Hour
 
 func modsCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: hikari mods status|games|setup|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://…)")
+		return errors.New("usage: hikari mods status|games|setup|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|browse <game> [query]|files <game> <mod-id>|installed <game>")
 	}
 	switch args[0] {
 	case "status":
@@ -28,6 +29,14 @@ func modsCmd(args []string) error {
 		})
 	case "nexus":
 		return modsNexusCmd(args[1:])
+	case "account":
+		return modsAccountCmd(args[1:])
+	case "browse":
+		return modsBrowseCmd(args[1:])
+	case "files":
+		return modsFilesCmd(args[1:])
+	case "installed":
+		return modsInstalledCmd(args[1:])
 	case "cancel":
 		fs := flag.NewFlagSet("mods cancel", flag.ExitOnError)
 		c := addCommon(fs)
@@ -56,19 +65,182 @@ func modsCmd(args []string) error {
 			return map[string]any{"game": pos[0]}, nil
 		})
 	case "install":
-		return modsJobCmd("mods.install", "install", []string{"profile", "archive", "url", "name"}, args[1:], func(fs *flag.FlagSet, pos []string) (map[string]any, error) {
+		return modsJobCmd("mods.install", "install", []string{"profile", "archive", "url", "name", "mod-id", "file-id"}, args[1:], func(fs *flag.FlagSet, pos []string) (map[string]any, error) {
 			if len(pos) < 1 {
-				return nil, errors.New("usage: hikari mods install <game> (--archive PATH | --url nxm://…) [--profile NAME] [--name NAME]")
+				return nil, errors.New("usage: hikari mods install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N) [--profile NAME] [--name NAME]")
 			}
 			params := map[string]any{"game": pos[0]}
 			copyFlags(fs, params, "profile", "archive", "url", "name")
+			if params["mod-id"] != nil || params["file-id"] != nil {
+				if params["mod-id"] == nil || params["file-id"] == nil {
+					return nil, errors.New("--mod-id and --file-id go together")
+				}
+				return params, nil
+			}
 			if params["archive"] == nil && params["url"] == nil {
-				return nil, errors.New("pass --archive PATH or --url nxm://… to install")
+				return nil, errors.New("pass --archive PATH, --url nxm://… or --mod-id N --file-id N to install")
 			}
 			return params, nil
 		})
 	}
 	return fmt.Errorf("unknown mods command %q", args[0])
+}
+
+func modsAccountCmd(args []string) error {
+	fs := flag.NewFlagSet("mods account", flag.ExitOnError)
+	c := addCommon(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	var res struct {
+		Stored  bool   `json:"stored"`
+		User    string `json:"user"`
+		Premium bool   `json:"premium"`
+	}
+	if err := dial(c).Call("mods.account", nil, &res); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(res)
+	}
+	if !res.Stored {
+		fmt.Println("Nexus API key: not stored")
+		return nil
+	}
+	plan := "free (browsing only, use Mod manager download on the site)"
+	if res.Premium {
+		plan = "premium (direct downloads)"
+	}
+	fmt.Printf("Nexus account: %s — %s\n", res.User, plan)
+	return nil
+}
+
+func modsBrowseCmd(args []string) error {
+	fs := flag.NewFlagSet("mods browse", flag.ExitOnError)
+	c := addCommon(fs)
+	sort := fs.String("sort", "", "")
+	page := fs.Int("page", 0, "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods browse <game> [query] [--sort downloads|endorsements|created|updated] [--page N]")
+	}
+	params := map[string]any{"game": pos[0], "sort": *sort, "page": *page}
+	if len(pos) > 1 {
+		params["query"] = strings.Join(pos[1:], " ")
+	}
+	var res struct {
+		Game    string `json:"game"`
+		Domain  string `json:"domain"`
+		Page    int    `json:"page"`
+		More    bool   `json:"more"`
+		Results []struct {
+			ModID        int    `json:"mod_id"`
+			Name         string `json:"name"`
+			Author       string `json:"author"`
+			Version      string `json:"version"`
+			Downloads    int    `json:"downloads"`
+			Endorsements int    `json:"endorsements"`
+			Summary      string `json:"summary"`
+		} `json:"results"`
+	}
+	if err := dial(c).Call("mods.browse", params, &res); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(res)
+	}
+	for _, mod := range res.Results {
+		fmt.Printf("%-7d %-44.44s %-22.22s %8d dl %7d end  %s\n",
+			mod.ModID, mod.Name, mod.Author, mod.Downloads, mod.Endorsements, mod.Version)
+	}
+	if res.More {
+		fmt.Printf("page %d done — add --page %d for more\n", res.Page+1, res.Page+1)
+	}
+	return nil
+}
+
+func modsFilesCmd(args []string) error {
+	fs := flag.NewFlagSet("mods files", flag.ExitOnError)
+	c := addCommon(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 2 {
+		return errors.New("usage: hikari mods files <game> <mod-id>")
+	}
+	modID, err := strconv.Atoi(pos[1])
+	if err != nil {
+		return fmt.Errorf("mod id %q is not a number", pos[1])
+	}
+	var res struct {
+		Mod struct {
+			ModID int    `json:"mod_id"`
+			Name  string `json:"name"`
+		} `json:"mod"`
+		Files []struct {
+			FileID   int    `json:"file_id"`
+			Name     string `json:"name"`
+			Version  string `json:"version"`
+			Category string `json:"category"`
+			Size     string `json:"size"`
+			Primary  bool   `json:"primary"`
+		} `json:"files"`
+	}
+	if err := dial(c).Call("mods.files", map[string]any{"game": pos[0], "mod_id": modID}, &res); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(res)
+	}
+	fmt.Printf("%s (%d)\n", res.Mod.Name, res.Mod.ModID)
+	for _, file := range res.Files {
+		marker := " "
+		if file.Primary {
+			marker = "*"
+		}
+		fmt.Printf("%s %-8d %-44.44s %-12s %-10s %s\n", marker, file.FileID, file.Name, file.Version, file.Category, file.Size)
+	}
+	return nil
+}
+
+func modsInstalledCmd(args []string) error {
+	fs := flag.NewFlagSet("mods installed", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods installed <game> [--profile NAME]")
+	}
+	var res struct {
+		Game    string `json:"game"`
+		Profile string `json:"profile"`
+		Mods    []struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+		} `json:"mods"`
+	}
+	if err := dial(c).Call("mods.installed", map[string]any{"game": pos[0], "profile": *profile}, &res); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(res)
+	}
+	fmt.Printf("%s / %s — %d mod(s)\n", res.Game, res.Profile, len(res.Mods))
+	for _, mod := range res.Mods {
+		marker := "[x]"
+		if !mod.Enabled {
+			marker = "[ ]"
+		}
+		fmt.Printf("%s %s\n", marker, mod.Name)
+	}
+	return nil
 }
 
 func modsNexusCmd(args []string) error {

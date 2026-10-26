@@ -12,6 +12,8 @@ Item {
 
     property string page: "library"
     property var detail: null
+    property string modGame: ""
+    property string modTab: ""
 
     readonly property int installedCount: {
         var count = 0;
@@ -32,16 +34,20 @@ Item {
                 target === "downloads" || target === "accounts" ||
                 target === "settings" || target === "about") {
             app.detail = null;
+            app.modGame = "";
             app.page = target;
         }
     }
     function openGame(store: string, id: string) { app.detail = { store: store, id: id }; }
     function closeDetail() { app.detail = null; }
+    function openModGame(id: string) { app.modGame = id; }
+    function closeModGame() { app.modGame = ""; }
     function requestQuit() { Qt.quit(); }
 
     focus: true
     Keys.onEscapePressed: event => {
-        if (app.detail) { app.closeDetail(); }
+        if (app.modGame) { app.closeModGame(); }
+        else if (app.detail) { app.closeDetail(); }
         else event.accepted = false;
     }
 
@@ -122,7 +128,7 @@ Item {
                             label: I18n.tr("Mods")
                             badge: app.deployedCount
                             active: app.page === "mods"
-                            onClicked: { app.detail = null; app.page = "mods"; }
+                            onClicked: { app.detail = null; app.modGame = ""; app.page = "mods"; }
                         }
                         RailButton {
                             id: rowDownloads

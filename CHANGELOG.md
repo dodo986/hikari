@@ -9,6 +9,12 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Browse Nexus from the Mods page (or `hikari mods browse`): search a game's
+  mods, sort by downloads/endorsements/newest/updated, see a mod's files and
+  install one — using the API key Amethyst already stores. The profile's own
+  modlist is a tab of its own, in priority order (`hikari mods installed`).
+  Direct downloads need a premium account; a free account is told to use Mod
+  manager download on the site, which Hikari already installs.
 
 ## 0.1.2
 

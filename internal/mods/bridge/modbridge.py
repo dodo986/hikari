@@ -25,7 +25,8 @@ REQUIRED_MODULES = (
     "xxhash", "yaml", "PIL",
 )
 
-FLAGS = {"--game", "--profile", "--archive", "--url", "--name", "--action"}
+FLAGS = {"--game", "--profile", "--archive", "--url", "--name", "--action",
+         "--query", "--sort", "--page", "--mod-id", "--file-id"}
 
 
 class BridgeError(Exception):
@@ -64,7 +65,8 @@ def _one_line(exc: BaseException) -> str:
 def _parse(argv: list) -> tuple:
     if not argv:
         raise BridgeError("usage", "usage: modbridge.py <doctor|games|deploy|"
-                                   "restore|install|nexus> [--flag value]")
+                                   "restore|install|nexus|search|files|"
+                                   "account|installed> [--flag value]")
     command, rest = argv[0], argv[1:]
     opts: dict = {}
     index = 0
@@ -147,6 +149,51 @@ def _profile(game, requested: str) -> tuple:
     return name, path
 
 
+def _domain(game) -> str:
+    try:
+        return str(getattr(game, "nexus_game_domain", "") or "")
+    except Exception:
+        return ""
+
+
+def _nexus_api():
+    _setup()
+    from Nexus.nexus_api import NexusAPI, load_api_key
+    key = load_api_key()
+    if not key:
+        raise BridgeError("config",
+                          "no Nexus API key is stored; run `hikari mods nexus set`")
+    return NexusAPI(key)
+
+
+def _nexus_game(games: dict, key: str):
+    game = _require(games, key)
+    domain = _domain(game)
+    if not domain:
+        raise BridgeError("unsupported",
+                          f"{game.name} has no Nexus game domain")
+    return game, domain
+
+
+def _entry(info) -> dict:
+    return {
+        "mod_id": int(getattr(info, "mod_id", 0) or 0),
+        "name": info.name or "",
+        "summary": info.summary or "",
+        "author": info.author or getattr(info, "uploaded_by", "") or "",
+        "version": info.version or "",
+        "downloads": int(info.downloads_total or 0),
+        "endorsements": int(info.endorsement_count or 0),
+        "adult": bool(info.contains_adult_content),
+        "updated": getattr(info, "updated_at", "") or "",
+        "picture_url": info.picture_url or "",
+    }
+
+
+SORTS = {"downloads": "downloads", "endorsements": "endorsements",
+         "created": "createdAt", "updated": "updatedAt"}
+
+
 def _describe(game) -> dict:
     root = game.get_profile_root() / "profiles"
     try:
@@ -163,6 +210,7 @@ def _describe(game) -> dict:
                            if entry.is_dir()) if root.is_dir() else [],
         "deployed_profile": game.get_last_deployed_profile() or "",
         "deploy_active": bool(game.get_deploy_active()),
+        "nexus_domain": _domain(game),
     }
 
 
@@ -242,6 +290,119 @@ def _download(url: str) -> str:
     return str(result.file_path)
 
 
+BROWSE_COUNT = 20
+
+
+def cmd_search(opts: dict) -> dict:
+    api = _nexus_api()
+    game, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+    page = max(0, int(opts.get("page", "0") or 0))
+    sort = SORTS.get(opts.get("sort", ""), "downloads")
+    query = (opts.get("query", "") or "").strip()
+    if query.isdigit():
+        entries = api.search_mod_by_id(domain, int(query))
+    elif query:
+        entries = api.search_mods(domain, query, count=BROWSE_COUNT,
+                                  offset=page * BROWSE_COUNT, sort_key=sort)
+    else:
+        entries = api.get_top_mods(domain, count=BROWSE_COUNT,
+                                   offset=page * BROWSE_COUNT, sort_key=sort)
+    results = [_entry(entry) for entry in entries]
+    log(f"{len(results)} mod(s) for {game.name}")
+    return {"game": game.name, "domain": domain, "page": page,
+            "more": len(results) == BROWSE_COUNT, "results": results}
+
+
+def cmd_files(opts: dict) -> dict:
+    api = _nexus_api()
+    game, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+    try:
+        mod_id = int(opts.get("mod-id", "0") or 0)
+    except ValueError:
+        raise BridgeError("usage", "files needs a numeric --mod-id")
+    if mod_id <= 0:
+        raise BridgeError("usage", "files needs --mod-id")
+    info = api.get_mod(domain, mod_id)
+    files = api.get_mod_files(domain, mod_id).files
+    return {"mod": _entry(info), "files": [{
+        "file_id": int(file.file_id),
+        "name": file.name or "",
+        "version": file.version or file.mod_version or "",
+        "category": file.category_name or "",
+        "size": _size(file.size_kb or 0),
+        "primary": bool(file.is_primary),
+    } for file in files]}
+
+
+def _size(kb: int) -> str:
+    if kb >= 1024 * 1024:
+        return f"{kb / (1024.0 * 1024.0):.1f} GB"
+    if kb >= 1024:
+        return f"{kb / 1024.0:.1f} MB"
+    return f"{kb} KB"
+
+
+def cmd_account(_opts: dict) -> dict:
+    api = _nexus_api()
+    try:
+        user = api.validate()
+    except Exception as exc:
+        raise BridgeError("config", f"Nexus rejected the stored API key: {_one_line(exc)}")
+    return {"stored": True, "user": getattr(user, "name", "") or "",
+            "premium": bool(getattr(user, "is_premium", False))}
+
+
+def cmd_installed(opts: dict) -> dict:
+    game = _require(_bootstrap(), opts.get("game", ""))
+    name, profile_dir = _profile(game, opts.get("profile", ""))
+    from Utils.mods.modlist import read_modlist
+    entries = read_modlist(profile_dir / "modlist.txt")
+    return {"game": game.name, "profile": name, "mods": [
+        {"name": entry.name, "enabled": bool(entry.enabled)}
+        for entry in entries if not entry.is_separator]}
+
+
+def _download_file(domain: str, mod_id: int, file_id: int) -> str:
+    """Fetch one browsed file; Nexus hands direct links to premium accounts."""
+    import requests
+    api = _nexus_api()
+    info = api.get_file_info(domain, mod_id, file_id)
+    try:
+        links = api.get_download_links(domain, mod_id, file_id)
+    except Exception as exc:
+        text = _one_line(exc)
+        if "403" in text or "premium" in text.lower():
+            raise BridgeError(
+                "unsupported",
+                "Nexus only hands direct download links to premium accounts; "
+                "press Mod manager download on the mod page to send it to "
+                "Hikari instead")
+        raise
+    if not links:
+        raise BridgeError("failure", "Nexus returned no download mirror")
+    target = os.environ.get("HIKARI_MODS_DOWNLOADS", "") or os.path.join(
+        os.environ.get("XDG_CACHE_HOME") or
+        os.path.join(os.path.expanduser("~"), ".cache"),
+        "hikari", "mods", "downloads")
+    os.makedirs(target, exist_ok=True)
+    name = info.file_name or f"nexus-{mod_id}-{file_id}"
+    path = os.path.join(target, name.replace("/", "_"))
+    with requests.get(links[0].URI, stream=True, timeout=60) as resp:
+        resp.raise_for_status()
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        with open(path + ".part", "wb") as fh:
+            for chunk in resp.iter_content(chunk_size=1 << 20):
+                if not chunk:
+                    continue
+                fh.write(chunk)
+                done += len(chunk)
+                if total > 0:
+                    progress(done, total)
+    os.replace(path + ".part", path)
+    return path
+
+
 def cmd_install(opts: dict) -> dict:
     game = _require(_bootstrap(), opts.get("game", ""))
     name, profile_dir = _profile(game, opts.get("profile", ""))
@@ -250,6 +411,16 @@ def cmd_install(opts: dict) -> dict:
     archive = opts.get("archive", "")
     if opts.get("url"):
         archive = _download(opts["url"])
+        log(f"Downloaded {os.path.basename(archive)}")
+    elif opts.get("mod-id"):
+        domain = _domain(game)
+        if not domain:
+            raise BridgeError("unsupported", f"{game.name} has no Nexus game domain")
+        mod_id = int(opts.get("mod-id", "0") or 0)
+        file_id = int(opts.get("file-id", "0") or 0)
+        if mod_id <= 0 or file_id <= 0:
+            raise BridgeError("usage", "install needs --mod-id and --file-id")
+        archive = _download_file(domain, mod_id, file_id)
         log(f"Downloaded {os.path.basename(archive)}")
     if not archive or not os.path.isfile(archive):
         raise BridgeError("usage", "install needs an existing archive path or "
@@ -291,6 +462,10 @@ COMMANDS = {
     "restore": cmd_restore,
     "install": cmd_install,
     "nexus": cmd_nexus,
+    "search": cmd_search,
+    "files": cmd_files,
+    "account": cmd_account,
+    "installed": cmd_installed,
 }
 
 

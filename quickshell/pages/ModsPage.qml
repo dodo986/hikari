@@ -15,27 +15,91 @@ PageBase {
     readonly property var games: Daemon.modsGames
     readonly property var readyGames: page.games.filter(g => g.configured)
     readonly property var restGames: page.games.filter(g => !g.configured)
+    readonly property var game: page.selectedGame()
 
     property var chosen: ({})
     property bool showAll: false
+    property string tab: "installed"
+    property string query: ""
+    property string sort: "downloads"
     property string pendingGame: ""
+    property var installingFile: null
 
-    function profileFor(game) {
-        if (page.chosen[game.id]) return page.chosen[game.id];
-        if (game.deployed_profile) return game.deployed_profile;
-        return game.profiles && game.profiles.length > 0 ? game.profiles[0] : "";
+    readonly property var sorts: [
+        { key: "downloads", label: I18n.tr("Downloads") },
+        { key: "endorsements", label: I18n.tr("Endorsements") },
+        { key: "created", label: I18n.tr("Newest") },
+        { key: "updated", label: I18n.tr("Updated") }
+    ]
+
+    function selectedGame() {
+        var id = app.modGame;
+        if (!id) return null;
+        for (var i = 0; i < page.games.length; i++)
+            if (page.games[i].id === id) return page.games[i];
+        return null;
     }
-    function cycleProfile(game) {
-        var list = game.profiles || [];
+    function artFor(entry) {
+        if (!entry) return null;
+        var known = Daemon.games.find(g => g.store === entry.store && g.id === entry.game_id);
+        return { title: entry.name, artwork_local: known ? known.artwork_local : ({}) };
+    }
+    function profileFor(entry) {
+        if (!entry) return "";
+        if (page.chosen[entry.id]) return page.chosen[entry.id];
+        if (entry.deployed_profile) return entry.deployed_profile;
+        return entry.profiles && entry.profiles.length > 0 ? entry.profiles[0] : "";
+    }
+    function cycleProfile(entry) {
+        var list = entry.profiles || [];
         if (list.length < 2) return;
-        var next = list[(list.indexOf(page.profileFor(game)) + 1) % list.length];
+        var next = list[(list.indexOf(page.profileFor(entry)) + 1) % list.length];
         var copy = Object.assign({}, page.chosen);
-        copy[game.id] = next;
+        copy[entry.id] = next;
         page.chosen = copy;
+        Daemon.loadModsInstalled(entry.id, next);
     }
-    function pickArchive(game) {
-        page.pendingGame = game.id;
+    function sortLabel() {
+        for (var i = 0; i < page.sorts.length; i++)
+            if (page.sorts[i].key === page.sort) return page.sorts[i].label;
+        return page.sort;
+    }
+    function cycleSort() {
+        var index = 0;
+        for (var i = 0; i < page.sorts.length; i++)
+            if (page.sorts[i].key === page.sort) index = i;
+        page.sort = page.sorts[(index + 1) % page.sorts.length].key;
+        page.search(0);
+    }
+    function search(pageIndex) {
+        if (!page.game) return;
+        Daemon.browseMods(page.game.id, page.query, page.sort, pageIndex || 0);
+    }
+    function openGame(entry) {
+        app.openModGame(entry.id);
+        page.tab = "installed";
+        Daemon.loadModsInstalled(entry.id, page.profileFor(entry));
+    }
+    function applyTab() {
+        if (!app.modTab) return;
+        page.tab = app.modTab;
+        app.modTab = "";
+        if (page.tab === "browse" && !Daemon.modsBrowse) page.search(0);
+    }
+    function installArchive(entry) {
+        page.pendingGame = entry.id;
         archivePicker.open();
+    }
+    function pickFile(mod) {
+        page.installingFile = mod;
+        Daemon.loadModFiles(page.game.id, mod.mod_id);
+        filesSheet.shown = true;
+    }
+    function compact(value) {
+        var n = Number(value || 0);
+        if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1) + "M";
+        if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "K";
+        return String(n);
     }
 
     Connections {
@@ -43,13 +107,56 @@ PageBase {
         function onConnectedChanged() {
             if (Daemon.connected) Daemon.refreshMods();
         }
+        function onModsChanged(ev) {
+            if (!ev || !ev.ok) return;
+            Daemon.refreshMods();
+            if (page.game) Daemon.loadModsInstalled(page.game.id, page.profileFor(page.game));
+        }
     }
-    Component.onCompleted: Daemon.refreshMods()
 
+    Component.onCompleted: {
+        Daemon.refreshMods();
+        Daemon.refreshModsAccount();
+    }
+    onTabChanged: {
+        if (page.tab === "browse" && Daemon.modsBrowse === null) page.search(0);
+    }
+    onGamesChanged: {
+        // A deep link can arrive before the game list does; search once it is here.
+        if (page.tab === "browse" && page.game && Daemon.modsBrowse === null) page.search(0);
+    }
+    onGameChanged: {
+        if (page.game) {
+            page.tab = "installed";
+            Daemon.loadModsInstalled(page.game.id, page.profileFor(page.game));
+            if (Daemon.modsBrowse && Daemon.modsBrowse.game !== page.game.name) Daemon.modsBrowse = null;
+            Qt.callLater(page.applyTab);
+        }
+    }
+
+    Keys.onEscapePressed: event => {
+        if (filesSheet.shown) {
+            filesSheet.shown = false;
+            event.accepted = true;
+            return;
+        }
+        if (keySheet.shown) {
+            keySheet.shown = false;
+            event.accepted = true;
+            return;
+        }
+        if (app.modGame) {
+            app.closeModGame();
+            event.accepted = true;
+        }
+    }
+
+    // ---- games list -------------------------------------------------------
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Tokens.s5
         spacing: Tokens.s4
+        visible: !page.game
 
         RowLayout {
             Layout.fillWidth: true
@@ -63,8 +170,8 @@ PageBase {
                     font.pixelSize: Tokens.fTitle
                 }
                 Text {
-                    text: page.readyGames.length + " " + I18n.tr("ready to mod") +
-                          "  ·  " + page.restGames.length + " " + I18n.tr("without a path in Amethyst")
+                    text: page.readyGames.length + " " + I18n.tr("ready to mod") + "  ·  " +
+                          page.restGames.length + " " + I18n.tr("without a path in Amethyst")
                     color: Tokens.inkFaint
                     font.family: Tokens.ui
                     font.pixelSize: Tokens.fSmall
@@ -109,44 +216,20 @@ PageBase {
             }
         }
 
+        JobPanel { visible: Daemon.modsBusy; Layout.fillWidth: true }
+
         Panel {
-            visible: Daemon.modsBusy
+            visible: Daemon.modsError !== ""
             Layout.fillWidth: true
-            title: Daemon.modsProgress
-                ? Daemon.modsProgress.phase + "  " + Daemon.modsProgress.current + "/" + Daemon.modsProgress.total
-                : I18n.tr("Working…")
-            subtitle: Daemon.modsProgress ? (Daemon.modsProgress.message || "") : ""
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Tokens.px(6)
-                radius: Tokens.px(3)
-                color: Tokens.line
-                Rectangle {
-                    height: parent.height
-                    radius: parent.radius
-                    color: Tokens.sun
-                    width: parent.width * (Daemon.modsProgress && Daemon.modsProgress.total > 0
-                                           ? Daemon.modsProgress.current / Daemon.modsProgress.total : 0)
-                    Behavior on width { NumberAnimation { duration: Tokens.move } }
-                }
-            }
+            title: I18n.tr("That did not work")
+            subtitle: Daemon.modsError
             RowLayout {
                 Layout.fillWidth: true
-                spacing: Tokens.s3
-                Text {
-                    Layout.fillWidth: true
-                    text: Daemon.modsLog.length > 0
-                        ? Daemon.modsLog[Daemon.modsLog.length - 1]
-                        : I18n.tr("Amethyst is working on it; the game must not be running.")
-                    color: Tokens.inkFaint
-                    font.family: Daemon.modsLog.length > 0 ? Tokens.mono : Tokens.ui
-                    font.pixelSize: Tokens.fTiny
-                    elide: Text.ElideRight
-                }
+                Item { Layout.fillWidth: true }
                 Btn {
                     compact: true
-                    text: I18n.tr("Cancel")
-                    onAct: Daemon.cancelMods()
+                    text: I18n.tr("Dismiss")
+                    onAct: Daemon.modsError = ""
                 }
             }
         }
@@ -174,53 +257,64 @@ PageBase {
                         Entrance {
                             required property var modelData
                             Layout.fillWidth: true
-                            Panel {
+                            Rectangle {
                                 width: parent.width
-                                title: modelData.name
-                                subtitle: modelData.store
-                                    ? modelData.id + "  ·  " + modelData.store + "/" + modelData.game_id
-                                    : modelData.id
+                                implicitHeight: Tokens.px(84)
+                                radius: Tokens.radius
+                                color: hover.containsMouse ? Tokens.paperLift : Tokens.paper
+                                border.width: Tokens.border
+                                border.color: hover.containsMouse ? Tokens.line : Tokens.lineSoft
+                                Behavior on color { ColorAnimation { duration: Tokens.durSmall } }
+
                                 RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: Tokens.s3
-                                    Badge {
-                                        text: page.profileFor(modelData) || I18n.tr("NO PROFILE")
-                                        muted: !modelData.deploy_active
+                                    anchors.fill: parent
+                                    anchors.margins: Tokens.s3
+                                    spacing: Tokens.s4
+
+                                    GameArt {
+                                        Layout.preferredWidth: Tokens.px(60)
+                                        Layout.preferredHeight: Tokens.px(60)
+                                        game: page.artFor(modelData)
+                                        role: "square"
+                                        showTitle: false
                                     }
+                                    ColumnLayout {
+                                        spacing: Tokens.s1
+                                        Text {
+                                            text: modelData.name
+                                            color: Tokens.ink
+                                            font.family: Tokens.ui
+                                            font.pixelSize: Tokens.fRow
+                                            font.weight: Font.Medium
+                                        }
+                                        Text {
+                                            text: page.profileFor(modelData) + "  ·  " +
+                                                  (modelData.nexus_domain || I18n.tr("no Nexus domain")) +
+                                                  (modelData.store ? "  ·  " + modelData.store : "")
+                                            color: Tokens.inkFaint
+                                            font.family: Tokens.ui
+                                            font.pixelSize: Tokens.fSmall
+                                        }
+                                    }
+                                    Item { Layout.fillWidth: true }
                                     Badge {
                                         visible: modelData.deploy_active
                                         text: I18n.tr("DEPLOYED")
                                         accent: true
                                     }
-                                    Item { Layout.fillWidth: true }
-                                    Btn {
-                                        compact: true
-                                        visible: (modelData.profiles || []).length > 1
-                                        text: I18n.tr("Profile")
-                                        armed: !Daemon.modsBusy
-                                        onAct: page.cycleProfile(modelData)
+                                    Text {
+                                        text: "›"
+                                        color: Tokens.inkFaint
+                                        font.family: Tokens.display
+                                        font.pixelSize: Tokens.fHero
                                     }
-                                    Btn {
-                                        compact: true
-                                        text: I18n.tr("Install archive")
-                                        armed: !Daemon.modsBusy
-                                        onAct: page.pickArchive(modelData)
-                                    }
-                                    Btn {
-                                        compact: true
-                                        visible: modelData.deploy_active
-                                        text: I18n.tr("Restore")
-                                        armed: !Daemon.modsBusy
-                                        onAct: Daemon.restoreMods(modelData.id)
-                                    }
-                                    Btn {
-                                        compact: true
-                                        text: modelData.deploy_active
-                                            ? I18n.tr("Deploy again") : I18n.tr("Deploy")
-                                        primary: !modelData.deploy_active
-                                        armed: !Daemon.modsBusy
-                                        onAct: Daemon.deployMods(modelData.id, page.profileFor(modelData))
-                                    }
+                                }
+                                MouseArea {
+                                    id: hover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: page.openGame(modelData)
                                 }
                             }
                         }
@@ -233,9 +327,8 @@ PageBase {
                         spacing: Tokens.s3
                         Btn {
                             compact: true
-                            text: page.showAll
-                                ? I18n.tr("Hide them")
-                                : I18n.tr("Show all") + " " + page.restGames.length
+                            text: page.showAll ? I18n.tr("Hide them")
+                                               : I18n.tr("Show all") + " " + page.restGames.length
                             onAct: page.showAll = !page.showAll
                         }
                         Text {
@@ -285,9 +378,428 @@ PageBase {
             Empty {
                 anchors.centerIn: parent
                 visible: page.games.length === 0
-                caption: page.ready
-                    ? I18n.tr("Amethyst has no game handlers yet.")
-                    : I18n.tr("The Amethyst backend is not available.")
+                caption: page.ready ? I18n.tr("Amethyst has no game handlers yet.")
+                                    : I18n.tr("The Amethyst backend is not available.")
+            }
+        }
+    }
+
+    // ---- one game ---------------------------------------------------------
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+        visible: page.game !== null
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: Tokens.px(60)
+            color: Tokens.paper
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Tokens.s5
+                anchors.rightMargin: Tokens.s5
+                spacing: Tokens.s3
+                Btn {
+                    compact: true
+                    text: "← " + I18n.tr("Mods")
+                    stealFocus: true
+                    onAct: app.closeModGame()
+                }
+                Text {
+                    text: "MODS  /  " + (page.game ? page.game.name.toUpperCase() : "")
+                    color: Tokens.inkFaint
+                    font.family: Tokens.ui
+                    font.pixelSize: Tokens.fMicro
+                    font.letterSpacing: Tokens.trackLabel
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: Tokens.px(320)
+                }
+                Item { Layout.fillWidth: true }
+                Badge {
+                    text: page.profileFor(page.game) || I18n.tr("NO PROFILE")
+                    muted: !page.game || !page.game.deploy_active
+                }
+                Badge {
+                    visible: page.game && page.game.deploy_active
+                    text: I18n.tr("DEPLOYED")
+                    accent: true
+                }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Install archive")
+                    armed: !Daemon.modsBusy && page.game !== null
+                    onAct: page.installArchive(page.game)
+                }
+                Btn {
+                    compact: true
+                    visible: page.game && page.game.deploy_active
+                    text: I18n.tr("Restore")
+                    armed: !Daemon.modsBusy
+                    onAct: Daemon.restoreMods(page.game.id)
+                }
+                Btn {
+                    compact: true
+                    text: page.game && page.game.deploy_active ? I18n.tr("Deploy again") : I18n.tr("Deploy")
+                    primary: page.game && !page.game.deploy_active
+                    armed: !Daemon.modsBusy && page.game !== null
+                    onAct: Daemon.deployMods(page.game.id, page.profileFor(page.game))
+                }
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: Tokens.lineSoft
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.margins: Tokens.s5
+            spacing: Tokens.s4
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.s2
+                Btn {
+                    text: I18n.tr("Installed") + "  " + ((Daemon.modsInstalled && Daemon.modsInstalled.mods)
+                                                         ? Daemon.modsInstalled.mods.length : 0)
+                    primary: page.tab === "installed"
+                    onAct: page.tab = "installed"
+                }
+                Btn {
+                    text: I18n.tr("Browse Nexus")
+                    primary: page.tab === "browse"
+                    onAct: {
+                        page.tab = "browse";
+                        if (!Daemon.modsBrowse) page.search(0);
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: page.game && page.game.nexus_domain
+                          ? "nexusmods.com/" + page.game.nexus_domain
+                          : I18n.tr("no Nexus domain for this game")
+                    color: Tokens.inkFaint
+                    font.family: Tokens.ui
+                    font.pixelSize: Tokens.fTiny
+                }
+            }
+
+            JobPanel { visible: Daemon.modsBusy; Layout.fillWidth: true }
+
+            // Installed -----------------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: Tokens.s3
+                visible: page.tab === "installed"
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Tokens.s3
+                    Text {
+                        text: (Daemon.modsInstalled && Daemon.modsInstalled.profile)
+                              ? Daemon.modsInstalled.profile : page.profileFor(page.game)
+                        color: Tokens.ink
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fRow
+                        font.weight: Font.Medium
+                    }
+                    Btn {
+                        compact: true
+                        visible: page.game && (page.game.profiles || []).length > 1
+                        text: I18n.tr("Change profile")
+                        onAct: page.cycleProfile(page.game)
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: I18n.tr("Deploy applies this list to the game; a disabled mod stays installed.")
+                        color: Tokens.inkFaint
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fTiny
+                    }
+                    RefreshButton {
+                        armed: !Daemon.modsBusy
+                        onAct: Daemon.loadModsInstalled(page.game.id, page.profileFor(page.game))
+                    }
+                }
+
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    contentWidth: width
+                    contentHeight: installedBody.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
+
+                    ColumnLayout {
+                        id: installedBody
+                        width: parent.width
+                        spacing: Tokens.s1
+
+                        Repeater {
+                            model: Daemon.modsInstalled ? Daemon.modsInstalled.mods : []
+                            Rectangle {
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                implicitHeight: Tokens.px(30)
+                                radius: Tokens.radius
+                                color: rowHover.containsMouse ? Tokens.tint5 : "transparent"
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Tokens.s3
+                                    anchors.rightMargin: Tokens.s3
+                                    spacing: Tokens.s3
+                                    Text {
+                                        Layout.preferredWidth: Tokens.px(22)
+                                        text: index + 1
+                                        horizontalAlignment: Text.AlignRight
+                                        color: Tokens.inkFaint
+                                        font.family: Tokens.ui
+                                        font.pixelSize: Tokens.fTiny
+                                    }
+                                    Rectangle {
+                                        Layout.preferredWidth: Tokens.px(12)
+                                        Layout.preferredHeight: Tokens.px(12)
+                                        radius: Tokens.px(2)
+                                        color: modelData.enabled ? Tokens.sun : "transparent"
+                                        border.width: Tokens.border
+                                        border.color: modelData.enabled ? Tokens.sun : Tokens.line
+                                    }
+                                    Text {
+                                        text: modelData.name
+                                        color: modelData.enabled ? Tokens.ink : Tokens.inkFaint
+                                        font.family: Tokens.ui
+                                        font.pixelSize: Tokens.fSmall
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: modelData.enabled ? "" : I18n.tr("disabled")
+                                        color: Tokens.inkFaint
+                                        font.family: Tokens.ui
+                                        font.pixelSize: Tokens.fTiny
+                                    }
+                                }
+                                MouseArea {
+                                    id: rowHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Empty {
+                    anchors.centerIn: parent
+                    visible: Daemon.modsInstalled !== null && Daemon.modsInstalled.mods.length === 0
+                    caption: I18n.tr("Nothing installed in this profile yet — browse Nexus or install an archive.")
+                }
+            }
+
+            // Browse --------------------------------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: Tokens.s3
+                visible: page.tab === "browse"
+
+                Panel {
+                    visible: Daemon.modsAccount === null
+                    Layout.fillWidth: true
+                    title: I18n.tr("Nexus needs an API key")
+                    subtitle: I18n.tr("Browsing and downloading use the key Amethyst already keeps; Hikari only reads the same entry.")
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Tokens.s3
+                        Item { Layout.fillWidth: true }
+                        Btn {
+                            compact: true
+                            text: I18n.tr("Add key")
+                            primary: true
+                            onAct: keySheet.shown = true
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Tokens.s3
+                    visible: Daemon.modsAccount !== null
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: Tokens.ctlH
+                        radius: Tokens.radius
+                        color: searchField.activeFocus ? Tokens.paperLift : Tokens.paper
+                        border.width: Tokens.border
+                        border.color: searchField.activeFocus ? Tokens.line : Tokens.lineSoft
+                        TextField {
+                            id: searchField
+                            anchors.fill: parent
+                            anchors.leftMargin: Tokens.s3
+                            anchors.rightMargin: Tokens.s3
+                            background: null
+                            color: Tokens.ink
+                            font.family: Tokens.ui
+                            font.pixelSize: Tokens.fSmall
+                            placeholderText: I18n.tr("Search Nexus, or leave empty for the most downloaded")
+                            placeholderTextColor: Tokens.inkFaint
+                            selectByMouse: true
+                            onTextChanged: page.query = text
+                            onAccepted: page.search(0)
+                        }
+                    }
+                    Btn {
+                        compact: true
+                        text: page.sortLabel()
+                        onAct: page.cycleSort()
+                    }
+                    Btn {
+                        compact: true
+                        text: Daemon.modsSearching ? I18n.tr("Searching…") : I18n.tr("Search")
+                        armed: !Daemon.modsSearching
+                        onAct: page.search(0)
+                    }
+                }
+
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    contentWidth: width
+                    contentHeight: resultsBody.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
+
+                    ColumnLayout {
+                        id: resultsBody
+                        width: parent.width
+                        spacing: Tokens.s2
+
+                        Repeater {
+                            model: (Daemon.modsBrowse ? Daemon.modsBrowse.results : [])
+                            Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                implicitHeight: Tokens.px(78)
+                                radius: Tokens.radius
+                                color: hitHover.containsMouse ? Tokens.paperLift : Tokens.paper
+                                border.width: Tokens.border
+                                border.color: Tokens.lineSoft
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Tokens.s3
+                                    spacing: Tokens.s4
+
+                                    Rectangle {
+                                        Layout.preferredWidth: Tokens.px(54)
+                                        Layout.preferredHeight: Tokens.px(54)
+                                        radius: Tokens.px(2)
+                                        color: Tokens.tint10
+                                        clip: true
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: thumb.status !== Image.Ready
+                                            text: modelData.name.charAt(0).toUpperCase()
+                                            color: Tokens.inkFaint
+                                            font.family: Tokens.display
+                                            font.pixelSize: Tokens.fRow
+                                        }
+                                        Image {
+                                            id: thumb
+                                            anchors.fill: parent
+                                            source: modelData.picture_url || ""
+                                            asynchronous: true
+                                            fillMode: Image.PreserveAspectCrop
+                                            cache: true
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        spacing: Tokens.s1
+                                        Layout.fillWidth: true
+                                        Text {
+                                            text: modelData.name
+                                            color: Tokens.ink
+                                            font.family: Tokens.ui
+                                            font.pixelSize: Tokens.fRow
+                                            font.weight: Font.Medium
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                        Text {
+                                            text: (modelData.author || I18n.tr("unknown author")) +
+                                                  (modelData.version ? "  ·  " + modelData.version : "") +
+                                                  "  ·  " + page.compact(modelData.downloads) + " " + I18n.tr("downloads") +
+                                                  "  ·  " + page.compact(modelData.endorsements) + " " + I18n.tr("endorsements")
+                                            color: Tokens.inkFaint
+                                            font.family: Tokens.ui
+                                            font.pixelSize: Tokens.fTiny
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                        Text {
+                                            text: modelData.summary || ""
+                                            color: Tokens.inkDim
+                                            font.family: Tokens.ui
+                                            font.pixelSize: Tokens.fSmall
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                    Badge {
+                                        visible: modelData.adult === true
+                                        text: I18n.tr("ADULT")
+                                        danger: true
+                                    }
+                                    Btn {
+                                        compact: true
+                                        text: I18n.tr("Files")
+                                        armed: !Daemon.modsBusy
+                                        onAct: page.pickFile(modelData)
+                                    }
+                                }
+                                MouseArea {
+                                    id: hitHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.NoButton
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Tokens.s2
+                            visible: Daemon.modsBrowse !== null && Daemon.modsBrowse.results
+                                     && Daemon.modsBrowse.results.length > 0 && Daemon.modsBrowse.more
+                            spacing: Tokens.s3
+                            Btn {
+                                compact: true
+                                text: I18n.tr("Load more")
+                                armed: !Daemon.modsSearching
+                                onAct: page.search((Daemon.modsBrowse.page || 0) + 1)
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        Empty {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Tokens.s5
+                            visible: Daemon.modsAccount !== null && Daemon.modsBrowse !== null
+                                     && Daemon.modsBrowse.error !== undefined
+                            caption: Daemon.modsBrowse && Daemon.modsBrowse.error
+                                     ? Daemon.modsBrowse.error : ""
+                        }
+                    }
+                }
             }
         }
     }
@@ -299,8 +811,148 @@ PageBase {
         nameFilters: [I18n.tr("Archives (*.zip *.7z *.rar *.tar.gz *.tar.xz)"), I18n.tr("All files (*)")]
         onAccepted: {
             var path = decodeURIComponent(selectedFile.toString().replace("file://", ""));
-            var game = page.games.find(g => g.id === page.pendingGame);
-            if (game) Daemon.installMod(game.id, page.profileFor(game), path);
+            var entry = page.games.find(g => g.id === page.pendingGame);
+            if (entry) Daemon.installMod(entry.id, page.profileFor(entry), path);
+        }
+    }
+
+    Sheet {
+        id: filesSheet
+        title: page.installingFile ? page.installingFile.name : I18n.tr("Files")
+        subtitle: I18n.tr("Pick the file to download and install; Amethyst unpacks it into this profile.")
+        onCloseRequested: filesSheet.shown = false
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Tokens.s6
+            spacing: Tokens.s2
+
+            Repeater {
+                model: Daemon.modsFiles && Daemon.modsFiles.files ? Daemon.modsFiles.files : []
+                Rectangle {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    implicitHeight: Tokens.px(48)
+                    radius: Tokens.radius
+                    color: Tokens.paper
+                    border.width: Tokens.border
+                    border.color: Tokens.lineSoft
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Tokens.s4
+                        anchors.rightMargin: Tokens.s3
+                        spacing: Tokens.s3
+                        ColumnLayout {
+                            spacing: 0
+                            Text {
+                                text: modelData.name
+                                color: Tokens.ink
+                                font.family: Tokens.ui
+                                font.pixelSize: Tokens.fSmall
+                            }
+                            Text {
+                                text: (modelData.category || "") + "  ·  " + (modelData.version || "") +
+                                      "  ·  " + (modelData.size || "")
+                                color: Tokens.inkFaint
+                                font.family: Tokens.ui
+                                font.pixelSize: Tokens.fTiny
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Btn {
+                            compact: true
+                            text: I18n.tr("Install")
+                            primary: modelData.primary
+                            armed: !Daemon.modsBusy
+                            onAct: {
+                                Daemon.installNexusMod(page.game.id, page.profileFor(page.game),
+                                                       page.installingFile.mod_id, modelData.file_id);
+                                filesSheet.shown = false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: Tokens.s2
+                visible: Daemon.modsFilesBusy || (Daemon.modsFiles && Daemon.modsFiles.error)
+                text: Daemon.modsFilesBusy ? I18n.tr("Asking Nexus for the file list…")
+                     : (Daemon.modsFiles && Daemon.modsFiles.error ? Daemon.modsFiles.error : "")
+                color: Daemon.modsFiles && Daemon.modsFiles.error ? Tokens.alert : Tokens.inkFaint
+                font.family: Tokens.ui
+                font.pixelSize: Tokens.fSmall
+                wrapMode: Text.WordWrap
+            }
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Close")
+                    onAct: filesSheet.shown = false
+                }
+            }
+        }
+    }
+
+    Sheet {
+        id: keySheet
+        title: I18n.tr("Nexus API key")
+        subtitle: I18n.tr("nexusmods.com ▸ Account ▸ API. It is stored where Amethyst keeps it, so both apps share one key.")
+        onCloseRequested: keySheet.shown = false
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Tokens.s6
+            spacing: Tokens.s3
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: Tokens.ctlH
+                radius: Tokens.radius
+                color: Tokens.paper
+                border.width: Tokens.border
+                border.color: keyField.activeFocus ? Tokens.line : Tokens.lineSoft
+                TextField {
+                    id: keyField
+                    anchors.fill: parent
+                    anchors.leftMargin: Tokens.s3
+                    anchors.rightMargin: Tokens.s3
+                    background: null
+                    color: Tokens.ink
+                    font.family: Tokens.ui
+                    font.pixelSize: Tokens.fSmall
+                    placeholderText: I18n.tr("paste the key")
+                    placeholderTextColor: Tokens.inkFaint
+                    echoMode: TextInput.Password
+                    selectByMouse: true
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Tokens.s3
+                Item { Layout.fillWidth: true }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Cancel")
+                    onAct: keySheet.shown = false
+                }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Save")
+                    primary: true
+                    armed: keyField.text.length > 8
+                    onAct: {
+                        Daemon.setNexusKey(keyField.text.trim());
+                        keyField.text = "";
+                        keySheet.shown = false;
+                        page.search(0);
+                    }
+                }
+            }
+            Item { Layout.fillHeight: true }
         }
     }
 }
