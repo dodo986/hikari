@@ -76,6 +76,12 @@ func modsCmd(args []string) error {
 		})
 	case "nxm":
 		return modsNxmCmd(args[1:])
+	case "remove":
+		return modsRemoveCmd(args[1:])
+	case "toggle":
+		return modsToggleCmd(args[1:])
+	case "missing":
+		return modsMissingCmd(args[1:])
 	case "downloads":
 		return modsDownloadsCmd(args[1:])
 	case "scheme":
@@ -143,6 +149,104 @@ func nxmDomain(link string) string {
 }
 
 const nxmDesktop = "hikari-nxm.desktop"
+
+// modsRemoveCmd deletes one mod: files, plugins, staging folder and modlist row.
+func modsRemoveCmd(args []string) error {
+	fs := flag.NewFlagSet("mods remove", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 2 {
+		return errors.New("usage: hikari mods remove <game> <mod name>")
+	}
+	params := map[string]any{"game": pos[0], "name": strings.Join(pos[1:], " ")}
+	if *profile != "" {
+		params["profile"] = *profile
+	}
+	return runModsJob(c, "mods.remove", "removed", params)
+}
+
+// modsToggleCmd enables or disables one modlist row.
+func modsToggleCmd(args []string) error {
+	fs := flag.NewFlagSet("mods toggle", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 2 {
+		return errors.New("usage: hikari mods toggle <game> <mod name>")
+	}
+	params := map[string]any{"game": pos[0], "name": strings.Join(pos[1:], " ")}
+	if *profile != "" {
+		params["profile"] = *profile
+	}
+	var out struct {
+		Name    string `json:"name"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := dial(c).Call("mods.toggle", params, &out); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(out)
+	}
+	state := "disabled"
+	if out.Enabled {
+		state = "enabled"
+	}
+	fmt.Printf("%s is %s; deploy to apply it\n", out.Name, state)
+	return nil
+}
+
+// modsMissingCmd lists Nexus requirements the installed mods are missing.
+func modsMissingCmd(args []string) error {
+	fs := flag.NewFlagSet("mods missing", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods missing <game> [--profile NAME]")
+	}
+	params := map[string]any{"game": pos[0]}
+	if *profile != "" {
+		params["profile"] = *profile
+	}
+	var out struct {
+		Missing []mods.Missing `json:"missing"`
+	}
+	if err := dial(c).Call("mods.missing", params, &out); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(out)
+	}
+	if len(out.Missing) == 0 {
+		fmt.Println("every listed requirement is installed")
+		return nil
+	}
+	for _, item := range out.Missing {
+		for _, need := range item.Needs {
+			name := need.Name
+			if need.External {
+				name += " (outside Nexus)"
+			}
+			if need.ModID > 0 {
+				fmt.Printf("%s needs %s [mod %d]\n", item.Mod, name, need.ModID)
+			} else {
+				fmt.Printf("%s needs %s\n", item.Mod, name)
+			}
+		}
+	}
+	return nil
+}
 
 // modsDownloadsCmd answers "has the browser download finished?" so a script
 // can wait for it and then install the archive.

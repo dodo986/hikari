@@ -457,6 +457,54 @@ func (b *Bridge) Files(ctx context.Context, game string, modID int) (Mod, []ModF
 	return out.Mod, out.Files, nil
 }
 
+// Toggle flips one modlist row; the caller deploys to apply it.
+func (b *Bridge) Toggle(ctx context.Context, game, profile, name string) (bool, error) {
+	if name == "" {
+		return false, &Error{Kind: KindUsage, Message: "which mod?"}
+	}
+	args := append(gameArgs(game, profile), "--name", name)
+	out, err := b.run(ctx, "toggle", args, Sink{})
+	if err != nil {
+		return false, err
+	}
+	var res struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return false, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable toggle answer"}
+	}
+	return res.Enabled, nil
+}
+
+// Remove deletes a mod's files, plugins and modlist row.
+func (b *Bridge) Remove(ctx context.Context, game, profile, name string, sink Sink) error {
+	if name == "" {
+		return &Error{Kind: KindUsage, Message: "which mod?"}
+	}
+	_, err := b.run(ctx, "remove", append(gameArgs(game, profile), "--name", name), sink)
+	return err
+}
+
+// Missing lists requirements the installed mods ask for and the profile lacks.
+func (b *Bridge) Missing(ctx context.Context, game, profile string) ([]Missing, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	out, err := b.run(probeCtx, "missing", gameArgs(game, profile), Sink{})
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Missing []Missing `json:"missing"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable requirement list"}
+	}
+	if res.Missing == nil {
+		res.Missing = []Missing{}
+	}
+	return res.Missing, nil
+}
+
 // Downloads reports the archive of a browsed file that already finished
 // downloading in the browser, so a free account can install it without
 // copying a link around.

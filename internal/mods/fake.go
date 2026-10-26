@@ -14,6 +14,8 @@ type Fake struct {
 	games    []Game
 	deployed map[string]string
 	signedIn bool
+	// modlist overrides per game key, once the demo profile is edited.
+	modlist map[string][]InstalledMod
 }
 
 func NewFake() *Fake {
@@ -199,6 +201,74 @@ func (f *Fake) Files(_ context.Context, game string, modID int) (Mod, []ModFile,
 	return Mod{}, nil, &Error{Kind: KindNotFound, Message: fmt.Sprintf("no Nexus mod %d for %s", modID, game)}
 }
 
+func (f *Fake) Toggle(_ context.Context, game, profile, name string) (bool, error) {
+	if f.find(game) == nil {
+		return false, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
+	}
+	list := f.list(game)
+	for i := range list {
+		if list[i].Name == name {
+			list[i].Enabled = !list[i].Enabled
+			f.save(game, list)
+			return list[i].Enabled, nil
+		}
+	}
+	return false, &Error{Kind: KindNotFound, Message: fmt.Sprintf("the profile has no mod called '%s'", name)}
+}
+
+func (f *Fake) Remove(_ context.Context, game, profile, name string, sink Sink) error {
+	if f.find(game) == nil {
+		return &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
+	}
+	list := f.list(game)
+	for i := range list {
+		if list[i].Name == name {
+			f.save(game, append(list[:i], list[i+1:]...))
+			sink.log(fmt.Sprintf("removed %s; deploy the profile to update the game", name))
+			return nil
+		}
+	}
+	return &Error{Kind: KindNotFound, Message: fmt.Sprintf("the profile has no mod called '%s'", name)}
+}
+
+// list returns the demo modlist for a game, starting from the demo catalogue.
+func (f *Fake) list(game string) []InstalledMod {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if list, ok := f.modlist[game]; ok {
+		return list
+	}
+	known := f.find(game)
+	if known == nil {
+		return nil
+	}
+	out := make([]InstalledMod, 0, len(demoMods[known.NexusDomain]))
+	for _, mod := range demoMods[known.NexusDomain] {
+		out = append(out, InstalledMod{Name: mod.Name, Enabled: true})
+	}
+	return out
+}
+
+func (f *Fake) save(game string, list []InstalledMod) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.modlist == nil {
+		f.modlist = map[string][]InstalledMod{}
+	}
+	f.modlist[game] = list
+}
+
+func (f *Fake) Missing(_ context.Context, game, profile string) ([]Missing, error) {
+	if f.find(game) == nil {
+		return nil, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
+	}
+	return []Missing{{
+		Mod:   "TweakXL",
+		ModID: 4197,
+		Needs: []Requirement{{ModID: 2380, Name: "RED4ext"}, {ModID: 107, Name: "Cyber Engine Tweaks"}},
+	}}, nil
+}
+
 func (f *Fake) Downloads(_ context.Context, game string, modID, fileID int) (string, error) {
 	if f.find(game) == nil {
 		return "", &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
@@ -215,6 +285,13 @@ func (f *Fake) Installed(_ context.Context, game, profile string) (Installed, er
 		profile = "default"
 	}
 	out := Installed{Game: known.Name, Profile: profile}
+	f.mu.Lock()
+	if list, ok := f.modlist[game]; ok {
+		out.Mods = append(out.Mods, list...)
+		f.mu.Unlock()
+		return out, nil
+	}
+	f.mu.Unlock()
 	for _, mod := range demoMods[known.NexusDomain] {
 		out.Mods = append(out.Mods, InstalledMod{Name: mod.Name, Enabled: true})
 	}

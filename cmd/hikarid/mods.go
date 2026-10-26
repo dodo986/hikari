@@ -164,6 +164,51 @@ func (d *daemon) registerMods(srv *api.Server) {
 		return map[string]any{"mod": mod, "files": files}, nil
 	})
 
+	srv.Register("mods.toggle", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+			Name    string `json:"name"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.Name == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, name, profile?}")
+		}
+		load()
+		enabled, err := d.mods.Toggle(c, p.Game, p.Profile, p.Name)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"name": p.Name, "enabled": enabled}, nil
+	})
+	srv.Register("mods.remove", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+			Name    string `json:"name"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.Name == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, name, profile?}")
+		}
+		load()
+		return d.startModsJob(c, srv, p.Game, "removing", func(ctx context.Context, sink mods.Sink) (string, error) {
+			return "", d.mods.Remove(ctx, p.Game, p.Profile, p.Name, sink)
+		})
+	})
+	srv.Register("mods.missing", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
+		}
+		load()
+		missing, err := d.mods.Missing(c, p.Game, p.Profile)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"missing": missing}, nil
+	})
 	// A free account installs from the browser; this says when it landed.
 	srv.Register("mods.downloads", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {

@@ -367,3 +367,61 @@ func TestModsLoginAndLogout(t *testing.T) {
 		t.Fatalf("mods.account still signed in after logout: %+v", account)
 	}
 }
+
+// The classic mod-manager loop: toggle a row, uninstall a mod, and ask what the
+// profile is still missing.
+func TestModsToggleRemoveAndRequirements(t *testing.T) {
+	d, client := startDaemon(t)
+	d.mods = mods.NewFake()
+
+	var installed mods.Installed
+	if err := client.Call("mods.installed", map[string]any{"game": "skyrim_se"}, &installed); err != nil {
+		t.Fatalf("mods.installed: %v", err)
+	}
+	if len(installed.Mods) == 0 {
+		t.Fatal("the demo profile is empty")
+	}
+	name := installed.Mods[0].Name
+
+	var toggled struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := client.Call("mods.toggle", map[string]any{"game": "skyrim_se", "name": name}, &toggled); err != nil {
+		t.Fatalf("mods.toggle: %v", err)
+	}
+	if toggled.Enabled {
+		t.Fatalf("%q was already enabled, the toggle did nothing", name)
+	}
+
+	if err := client.Subscribe("mods.done"); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	var job struct {
+		Job string `json:"job"`
+	}
+	if err := client.Call("mods.remove", map[string]any{"game": "skyrim_se", "name": name}, &job); err != nil {
+		t.Fatalf("mods.remove: %v", err)
+	}
+	if done := awaitModsDone(t, client); done["ok"] != true {
+		t.Fatalf("remove failed: %+v", done)
+	}
+	var after mods.Installed
+	if err := client.Call("mods.installed", map[string]any{"game": "skyrim_se"}, &after); err != nil {
+		t.Fatalf("mods.installed: %v", err)
+	}
+	for _, mod := range after.Mods {
+		if mod.Name == name {
+			t.Fatalf("%q is still in the profile after removal", name)
+		}
+	}
+
+	var missing struct {
+		Missing []mods.Missing `json:"missing"`
+	}
+	if err := client.Call("mods.missing", map[string]any{"game": "skyrim_se"}, &missing); err != nil {
+		t.Fatalf("mods.missing: %v", err)
+	}
+	if len(missing.Missing) == 0 || len(missing.Missing[0].Needs) == 0 {
+		t.Fatalf("mods.missing returned %+v", missing)
+	}
+}

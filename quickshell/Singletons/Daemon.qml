@@ -35,6 +35,8 @@ Singleton {
     property bool modsSearching: false
     property bool modsFilesBusy: false
     property var modsWait: null
+    property var modsMissing: null
+    property bool modsMissingBusy: false
 
     signal gameState(var ev)
     signal updateProgress(var ev)
@@ -212,6 +214,24 @@ Singleton {
             var name = w.name;
             rpc.stopWaiting();
             rpc.installFromFile(w.game, w.profile, path, name);
+        });
+    }
+    function toggleMod(game, profile, name) {
+        call("mods.toggle", { game: game, profile: profile || "", name: name }, (r, e) => {
+            if (e) { modsError = e.message; return; }
+            loadModsInstalled(game, profile);
+        });
+    }
+    function removeMod(game, profile, name) {
+        modsJob("mods.remove", { game: game, profile: profile || "", name: name });
+    }
+    function checkRequirements(game, profile) {
+        rpc.modsMissingBusy = true;
+        rpc.modsMissing = null;
+        call("mods.missing", { game: game, profile: profile || "" }, (r, e) => {
+            rpc.modsMissingBusy = false;
+            if (e) { rpc.modsError = e.message; return; }
+            rpc.modsMissing = (r && r.missing) || [];
         });
     }
     function setupMods() { modsJob("mods.setup", {}); }

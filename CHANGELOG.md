@@ -9,6 +9,11 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Mods can be uninstalled and switched off where they are listed: click a row
+  in Installed to enable or disable it, **Uninstall** asks once and then
+  removes the files, plugins and staging folder the way Amethyst does.
+  **Check requirements** asks Nexus what the installed mods still need and
+  offers a **Get** button for each missing dependency.
 - Install on a free account now works from the sheet: **Install** opens that
   file's Nexus page and Hikari watches the download folder, installing the
   archive as soon as the browser finishes with it — no link copying. Premium

@@ -147,6 +147,21 @@ func (s Sink) authURL(url string) {
 	}
 }
 
+// Requirement is one Nexus-listed mod another mod needs.
+type Requirement struct {
+	ModID    int    `json:"mod_id"`
+	Name     string `json:"name"`
+	External bool   `json:"external,omitempty"`
+	Notes    string `json:"notes,omitempty"`
+}
+
+// Missing is an installed mod with requirements the profile does not satisfy.
+type Missing struct {
+	Mod   string        `json:"mod"`
+	ModID int           `json:"mod_id"`
+	Needs []Requirement `json:"needs"`
+}
+
 type InstallRequest struct {
 	Game    string
 	Profile string
@@ -171,5 +186,8 @@ type Service interface {
 	Browse(ctx context.Context, game, query, sort string, page int) (Browse, error)
 	Files(ctx context.Context, game string, modID int) (Mod, []ModFile, error)
 	Downloads(ctx context.Context, game string, modID, fileID int) (string, error)
+	Toggle(ctx context.Context, game, profile, name string) (bool, error)
+	Remove(ctx context.Context, game, profile, name string, sink Sink) error
+	Missing(ctx context.Context, game, profile string) ([]Missing, error)
 	Installed(ctx context.Context, game, profile string) (Installed, error)
 }

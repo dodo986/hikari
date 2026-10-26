@@ -645,14 +645,70 @@ PageBase {
                     }
                     Item { Layout.fillWidth: true }
                     Text {
-                        text: I18n.tr("Deploy applies this list to the game; a disabled mod stays installed.")
+                        text: I18n.tr("Click a row to enable or disable it; deploy applies the list.")
                         color: Tokens.inkFaint
                         font.family: Tokens.ui
                         font.pixelSize: Tokens.fTiny
                     }
+                    Btn {
+                        compact: true
+                        text: I18n.tr("Check requirements")
+                        armed: !Daemon.modsMissingBusy
+                        onAct: Daemon.checkRequirements(page.game.id, page.profileFor(page.game))
+                    }
                     RefreshButton {
                         armed: !Daemon.modsBusy
                         onAct: Daemon.loadModsInstalled(page.game.id, page.profileFor(page.game))
+                    }
+                }
+
+                // Nexus requirements the profile does not have yet.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Tokens.s1
+                    visible: Daemon.modsMissingBusy || Daemon.modsMissing !== null
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: Daemon.modsMissingBusy
+                              ? I18n.tr("Asking Nexus what these mods need…")
+                              : (Daemon.modsMissing && Daemon.modsMissing.length === 0
+                                 ? I18n.tr("Every listed requirement is installed.")
+                                 : "")
+                        visible: text !== ""
+                        color: Tokens.inkFaint
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                    }
+
+                    Repeater {
+                        model: Daemon.modsMissing || []
+                        RowLayout {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: Tokens.s3
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.mod + " " + I18n.tr("needs")
+                                      + " " + (modelData.needs || []).map(function (n) {
+                                          return n.name + (n.external ? " (" + I18n.tr("outside Nexus") + ")" : "");
+                                      }).join(", ")
+                                color: Tokens.alert
+                                font.family: Tokens.ui
+                                font.pixelSize: Tokens.fSmall
+                                elide: Text.ElideRight
+                            }
+                            Repeater {
+                                model: (modelData.needs || []).filter(function (n) { return n.mod_id > 0; })
+                                Btn {
+                                    required property var modelData
+                                    compact: true
+                                    text: I18n.tr("Get") + " " + modelData.name
+                                    armed: !Daemon.modsBusy
+                                    onAct: page.pickFile({ mod_id: modelData.mod_id, name: modelData.name })
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -673,12 +729,27 @@ PageBase {
                         Repeater {
                             model: Daemon.modsInstalled ? Daemon.modsInstalled.mods : []
                             Rectangle {
+                                id: row
                                 required property var modelData
                                 required property int index
                                 Layout.fillWidth: true
                                 implicitHeight: Tokens.px(30)
                                 radius: Tokens.radius
                                 color: rowHover.containsMouse ? Tokens.tint5 : "transparent"
+                                property bool confirming: false
+
+                                // Under the row, so the buttons keep their clicks.
+                                MouseArea {
+                                    id: rowHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        row.confirming = false;
+                                        if (Daemon.modsBusy) return;
+                                        Daemon.toggleMod(page.game.id, page.profileFor(page.game),
+                                                         modelData.name);
+                                    }
+                                }
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: Tokens.s3
@@ -714,11 +785,18 @@ PageBase {
                                         font.family: Tokens.ui
                                         font.pixelSize: Tokens.fTiny
                                     }
-                                }
-                                MouseArea {
-                                    id: rowHover
-                                    anchors.fill: parent
-                                    hoverEnabled: true
+                                    Btn {
+                                        compact: true
+                                        text: row.confirming ? I18n.tr("Remove?") : I18n.tr("Uninstall")
+                                        visible: true
+                                        armed: !Daemon.modsBusy
+                                        onAct: {
+                                            if (!row.confirming) { row.confirming = true; return; }
+                                            row.confirming = false;
+                                            Daemon.removeMod(page.game.id, page.profileFor(page.game),
+                                                             modelData.name);
+                                        }
+                                    }
                                 }
                             }
                         }

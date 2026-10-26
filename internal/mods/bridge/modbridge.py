@@ -461,6 +461,81 @@ def cmd_logout(_opts: dict) -> dict:
     return {"stored": False}
 
 
+def _modlist(profile_dir):
+    from Utils.mods.modlist import read_modlist, write_modlist
+    path = profile_dir / "modlist.txt"
+    return path, read_modlist(path), write_modlist
+
+
+def _entry_named(entries, name: str):
+    for entry in entries:
+        if entry.name == name:
+            return entry
+    return None
+
+
+def cmd_toggle(opts: dict) -> dict:
+    """Flip one modlist row on or off; deploying is what applies it."""
+    game = _require(_bootstrap(), opts.get("game", ""))
+    _name, profile_dir = _profile(game, opts.get("profile", ""))
+    wanted = opts.get("name", "") or ""
+    path, entries, write_modlist = _modlist(profile_dir)
+    entry = _entry_named(entries, wanted)
+    if entry is None or entry.is_separator:
+        raise BridgeError("notfound", f"the profile has no mod called '{wanted}'")
+    if entry.locked:
+        raise BridgeError("unsupported",
+                          f"'{wanted}' is locked in Amethyst and cannot be toggled")
+    entry.enabled = not entry.enabled
+    write_modlist(path, entries)
+    state = "enabled" if entry.enabled else "disabled"
+    log(f"{wanted} is {state}; deploy the profile to apply it")
+    return {"name": wanted, "enabled": bool(entry.enabled)}
+
+
+def cmd_remove(opts: dict) -> dict:
+    """Delete a mod for real: deployed files, plugins, staging folder, catalog."""
+    game = _require(_bootstrap(), opts.get("game", ""))
+    _name, profile_dir = _profile(game, opts.get("profile", ""))
+    wanted = opts.get("name", "") or ""
+    game.set_active_profile_dir(profile_dir)
+    game.load_paths()
+    path, entries, write_modlist = _modlist(profile_dir)
+    entry = _entry_named(entries, wanted)
+    if entry is None:
+        raise BridgeError("notfound", f"the profile has no mod called '{wanted}'")
+    if entry.is_separator:
+        raise BridgeError("unsupported",
+                          "'%s' is a separator, not a mod" % wanted)
+    from Utils.mods.remove import remove_mods
+    log(f"removing {wanted}")
+    remove_mods(game, profile_dir, [wanted], log_fn=log)
+    write_modlist(path, [e for e in entries if e.name != wanted])
+    log(f"{wanted} is gone; deploy the profile to update the game")
+    return {"removed": wanted}
+
+
+def cmd_missing(opts: dict) -> dict:
+    """Nexus-listed requirements that the installed mods do not satisfy."""
+    game = _require(_bootstrap(), opts.get("game", ""))
+    _name, profile_dir = _profile(game, opts.get("profile", ""))
+    api, _mode = _nexus_api()
+    _key, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+    from Nexus.nexus_requirements import check_missing_requirements
+    staging = game.get_effective_mod_staging_path()
+    found = check_missing_requirements(api, staging, domain, progress_cb=log)
+    return {"missing": [{
+        "mod": item.mod_name,
+        "mod_id": int(item.mod_id or 0),
+        "needs": [{
+            "mod_id": int(req.mod_id or 0),
+            "name": req.mod_name or "",
+            "external": bool(req.is_external),
+            "notes": req.notes or "",
+        } for req in item.missing],
+    } for item in found]}
+
+
 def cmd_installed(opts: dict) -> dict:
     game = _require(_bootstrap(), opts.get("game", ""))
     name, profile_dir = _profile(game, opts.get("profile", ""))
@@ -585,6 +660,9 @@ COMMANDS = {
     "login": cmd_login,
     "logout": cmd_logout,
     "installed": cmd_installed,
+    "toggle": cmd_toggle,
+    "remove": cmd_remove,
+    "missing": cmd_missing,
 }
 
 

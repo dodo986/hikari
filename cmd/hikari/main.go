@@ -69,6 +69,9 @@ Usage:
                                          search a game's mods on Nexus
   hikari mods files <game> <mod-id>      the files a browsed mod offers
   hikari mods installed <game> [--profile P]  the profile's modlist, in order
+  hikari mods toggle <game> <name>       enable or disable one mod
+  hikari mods remove <game> <name>       delete a mod and its files
+  hikari mods missing <game>             requirements the profile is missing
   hikari mods nexus [status|set|clear]   a Nexus API key, if you have one instead
   hikari shutdown                        stop the daemon
 
