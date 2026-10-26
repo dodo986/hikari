@@ -106,10 +106,18 @@ func (b *Bridge) prepare() {
 			}
 		}
 	}
-	if b.filegraph == "" && b.source != "" {
-		for _, name := range []string{"amethyst_filegraph.abi3.so", "amethyst_filegraph.so"} {
-			if path := filepath.Join(b.source, name); isFile(path) {
-				b.filegraph = path
+	if b.filegraph == "" {
+		for _, dir := range []string{b.root, b.source} {
+			if dir == "" {
+				continue
+			}
+			for _, name := range []string{"amethyst_filegraph.abi3.so", "amethyst_filegraph.so"} {
+				if path := filepath.Join(dir, name); isFile(path) {
+					b.filegraph = path
+					break
+				}
+			}
+			if b.filegraph != "" {
 				break
 			}
 		}
