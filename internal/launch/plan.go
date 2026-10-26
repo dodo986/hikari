@@ -17,6 +17,7 @@ type Plan struct {
 	Argv     []string                        `json:"argv"`
 	Env      map[string]string               `json:"env"`
 	Cwd      string                          `json:"cwd,omitempty"`
+	Exe      string                          `json:"exe,omitempty"`
 	Engine   string                          `json:"engine"`
 	WineType string                          `json:"wine_type"`
 	Prepare  func(ctx context.Context) error `json:"-"`
@@ -125,6 +126,7 @@ func Build(game library.Game, settings config.GameSettings, paths config.Paths, 
 		extra = append(extra, strings.Fields(settings.LauncherArgs)...)
 	}
 	overrideExe := settings.TargetExe
+	plan.Exe = overrideExe
 
 	if game.Runner == library.RunnerLocal {
 		return buildLocal(game, settings, wrappers, wineBin, extra, plan), nil
@@ -207,6 +209,7 @@ func buildLocal(game library.Game, settings config.GameSettings, wrappers []stri
 	}
 	if exe != "" {
 		plan.Cwd = filepath.Dir(exe)
+		plan.Exe = exe
 	}
 	var argv []string
 	argv = append(argv, wrappers...)

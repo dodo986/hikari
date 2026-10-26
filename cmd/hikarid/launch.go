@@ -124,6 +124,8 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 		if p.DryRun {
 			return map[string]any{"plan": plan}, nil
 		}
+		// Which file actually ran is the first question after "my mods do nothing".
+		d.log.Info("launching", "game", g.Key(), "exe", plan.Exe, "cwd", plan.Cwd)
 
 		plan.Prepare = func(ctx context.Context) error {
 			if err := launch.EnsurePrefix(ctx, d.run, d.eng, settings, plan.WineType, plan.Env); err != nil {

@@ -1097,6 +1097,7 @@ type planView struct {
 	Argv     []string          `json:"argv"`
 	Env      map[string]string `json:"env"`
 	Cwd      string            `json:"cwd"`
+	Exe      string            `json:"exe,omitempty"`
 	Engine   string            `json:"engine"`
 	WineType string            `json:"wine_type"`
 }
@@ -1104,6 +1105,7 @@ type planView struct {
 func printPlan(p *planView) {
 	fmt.Println("engine:   ", p.Engine)
 	fmt.Println("wine:     ", p.WineType)
+	fmt.Println("executable:", orDefault(p.Exe, "(the store's own)"))
 	fmt.Println("directory:", orDefault(p.Cwd, "(inherit)"))
 	fmt.Println("command:")
 	fmt.Println("  " + shellLine(p.Argv))
