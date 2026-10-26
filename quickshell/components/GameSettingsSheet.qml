@@ -16,12 +16,19 @@ Sheet {
         if (!page.settings) return;
         prefixField.text = page.settings.wine_prefix || "";
         savesField.text = page.settings.saves_path || "";
+        exeField.text = page.settings.target_exe || "";
+    }
+
+    function setExecutable(path) {
+        exeField.text = path;
+        page.saveNow(I18n.tr("Game executable saved"));
     }
 
     function takeDraft() {
         var next = Object.assign({}, page.draft || {});
         next.wine_prefix = prefixField.text.trim();
         next.saves_path = savesField.text.trim();
+        next.target_exe = exeField.text.trim();
         return next;
     }
 
@@ -53,6 +60,65 @@ Sheet {
                 onAct: page.launchOptionIndex = index
             }
         }
+    }
+
+    Rectangle { Layout.fillWidth: true; height: 1; color: Tokens.lineSoft }
+
+    Text {
+        text: I18n.tr("GAME")
+        color: Tokens.inkFaint
+        font.family: Tokens.ui
+        font.pixelSize: Tokens.fTiny
+        font.letterSpacing: Tokens.trackMark
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Tokens.s3
+        Text {
+            text: I18n.tr("Executable")
+            color: Tokens.inkDim
+            font.family: Tokens.ui
+            font.pixelSize: Tokens.fSmall
+        }
+        Field {
+            id: exeField
+            Layout.fillWidth: true
+            placeholder: I18n.tr("the game's own executable")
+            onAccepted: page.saveNow(I18n.tr("Game executable saved"))
+        }
+        ActionButton {
+            compact: true
+            text: I18n.tr("Choose…")
+            onAct: page.pickExecutable()
+        }
+        ActionButton {
+            compact: true
+            visible: exeField.text !== ""
+            text: I18n.tr("Use game's")
+            onAct: {
+                exeField.text = "";
+                page.saveNow(I18n.tr("Back to the game's own executable"));
+            }
+        }
+    }
+    Text {
+        Layout.fillWidth: true
+        text: page.info && page.info.executable
+              ? I18n.tr("The game's own:") + " " + page.info.executable
+              : ""
+        visible: text !== ""
+        color: Tokens.inkFaint
+        font.family: Tokens.ui
+        font.pixelSize: Tokens.fTiny
+        elide: Text.ElideMiddle
+    }
+    Text {
+        Layout.fillWidth: true
+        text: I18n.tr("Change this when the launcher starts the wrong file: a pre-launcher that closes on its own, or the executable a mod loader needs.")
+        color: Tokens.inkFaint
+        font.family: Tokens.ui
+        font.pixelSize: Tokens.fTiny
+        wrapMode: Text.WordWrap
     }
 
     Rectangle { Layout.fillWidth: true; height: 1; color: Tokens.lineSoft }
@@ -251,7 +317,7 @@ Sheet {
         spacing: Tokens.s3
         ActionButton {
             compact: true
-            text: I18n.tr("Save prefix and save path")
+            text: I18n.tr("Save paths and executable")
             onAct: page.saveNow(I18n.tr("Settings saved"))
         }
         ActionButton {

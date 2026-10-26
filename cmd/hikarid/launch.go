@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"hikari/internal/api"
 	"hikari/internal/config"
 	"hikari/internal/engine"
 	"hikari/internal/launch"
 	"hikari/internal/library"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -225,6 +227,9 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 			return nil, api.Errorf(api.CodeInvalidParams, "%s", err)
 		}
 
+		if err := checkTargetExe(g, p.Settings.TargetExe); err != nil {
+			return nil, api.Errorf(api.CodeInvalidParams, "%s", err)
+		}
 		launch.DropDefaultPrefix(g, d.settings.Defaults, &p.Settings)
 		if err := d.state.UpdateEntry(p.Store, p.ID, func(e *config.GameEntry) {
 			e.Settings = p.Settings
@@ -234,6 +239,25 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 		}
 		return d.settingsFor(g), nil
 	})
+}
+
+// A typo here is invisible until the game fails to start, so say it now.
+func checkTargetExe(g library.Game, target string) error {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return nil
+	}
+	path := target
+	if !filepath.IsAbs(path) {
+		if g.InstallPath == "" {
+			return fmt.Errorf("\"%s\" is relative, so the game needs an install folder to resolve it", target)
+		}
+		path = filepath.Join(g.InstallPath, path)
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return fmt.Errorf("there is no executable at %s; pick it again or clear the field to use the game's own", path)
+	}
+	return nil
 }
 
 func (d *daemon) cometSidecar(ctx context.Context) *launch.Sidecar {

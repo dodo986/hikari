@@ -9,6 +9,12 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- **Game settings → Game** now has the executable: a field with **Choose…**
+  (starts in the game's folder) and **Use game's**, plus a line naming the
+  executable the game reports. It is the fix for a launcher that starts the
+  wrong file — a pre-launcher that closes on its own, or the exe a mod loader
+  needs. A path with nothing at it is refused when you save instead of when the
+  game fails.
 - **Repair mods** in the Installed tab, and `hikari mods health <game>` /
   `hikari mods repair <game>`: the launcher now checks the ground truth that
   decides whether mods load at all — are the loader DLLs actually in the game
