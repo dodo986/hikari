@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- The Mods page drives the Amethyst Mod Manager's own backend as a
+  supervised child process: list the games Amethyst can mod, pick a profile,
+  deploy it, restore the game to vanilla, and install a mod archive (FOMOD
+  installers take Amethyst's default selections) or an `nxm://` download —
+  from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
+  never keeps a second copy of it. `hikari mods setup` gives the backend its
+  own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+
 ## 0.1.2
 
 - The daemon stages the release's own `hikari-update` into the install

@@ -18,5 +18,11 @@ following projects, whose source was used as a behavioural reference only
   pattern, packaging conventions. https://github.com/Ryoku-dev/ryoku
 
 Hikari runs, but does not distribute, the following third-party tools:
-legendary, gogdl, nile, comet, umu-launcher, Proton, Wine. Their licenses
-apply to themselves.
+legendary, gogdl, nile, comet, umu-launcher, Proton, Wine, and the Amethyst
+Mod Manager's modding backend. Their licenses apply to themselves.
+
+The Mods page drives Amethyst's own Python backend (GPL-3.0) as a child
+process instead of re-implementing it; nothing from its tree is copied or
+linked. The bridge that speaks to it, internal/mods/bridge/modbridge.py, is
+Hikari's own code and is covered by Hikari's license.
+https://github.com/ChrisDKN/Amethyst-Mod-Manager

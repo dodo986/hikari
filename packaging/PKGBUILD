@@ -17,7 +17,8 @@ optdepends=('quickshell: the UI runtime (qs)'
             'nile: Amazon Games store engine'
             'comet: GOG achievements overlay (no package; build from source)'
             'p7zip: extracting OptiScaler releases'
-            'steam: launching Steam library games (always through Steam)')
+            'steam: launching Steam library games (always through Steam)'
+            'python: drive the Amethyst modding backend (Mods page)')
 source=()
 _repo="$startdir/.."
 build() {
