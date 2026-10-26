@@ -10,7 +10,12 @@ Sheet {
     shown: page.settingsSheetOpen
     title: I18n.tr("Game settings")
     subtitle: I18n.tr("Changes apply immediately. The prefix and save path apply when you save.")
-    onCloseRequested: page.settingsSheetOpen = false
+    onCloseRequested: {
+        // A typed path is a change even without Enter, so closing saves it.
+        if (page.settings && exeField.text.trim() !== (page.settings.target_exe || ""))
+            page.saveNow(I18n.tr("Game executable saved"));
+        page.settingsSheetOpen = false;
+    }
 
     function syncFields() {
         if (!page.settings) return;
