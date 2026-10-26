@@ -36,6 +36,8 @@ Singleton {
     property bool modsFilesBusy: false
     property var modsWait: null
     property var modsMissing: null
+    property var modsHealth: null
+    property bool modsHealthBusy: false
     property bool modsMissingBusy: false
 
     signal gameState(var ev)
@@ -224,6 +226,20 @@ Singleton {
     }
     function removeMod(game, profile, name) {
         modsJob("mods.remove", { game: game, profile: profile || "", name: name });
+    }
+    // Ask what is stopping the mods from loading, then redeploy if that is the fix.
+    function repairMods(game, profile) {
+        rpc.modsHealthBusy = true;
+        rpc.modsHealth = null;
+        call("mods.health", { game: game, profile: profile || "" }, (r, e) => {
+            rpc.modsHealthBusy = false;
+            if (e) { rpc.modsError = e.message; return; }
+            rpc.modsHealth = (r && r.findings) || [];
+            var fixable = rpc.modsHealth.some(function (f) { return f.fixable; });
+            if (fixable) {
+                modsJob("mods.repair", { game: game, profile: profile || "" });
+            }
+        });
     }
     function checkRequirements(game, profile) {
         rpc.modsMissingBusy = true;

@@ -73,6 +73,8 @@ Usage:
   hikari mods remove <game> <name>       delete a mod and its files
   hikari mods missing <game>             requirements the profile is missing
   hikari mods overrides <game>           Wine DLL overrides the mods need
+  hikari mods health <game> [--network]  what is stopping these mods loading
+  hikari mods repair <game>              redeploy when that is the fix
   hikari mods nexus [status|set|clear]   a Nexus API key, if you have one instead
   hikari shutdown                        stop the daemon
 

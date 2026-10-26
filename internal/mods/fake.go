@@ -276,6 +276,15 @@ func (f *Fake) Overrides(_ context.Context, game string) (map[string]string, err
 	return map[string]string{"version": "native,builtin", "winmm": "native,builtin"}, nil
 }
 
+func (f *Fake) Health(_ context.Context, game, profile string, network bool) ([]Finding, error) {
+	if f.find(game) == nil {
+		return nil, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
+	}
+	return []Finding{
+		{ID: "loader-ok", Severity: "info", Mod: "CET", File: "bin/x64/plugins/cyber_engine_tweaks/cyber_engine_tweaks.log", Detail: "last log 2026-10-26T19:15:25Z"},
+	}, nil
+}
+
 func (f *Fake) Downloads(_ context.Context, game string, modID, fileID int) (string, error) {
 	if f.find(game) == nil {
 		return "", &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}

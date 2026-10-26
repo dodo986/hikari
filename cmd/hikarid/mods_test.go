@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -443,5 +444,37 @@ func TestModsOverridesReportTheLoaderTable(t *testing.T) {
 	}
 	if err := client.Call("mods.overrides", map[string]any{"game": "nope"}, &res); err == nil {
 		t.Fatal("an unknown game should be an error")
+	}
+}
+
+// A repair only fires when a redeploy is the fix; when nothing is wrong it must
+// answer without touching the game folder.
+func TestModsRepairSaysWhenThereIsNothingToDo(t *testing.T) {
+	d, client := startDaemon(t)
+	d.mods = mods.NewFake()
+
+	var health struct {
+		Findings []mods.Finding `json:"findings"`
+		Broken   int            `json:"broken"`
+	}
+	if err := client.Call("mods.health", map[string]any{"game": "skyrim_se"}, &health); err != nil {
+		t.Fatalf("mods.health: %v", err)
+	}
+	if health.Broken != 0 || len(health.Findings) == 0 {
+		t.Fatalf("health = %+v", health)
+	}
+
+	var repair struct {
+		Job    string `json:"job"`
+		Detail string `json:"detail"`
+	}
+	if err := client.Call("mods.repair", map[string]any{"game": "skyrim_se"}, &repair); err != nil {
+		t.Fatalf("mods.repair: %v", err)
+	}
+	if repair.Job != "" {
+		t.Fatalf("a clean profile should not start a deploy job: %+v", repair)
+	}
+	if !strings.Contains(repair.Detail, "redeploy") {
+		t.Fatalf("detail = %q", repair.Detail)
 	}
 }

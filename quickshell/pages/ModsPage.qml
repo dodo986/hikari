@@ -652,6 +652,12 @@ PageBase {
                     }
                     Btn {
                         compact: true
+                        text: I18n.tr("Repair mods")
+                        armed: !Daemon.modsHealthBusy && !Daemon.modsBusy
+                        onAct: Daemon.repairMods(page.game.id, page.profileFor(page.game))
+                    }
+                    Btn {
+                        compact: true
                         text: I18n.tr("Check requirements")
                         armed: !Daemon.modsMissingBusy
                         onAct: Daemon.checkRequirements(page.game.id, page.profileFor(page.game))
@@ -659,6 +665,39 @@ PageBase {
                     RefreshButton {
                         armed: !Daemon.modsBusy
                         onAct: Daemon.loadModsInstalled(page.game.id, page.profileFor(page.game))
+                    }
+                }
+
+                // What the health check found, newest run only.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Tokens.s1
+                    visible: Daemon.modsHealthBusy || Daemon.modsHealth !== null
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: Daemon.modsHealthBusy
+                              ? I18n.tr("Checking that every mod loader is really in the game folder…")
+                              : ""
+                        visible: text !== ""
+                        color: Tokens.inkFaint
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                    }
+
+                    Repeater {
+                        model: (Daemon.modsHealth || []).filter(function (f) {
+                            return f.severity !== "info";
+                        })
+                        Text {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            text: modelData.detail + (modelData.mod ? "  ·  " + modelData.mod : "")
+                            color: modelData.severity === "error" ? Tokens.alert : Tokens.inkFaint
+                            font.family: Tokens.ui
+                            font.pixelSize: Tokens.fSmall
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
 

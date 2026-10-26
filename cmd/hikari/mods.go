@@ -81,6 +81,10 @@ func modsCmd(args []string) error {
 		return modsRemoveCmd(args[1:])
 	case "toggle":
 		return modsToggleCmd(args[1:])
+	case "health":
+		return modsHealthCmd(args[1:])
+	case "repair":
+		return modsRepairCmd(args[1:])
 	case "missing":
 		return modsMissingCmd(args[1:])
 	case "overrides":
@@ -249,6 +253,84 @@ func modsMissingCmd(args []string) error {
 		}
 	}
 	return nil
+}
+
+// modsHealthCmd reports what would stop these mods from loading.
+func modsHealthCmd(args []string) error {
+	fs := flag.NewFlagSet("mods health", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	network := fs.Bool("network", false, "also ask Nexus about missing requirements")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods health <game> [--profile P] [--network]")
+	}
+	var out struct {
+		Findings []mods.Finding `json:"findings"`
+		Broken   int            `json:"broken"`
+	}
+	params := map[string]any{"game": pos[0], "profile": *profile, "network": *network}
+	if err := dial(c).Call("mods.health", params, &out); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(out)
+	}
+	printFindings(out.Findings)
+	if out.Broken == 0 {
+		fmt.Println("nothing is stopping these mods from loading")
+	}
+	return nil
+}
+
+// modsRepairCmd redeploys only when the check says a redeploy is the fix.
+func modsRepairCmd(args []string) error {
+	fs := flag.NewFlagSet("mods repair", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods repair <game> [--profile P]")
+	}
+	params := map[string]any{"game": pos[0], "profile": *profile}
+	// Look first: a redeploy only helps some findings.
+	var health struct {
+		Findings []mods.Finding `json:"findings"`
+	}
+	if err := dial(c).Call("mods.health", params, &health); err != nil {
+		return err
+	}
+	if !mods.Fixable(health.Findings) {
+		printFindings(health.Findings)
+		fmt.Println("nothing to repair: no redeploy would change these")
+		return nil
+	}
+	if !c.json {
+		printFindings(health.Findings)
+		fmt.Println("redeploying to put the missing files back")
+	}
+	return runModsJob(c, "mods.repair", "repaired", params)
+}
+
+func printFindings(findings []mods.Finding) {
+	for _, f := range findings {
+		where := f.File
+		if f.Mod != "" && where != "" {
+			where = f.Mod + ": " + where
+		} else if where == "" {
+			where = f.Mod
+		}
+		if where != "" {
+			where = " (" + where + ")"
+		}
+		fmt.Printf("%-7s %s%s\n", f.Severity, f.Detail, where)
+	}
 }
 
 // modsOverridesCmd prints the Wine DLL overrides a game's mods need.

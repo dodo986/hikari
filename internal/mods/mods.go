@@ -147,6 +147,37 @@ func (s Sink) authURL(url string) {
 	}
 }
 
+// Finding is one thing the mod health check saw; Fixable means a redeploy heals it.
+type Finding struct {
+	ID       string `json:"id"`
+	Severity string `json:"severity"`
+	Mod      string `json:"mod,omitempty"`
+	File     string `json:"file,omitempty"`
+	Detail   string `json:"detail"`
+	Fixable  bool   `json:"fixable"`
+}
+
+// Broken counts the findings that mean no mod can be loading.
+func Broken(findings []Finding) int {
+	n := 0
+	for _, f := range findings {
+		if f.Severity == "error" {
+			n++
+		}
+	}
+	return n
+}
+
+// Fixable reports whether a redeploy would clear any finding.
+func Fixable(findings []Finding) bool {
+	for _, f := range findings {
+		if f.Fixable {
+			return true
+		}
+	}
+	return false
+}
+
 // Requirement is one Nexus-listed mod another mod needs.
 type Requirement struct {
 	ModID    int    `json:"mod_id"`
@@ -190,5 +221,6 @@ type Service interface {
 	Remove(ctx context.Context, game, profile, name string, sink Sink) error
 	Missing(ctx context.Context, game, profile string) ([]Missing, error)
 	Overrides(ctx context.Context, game string) (map[string]string, error)
+	Health(ctx context.Context, game, profile string, network bool) ([]Finding, error)
 	Installed(ctx context.Context, game, profile string) (Installed, error)
 }

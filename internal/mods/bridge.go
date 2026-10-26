@@ -522,6 +522,27 @@ func (b *Bridge) Overrides(ctx context.Context, game string) (map[string]string,
 	return res.Overrides, nil
 }
 
+// Health asks the backend which loader files are missing or never ran.
+func (b *Bridge) Health(ctx context.Context, game, profile string, network bool) ([]Finding, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	args := gameArgs(game, profile)
+	if network {
+		args = append(args, "--network")
+	}
+	out, err := b.run(probeCtx, "health", args, Sink{})
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Findings []Finding `json:"findings"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable health report"}
+	}
+	return res.Findings, nil
+}
+
 // Downloads reports the archive of a browsed file that already finished
 // downloading in the browser, so a free account can install it without
 // copying a link around.

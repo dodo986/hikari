@@ -9,6 +9,13 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- **Repair mods** in the Installed tab, and `hikari mods health <game>` /
+  `hikari mods repair <game>`: the launcher now checks the ground truth that
+  decides whether mods load at all — are the loader DLLs actually in the game
+  folder, has each loader written a log, does the prefix have the overrides the
+  mods need — and redeploys only when a redeploy is the fix. It catches the two
+  failures that look like "my mods do nothing": a half-finished deploy and an
+  override Wine never got.
 - Launching a modded game now sets the Wine DLL overrides those mods need
   (`WINEDLLOVERRIDES`, from Amethyst's per-game table), merged after whatever
   the game's settings already ask for. Proxy loaders such as RED4ext's

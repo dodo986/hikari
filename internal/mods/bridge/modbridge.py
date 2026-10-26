@@ -531,6 +531,140 @@ def cmd_overrides(opts: dict) -> dict:
     return {"overrides": {str(k): str(v) for k, v in table.items()}}
 
 
+def _loader_files(mod_dir, staging):
+    """A mod's Wine-side loaders: the files that decide whether it loads."""
+    out = []
+    for sub in ("bin", "red4ext", "engine", "r6", "mods"):
+        root = mod_dir / sub
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file() and path.suffix.lower() in (".dll", ".asi", ".exe"):
+                out.append(path.relative_to(mod_dir).as_posix())
+    return out
+
+
+def _newest_log(root):
+    """The newest log under a loader folder, so "did it even run" has an answer."""
+    newest, when = "", 0.0
+    if not root.is_dir():
+        return newest, when
+    for path in root.rglob("*.log"):
+        try:
+            stamp = path.stat().st_mtime
+        except OSError:
+            continue
+        if stamp > when:
+            newest, when = path.as_posix(), stamp
+    return newest, when
+
+
+def cmd_health(opts: dict) -> dict:
+    """What silently stops mods from loading, and whether a redeploy heals it."""
+    game = _require(_bootstrap(), opts.get("game", ""))
+    _name, profile_dir = _profile(game, opts.get("profile", ""))
+    staging = pathlib.Path(game.get_effective_mod_staging_path())
+    root = pathlib.Path(game.get_game_path() or "")
+    path, entries, _write = _modlist(profile_dir)
+    findings = []
+    enabled = [e for e in entries if e.enabled and not e.is_separator]
+
+    for entry in entries:
+        if entry.is_separator:
+            continue
+        if not (staging / entry.name).is_dir():
+            findings.append({
+                "id": "mod-folder-missing", "severity": "error",
+                "mod": entry.name, "file": "", "fixable": False,
+                "detail": "the modlist row has no folder in the staging root, "
+                          "so nothing can be deployed for it",
+            })
+
+    deployed = 0
+    for entry in enabled:
+        mod_dir = staging / entry.name
+        if not mod_dir.is_dir():
+            continue
+        for rel in _loader_files(mod_dir, staging):
+            deployed += 1
+            if not (root / rel).is_file():
+                findings.append({
+                    "id": "loader-not-deployed", "severity": "error",
+                    "mod": entry.name, "file": rel, "fixable": True,
+                    "detail": "this file is what makes the mod load and it is "
+                              "missing from the game folder; the mod is running "
+                              "as if it were not installed",
+                })
+
+    for name, sub in (("CET", "bin/x64/plugins/cyber_engine_tweaks"),
+                      ("RED4ext", "red4ext")):
+        folder = root / sub
+        if not folder.is_dir():
+            continue
+        log, when = _newest_log(folder)
+        if not log:
+            findings.append({
+                "id": "loader-not-run", "severity": "warning", "mod": name,
+                "file": sub, "fixable": False,
+                "detail": f"{name} is installed but has never written a log, so "
+                          "it has not loaded yet — launch the game once",
+            })
+        else:
+            findings.append({
+                "id": "loader-ok", "severity": "info", "mod": name,
+                "file": log, "fixable": False,
+                "detail": "last log " + _iso(when, ""),
+            })
+
+    overrides = getattr(game, "wine_dll_overrides", None) or {}
+    if overrides:
+        try:
+            from Utils.wine.dll_config import read_prefix_wine_dll_overrides
+            prefix = pathlib.Path(game.get_prefix_path()) if game.get_prefix_path() else None
+            present = {k.lower() for k in read_prefix_wine_dll_overrides(prefix)}
+        except Exception as err:  # a missing prefix is not a mod problem
+            log(f"wine prefix not readable: {err}")
+            present = set()
+        missing = [dll for dll in overrides if dll.lower() not in present]
+        if missing:
+            findings.append({
+                "id": "overrides-missing", "severity": "warning", "mod": "",
+                "file": "", "fixable": True,
+                "detail": "the Wine prefix has no override for "
+                          + ", ".join(sorted(missing))
+                          + "; Hikari still sets them at launch",
+            })
+
+    if deployed == 0 and enabled:
+        findings.append({
+            "id": "nothing-deployed", "severity": "error", "mod": "",
+            "file": "", "fixable": True,
+            "detail": "not one loader file from this profile is in the game "
+                      "folder — the profile was never deployed",
+        })
+
+    if opts.get("network"):
+        try:
+            api, _mode = _nexus_api()
+            from Nexus.nexus_requirements import check_missing_requirements
+            _key, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+            for item in check_missing_requirements(api, staging, domain, progress_cb=log):
+                findings.append({
+                    "id": "requirement-missing", "severity": "warning",
+                    "mod": item.mod_name, "file": "", "fixable": False,
+                    "detail": "needs " + ", ".join(
+                        f"{r.mod_name} [mod {r.mod_id}]" for r in item.missing),
+                })
+        except Exception as err:
+            findings.append({
+                "id": "requirements-unknown", "severity": "info", "mod": "",
+                "file": "", "fixable": False,
+                "detail": f"could not ask Nexus about requirements: {err}",
+            })
+
+    return {"findings": findings}
+
+
 def cmd_missing(opts: dict) -> dict:
     """Nexus-listed requirements that the installed mods do not satisfy."""
     game = _require(_bootstrap(), opts.get("game", ""))
@@ -679,6 +813,7 @@ COMMANDS = {
     "toggle": cmd_toggle,
     "remove": cmd_remove,
     "missing": cmd_missing,
+    "health": cmd_health,
     "overrides": cmd_overrides,
 }
 

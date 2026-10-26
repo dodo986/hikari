@@ -194,6 +194,63 @@ func (d *daemon) registerMods(srv *api.Server) {
 			return "", d.mods.Remove(ctx, p.Game, p.Profile, p.Name, sink)
 		})
 	})
+	srv.Register("mods.health", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+			Network bool   `json:"network"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?, network?}")
+		}
+		load()
+		findings, err := d.mods.Health(c, p.Game, p.Profile, p.Network)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"findings": findings, "broken": mods.Broken(findings)}, nil
+	})
+	// Repair only redeploys when the health check says that is the fix.
+	srv.Register("mods.repair", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
+		}
+		load()
+		findings, err := d.mods.Health(c, p.Game, p.Profile, false)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		if !mods.Fixable(findings) {
+			return map[string]any{"job": "", "findings": findings,
+				"detail": "nothing a redeploy would fix"}, nil
+		}
+		res, err := d.startModsJob(c, srv, p.Game, "repairing",
+			func(ctx context.Context, sink mods.Sink) (string, error) {
+				if err := d.mods.Deploy(ctx, p.Game, p.Profile, sink); err != nil {
+					return "", err
+				}
+				after, err := d.mods.Health(ctx, p.Game, p.Profile, false)
+				if err != nil {
+					return "", err
+				}
+				if left := mods.Broken(after); left > 0 {
+					sink.Log(fmt.Sprintf("deploy finished, %d problem(s) still need a person", left))
+					return "", nil
+				}
+				sink.Log("deploy finished, every mod loader is in place")
+				return "", nil
+			})
+		if err != nil {
+			return nil, err
+		}
+		out := res.(map[string]any)
+		out["findings"] = findings
+		return out, nil
+	})
 	srv.Register("mods.overrides", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Game string `json:"game"`
