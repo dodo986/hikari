@@ -226,3 +226,72 @@ func TestBridgeRunnerIsOptional(t *testing.T) {
 		t.Fatal("New did not keep the supplied runner")
 	}
 }
+
+func TestAsSourceDirAcceptsTheCheckoutRoot(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "cli.py"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := asSourceDir(root); got != src {
+		t.Fatalf("asSourceDir(%q) = %q, want %q", root, got, src)
+	}
+	if got := asSourceDir(src); got != src {
+		t.Fatalf("asSourceDir(%q) = %q, want it unchanged", src, got)
+	}
+	if got := asSourceDir(filepath.Join(root, "nothing")); got != filepath.Join(root, "nothing") {
+		t.Fatalf("asSourceDir kept neither form: %q", got)
+	}
+}
+
+func TestDiscoverSourceFindsACheckoutUnderHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("HIKARI_MODS_SOURCE", "")
+	src := filepath.Join(home, "games", "Amethyst-Mod-Manager", "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "cli.py"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := discoverSource(); got != src {
+		t.Fatalf("discoverSource() = %q, want %q", got, src)
+	}
+}
+
+func TestSetupWithoutASourceIsAConfigError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("HIKARI_MODS_SOURCE", "")
+	bridge := New(Options{Root: t.TempDir(), Python: "/bin/sh"})
+	err := bridge.Setup(context.Background(), Sink{})
+	var bridgeErr *Error
+	if !errors.As(err, &bridgeErr) || bridgeErr.Kind != KindConfig {
+		t.Fatalf("Setup error = %v, want a config error", err)
+	}
+	if !strings.Contains(bridgeErr.Message, "source_dir") {
+		t.Fatalf("Setup error %q does not point at source_dir", bridgeErr.Message)
+	}
+}
+
+func TestNexusKeyTravelsInTheEnvironment(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo "key=$HIKARI_NEXUS_KEY"
+echo "argv=$*"
+echo '{"t":"result","data":{"stored":true}}'
+`)
+	stored, err := bridge.Nexus(context.Background(), "set", "  secret-key  ")
+	if err != nil {
+		t.Fatalf("Nexus(set) returned %v", err)
+	}
+	if !stored {
+		t.Fatal("Nexus(set) reported no stored key")
+	}
+	if _, err := bridge.Nexus(context.Background(), "set", " "); err == nil {
+		t.Fatal("Nexus(set) accepted an empty key")
+	}
+}

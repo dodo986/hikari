@@ -25,7 +25,7 @@ REQUIRED_MODULES = (
     "xxhash", "yaml", "PIL",
 )
 
-FLAGS = {"--game", "--profile", "--archive", "--url", "--name"}
+FLAGS = {"--game", "--profile", "--archive", "--url", "--name", "--action"}
 
 
 class BridgeError(Exception):
@@ -64,7 +64,7 @@ def _one_line(exc: BaseException) -> str:
 def _parse(argv: list) -> tuple:
     if not argv:
         raise BridgeError("usage", "usage: modbridge.py <doctor|games|deploy|"
-                                   "restore|install> [--flag value]")
+                                   "restore|install|nexus> [--flag value]")
     command, rest = argv[0], argv[1:]
     opts: dict = {}
     index = 0
@@ -79,7 +79,7 @@ def _parse(argv: list) -> tuple:
     return command, opts
 
 
-def _bootstrap() -> dict:
+def _setup() -> None:
     if not SRC or not os.path.isfile(os.path.join(SRC, "cli.py")):
         raise BridgeError(
             "config",
@@ -98,6 +98,10 @@ def _bootstrap() -> dict:
             ", ".join(missing) + "); run `hikari mods setup`")
     import app_bootstrap
     app_bootstrap.setup_environment(capture_diagnostics=False)
+
+
+def _bootstrap() -> dict:
+    _setup()
     from Utils.games.discovery import discover_games
     return discover_games()
 
@@ -261,12 +265,32 @@ def cmd_install(opts: dict) -> dict:
     return {"game": game.name, "profile": name, "mod": mod, "archive": archive}
 
 
+def cmd_nexus(opts: dict) -> dict:
+    _setup()
+    from Nexus.nexus_api import clear_api_key, load_api_key, save_api_key
+    action = opts.get("action", "status")
+    if action == "set":
+        # The key arrives in the environment so it never shows up in ps.
+        key = os.environ.get("HIKARI_NEXUS_KEY", "").strip()
+        if not key:
+            raise BridgeError("usage", "nexus set needs an API key")
+        save_api_key(key)
+        log("Nexus API key stored where Amethyst keeps it.")
+    elif action == "clear":
+        clear_api_key()
+        log("Nexus API key removed.")
+    elif action != "status":
+        raise BridgeError("usage", f"unknown nexus action '{action}'")
+    return {"action": action, "stored": bool(load_api_key())}
+
+
 COMMANDS = {
     "doctor": cmd_doctor,
     "games": cmd_games,
     "deploy": cmd_deploy,
     "restore": cmd_restore,
     "install": cmd_install,
+    "nexus": cmd_nexus,
 }
 
 

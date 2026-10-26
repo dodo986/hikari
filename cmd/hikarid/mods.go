@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"hikari/internal/api"
+	"hikari/internal/config"
 	"hikari/internal/library"
 	"hikari/internal/mods"
 )
@@ -20,11 +22,39 @@ type modsGameView struct {
 	GameID string `json:"game_id,omitempty"`
 }
 
+// refreshModsSettings applies a settings.toml edit without a daemon restart.
+func (d *daemon) refreshModsSettings() {
+	info, err := os.Stat(d.paths.Settings)
+	if err != nil {
+		return
+	}
+	d.modsMu.Lock()
+	stale := !info.ModTime().Equal(d.modsSettingsAt)
+	d.modsMu.Unlock()
+	if !stale {
+		return
+	}
+	settings, err := config.LoadSettings(d.paths)
+	if err != nil {
+		d.log.Warn("mods: settings.toml could not be re-read", "err", err)
+		return
+	}
+	if bridge, ok := d.mods.(*mods.Bridge); ok {
+		bridge.Configure(settings.Mods.SourceDir, settings.Mods.Python, settings.Mods.Filegraph)
+	}
+	d.modsMu.Lock()
+	d.modsSettingsAt = info.ModTime()
+	d.modsMu.Unlock()
+}
+
 func (d *daemon) registerMods(srv *api.Server) {
+	load := func() { d.refreshModsSettings() }
 	srv.Register("mods.status", func(c context.Context, params json.RawMessage) (any, error) {
+		load()
 		return d.mods.Status(c), nil
 	})
 	srv.Register("mods.games", func(c context.Context, params json.RawMessage) (any, error) {
+		load()
 		games, err := d.mods.Games(c)
 		if err != nil {
 			return nil, modsError(err)
@@ -32,6 +62,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		return map[string]any{"games": d.annotateModsGames(c, games)}, nil
 	})
 	srv.Register("mods.setup", func(c context.Context, params json.RawMessage) (any, error) {
+		load()
 		return d.startModsJob(c, srv, "", "setting up", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Setup(ctx, sink)
 		})
@@ -44,6 +75,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
 		}
+		load()
 		return d.startModsJob(c, srv, p.Game, "deploying", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Deploy(ctx, p.Game, p.Profile, sink)
 		})
@@ -55,9 +87,23 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game}")
 		}
+		load()
 		return d.startModsJob(c, srv, p.Game, "restoring", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Restore(ctx, p.Game, sink)
 		})
+	})
+	srv.Register("mods.nexus", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Action string `json:"action"`
+			Key    string `json:"key"`
+		}
+		_ = json.Unmarshal(params, &p)
+		load()
+		stored, err := d.mods.Nexus(c, p.Action, p.Key)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"stored": stored}, nil
 	})
 	srv.Register("mods.cancel", func(c context.Context, params json.RawMessage) (any, error) {
 		d.modsMu.Lock()
@@ -84,6 +130,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if p.URL != "" {
 			phase = "downloading"
 		}
+		load()
 		return d.startModsJob(c, srv, p.Game, phase, func(ctx context.Context, sink mods.Sink) (string, error) {
 			return d.mods.Install(ctx, mods.InstallRequest{
 				Game: p.Game, Profile: p.Profile, Archive: p.Archive, URL: p.URL, Name: p.Name,

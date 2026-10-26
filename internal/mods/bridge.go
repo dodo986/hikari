@@ -30,6 +30,14 @@ var sourceCandidates = []string{
 	"/opt/amethyst-mod-manager/src",
 }
 
+// A source checkout is usually somewhere under $HOME, at any depth.
+var sourcePatterns = []string{
+	"Amethyst-Mod-Manager", "*/Amethyst-Mod-Manager", "*/*/Amethyst-Mod-Manager",
+	"amethyst-mod-manager", "*/amethyst-mod-manager", "*/*/amethyst-mod-manager",
+}
+
+var filegraphNames = []string{"amethyst_filegraph.abi3.so", "amethyst_filegraph.so"}
+
 const (
 	probeTimeout = 90 * time.Second
 	bridgeDir    = "bridge"
@@ -99,19 +107,16 @@ func (b *Bridge) prepare() {
 		b.source = os.Getenv("HIKARI_MODS_SOURCE")
 	}
 	if b.source == "" {
-		for _, candidate := range sourceCandidates {
-			if isFile(filepath.Join(candidate, "cli.py")) {
-				b.source = candidate
-				break
-			}
-		}
+		b.source = discoverSource()
+	} else {
+		b.source = asSourceDir(b.source)
 	}
 	if b.filegraph == "" {
-		for _, dir := range []string{b.root, b.source} {
+		for _, dir := range append([]string{b.root, b.source}, filegraphDirs(b.source)...) {
 			if dir == "" {
 				continue
 			}
-			for _, name := range []string{"amethyst_filegraph.abi3.so", "amethyst_filegraph.so"} {
+			for _, name := range filegraphNames {
 				if path := filepath.Join(dir, name); isFile(path) {
 					b.filegraph = path
 					break
@@ -127,7 +132,7 @@ func (b *Bridge) prepare() {
 	case b.python == "":
 		b.blocked = "python3 was not found; install Python 3.11 or newer and run `hikari mods setup`"
 	case b.source == "":
-		b.blocked = "Amethyst was not found; set [mods] source_dir in settings.toml to its src directory"
+		b.blocked = "Amethyst was not found; set [mods] source_dir in ~/.config/hikari/settings.toml to its src directory"
 	default:
 		if err := b.materialize(); err != nil {
 			b.blocked = fmt.Sprintf("cannot write the mods bridge into %s: %v", b.root, err)
@@ -138,9 +143,60 @@ func (b *Bridge) prepare() {
 	b.status = nil
 }
 
+// Configure re-reads the mods settings; the daemon calls it when settings.toml changes.
+func (b *Bridge) Configure(source, python, filegraph string) {
+	b.mu.Lock()
+	b.source, b.python, b.filegraph, b.status = source, python, filegraph, nil
+	b.mu.Unlock()
+	b.prepare()
+}
+
+// asSourceDir takes either Amethyst's src directory or its checkout root.
+func asSourceDir(dir string) string {
+	if dir == "" || isFile(filepath.Join(dir, "cli.py")) {
+		return dir
+	}
+	if src := filepath.Join(dir, "src"); isFile(filepath.Join(src, "cli.py")) {
+		return src
+	}
+	return dir
+}
+
+func discoverSource() string {
+	for _, candidate := range sourceCandidates {
+		if isFile(filepath.Join(candidate, "cli.py")) {
+			return candidate
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	for _, pattern := range sourcePatterns {
+		matches, err := filepath.Glob(filepath.Join(home, pattern))
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			if src := asSourceDir(match); isFile(filepath.Join(src, "cli.py")) {
+				return src
+			}
+		}
+	}
+	return ""
+}
+
+func filegraphDirs(source string) []string {
+	home, _ := os.UserHomeDir()
+	return []string{
+		filepath.Join(home, ".local", "lib", "amethyst", "release"),
+		filepath.Join(filepath.Dir(source), "native", "amethyst_filegraph", "target", "release"),
+	}
+}
+
 func (b *Bridge) materialize() error {
 	if !isFile(filepath.Join(b.source, "cli.py")) {
-		return fmt.Errorf("%s does not look like Amethyst's src directory", b.source)
+		return fmt.Errorf("%q is not Amethyst's src directory (cli.py is missing)", b.source)
 	}
 	dir := filepath.Join(b.root, bridgeDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -276,6 +332,33 @@ func (b *Bridge) Install(ctx context.Context, req InstallRequest, sink Sink) (st
 	return out.Mod, nil
 }
 
+// Nexus reads, stores or clears the API key in Amethyst's own keyring entry.
+func (b *Bridge) Nexus(ctx context.Context, action, key string) (bool, error) {
+	if action == "" {
+		action = "status"
+	}
+	var env map[string]string
+	if action == "set" {
+		if strings.TrimSpace(key) == "" {
+			return false, &Error{Kind: KindUsage, Message: "an API key is needed to store one"}
+		}
+		env = map[string]string{"HIKARI_NEXUS_KEY": strings.TrimSpace(key)}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	raw, err := b.runWith(probeCtx, "nexus", []string{"--action", action}, Sink{}, env)
+	if err != nil {
+		return false, err
+	}
+	var out struct {
+		Stored bool `json:"stored"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return false, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable result"}
+	}
+	return out.Stored, nil
+}
+
 func gameArgs(game, profile string) []string {
 	args := []string{"--game", game}
 	if profile != "" {
@@ -286,6 +369,10 @@ func gameArgs(game, profile string) []string {
 
 // Setup gives the backend its own Python environment, so the system one stays untouched.
 func (b *Bridge) Setup(ctx context.Context, sink Sink) error {
+	b.prepare()
+	if blocked := b.snapshot().blocked; blocked != "" {
+		return &Error{Kind: KindConfig, Message: blocked}
+	}
 	venv := filepath.Join(b.root, "venv")
 	python := filepath.Join(venv, "bin", "python")
 	base := b.snapshot().python
@@ -330,6 +417,10 @@ func (b *Bridge) Setup(ctx context.Context, sink Sink) error {
 }
 
 func (b *Bridge) run(ctx context.Context, command string, args []string, sink Sink) (json.RawMessage, error) {
+	return b.runWith(ctx, command, args, sink, nil)
+}
+
+func (b *Bridge) runWith(ctx context.Context, command string, args []string, sink Sink, extra map[string]string) (json.RawMessage, error) {
 	cfg := b.snapshot()
 	if cfg.blocked != "" {
 		return nil, &Error{Kind: KindUnavailable, Message: cfg.blocked}
@@ -344,6 +435,9 @@ func (b *Bridge) run(ctx context.Context, command string, args []string, sink Si
 	}
 	if os.Getenv("HIKARI_MODS_DOWNLOADS") == "" {
 		env["HIKARI_MODS_DOWNLOADS"] = filepath.Join(b.root, "downloads")
+	}
+	for name, value := range extra {
+		env[name] = value
 	}
 
 	var (

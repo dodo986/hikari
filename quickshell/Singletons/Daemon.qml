@@ -266,6 +266,7 @@ Singleton {
             rpc.modsProgress = ev;
             break;
         case "mods.log":
+            rpc.modsBusy = true;
             var tail = rpc.modsLog.slice(-7);
             tail.push(ev.line || "");
             rpc.modsLog = tail;

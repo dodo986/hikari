@@ -90,4 +90,5 @@ type Service interface {
 	Deploy(ctx context.Context, game, profile string, sink Sink) error
 	Restore(ctx context.Context, game string, sink Sink) error
 	Install(ctx context.Context, req InstallRequest, sink Sink) (string, error)
+	Nexus(ctx context.Context, action, key string) (bool, error)
 }

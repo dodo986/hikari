@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -24,6 +26,8 @@ func modsCmd(args []string) error {
 		return modsJobCmd("mods.setup", "setup", nil, args[1:], func(*flag.FlagSet, []string) (map[string]any, error) {
 			return map[string]any{}, nil
 		})
+	case "nexus":
+		return modsNexusCmd(args[1:])
 	case "cancel":
 		fs := flag.NewFlagSet("mods cancel", flag.ExitOnError)
 		c := addCommon(fs)
@@ -65,6 +69,67 @@ func modsCmd(args []string) error {
 		})
 	}
 	return fmt.Errorf("unknown mods command %q", args[0])
+}
+
+func modsNexusCmd(args []string) error {
+	action := "status"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		action = args[0]
+		args = args[1:]
+	}
+	fs := flag.NewFlagSet("mods nexus", flag.ExitOnError)
+	c := addCommon(fs)
+	key := fs.String("key", "", "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	params := map[string]any{"action": action}
+	switch action {
+	case "status":
+	case "set":
+		value := *key
+		if value == "-" || value == "" {
+			line, err := readSecretLine()
+			if err != nil {
+				return err
+			}
+			value = line
+		}
+		params["key"] = value
+	case "clear":
+	default:
+		return fmt.Errorf("unknown nexus action %q (use status, set or clear)", action)
+	}
+
+	var res struct {
+		Stored bool `json:"stored"`
+	}
+	if err := dial(c).Call("mods.nexus", params, &res); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(res)
+	}
+	if res.Stored {
+		fmt.Println("Nexus API key: stored, where Amethyst keeps it")
+	} else {
+		fmt.Println("Nexus API key: not set — add one at nexusmods.com (Account ▸ API) and run `hikari mods nexus set`")
+	}
+	return nil
+}
+
+func readSecretLine() (string, error) {
+	fmt.Fprint(os.Stderr, "Nexus API key: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && line == "" {
+		return "", errors.New("no API key was read from stdin")
+	}
+	value := strings.TrimSpace(line)
+	if value == "" {
+		return "", errors.New("an empty API key changes nothing")
+	}
+	return value, nil
 }
 
 func modsStatusCmd(args []string) error {

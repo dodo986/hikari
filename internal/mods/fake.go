@@ -105,6 +105,8 @@ func (f *Fake) Install(ctx context.Context, req InstallRequest, sink Sink) (stri
 	return name, nil
 }
 
+func (f *Fake) Nexus(context.Context, string, string) (bool, error) { return false, nil }
+
 func (f *Fake) find(id string) *Game {
 	for index := range f.games {
 		if f.games[index].ID == id {

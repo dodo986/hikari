@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -217,5 +219,38 @@ func TestMatchLibraryGame(t *testing.T) {
 				t.Fatalf("matchLibraryGame(%+v) = %s, want %s", tc.target, game.Key(), tc.want)
 			}
 		})
+	}
+}
+
+func TestModsSettingsApplyWithoutARestart(t *testing.T) {
+	d, client := startDaemon(t)
+	d.mods = mods.New(mods.Options{Root: t.TempDir()})
+
+	var before mods.Status
+	if err := client.Call("mods.status", nil, &before); err != nil {
+		t.Fatalf("mods.status: %v", err)
+	}
+	if before.Available {
+		t.Fatalf("status before setup = %+v, want unavailable", before)
+	}
+
+	source := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "cli.py"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	settings := "[mods]\nsource_dir = \"" + source + "\"\n"
+	if err := os.WriteFile(d.paths.Settings, []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var after mods.Status
+	if err := client.Call("mods.status", nil, &after); err != nil {
+		t.Fatalf("mods.status after the edit: %v", err)
+	}
+	if after.Source != source {
+		t.Fatalf("status source = %q after editing settings.toml, want %q", after.Source, source)
 	}
 }

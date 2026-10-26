@@ -58,6 +58,7 @@ Usage:
   hikari mods install <game> --archive PATH | --url nxm://…  [--profile P] [--name N]
                                          install one mod archive (FOMOD: defaults)
   hikari mods cancel                     stop the running deploy/install
+  hikari mods nexus [status|set|clear]   the Nexus API key Amethyst also uses
   hikari shutdown                        stop the daemon
 
 Every command also accepts --json and --socket PATH.

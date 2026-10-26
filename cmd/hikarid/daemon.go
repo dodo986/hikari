@@ -70,9 +70,10 @@ type daemon struct {
 	jobsMu sync.Mutex
 	jobs   map[string]*installJob
 
-	modsMu     sync.Mutex
-	modsJob    string
-	modsCancel context.CancelFunc
+	modsMu         sync.Mutex
+	modsJob        string
+	modsCancel     context.CancelFunc
+	modsSettingsAt time.Time
 }
 
 type installJob struct {
