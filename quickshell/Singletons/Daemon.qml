@@ -21,6 +21,11 @@ Singleton {
     property string updatePhase: ""
     property real updatePercent: -1
     property var installs: ({})
+    property var modsStatus: null
+    property var modsGames: []
+    property var modsProgress: null
+    property var modsLog: []
+    property bool modsBusy: false
 
     signal gameState(var ev)
     signal updateProgress(var ev)
@@ -29,6 +34,7 @@ Singleton {
     signal authChanged(var ev)
     signal optiProgress(var ev)
     signal wineProgress(var ev)
+    signal modsChanged(var ev)
 
     function gameKey(store, id) { return store + "/" + id; }
 
@@ -79,6 +85,30 @@ Singleton {
     function refreshAuth() { call("auth.status", {}, r => rpc.authStores = (r && r.stores) || {}); }
     function refreshEngines() { call("engine.versions", {}, r => rpc.engines = (r && r.engines) || {}); }
     function refreshStatus() { call("daemon.status", null, r => rpc.daemonStatus = r); }
+    function refreshMods() {
+        call("mods.status", null, r => rpc.modsStatus = r);
+        call("mods.games", null, r => rpc.modsGames = (r && r.games) || []);
+    }
+
+    function modsJob(method, params) {
+        if (modsBusy) return;
+        modsBusy = true;
+        modsLog = [];
+        modsProgress = null;
+        call(method, params, (r, e) => {
+            if (e) {
+                modsBusy = false;
+                modsChanged({ ok: false, error: e.message });
+            }
+        });
+    }
+    function deployMods(game, profile) { modsJob("mods.deploy", { game: game, profile: profile || "" }); }
+    function restoreMods(game) { modsJob("mods.restore", { game: game }); }
+    function installMod(game, profile, archive) {
+        modsJob("mods.install", { game: game, profile: profile || "", archive: archive });
+    }
+    function setupMods() { modsJob("mods.setup", {}); }
+    function cancelMods() { call("mods.cancel", null, () => {}); }
     function updateText() {
         if (updateApplying) {
             var pct = updatePercent >= 0 ? "  " + Math.round(updatePercent) + "%" : "";
@@ -231,6 +261,20 @@ Singleton {
             break;
         case "wine.progress":
             wineProgress(ev);
+            break;
+        case "mods.progress":
+            rpc.modsProgress = ev;
+            break;
+        case "mods.log":
+            var tail = rpc.modsLog.slice(-7);
+            tail.push(ev.line || "");
+            rpc.modsLog = tail;
+            break;
+        case "mods.done":
+            rpc.modsBusy = false;
+            rpc.modsProgress = null;
+            rpc.modsChanged(ev);
+            if (ev.ok) rpc.refreshMods();
             break;
         }
     }
