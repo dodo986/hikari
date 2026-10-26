@@ -24,6 +24,17 @@ func modsCmd(args []string) error {
 		return modsJobCmd("mods.setup", "setup", nil, args[1:], func(*flag.FlagSet, []string) (map[string]any, error) {
 			return map[string]any{}, nil
 		})
+	case "cancel":
+		fs := flag.NewFlagSet("mods cancel", flag.ExitOnError)
+		c := addCommon(fs)
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if err := dial(c).Call("mods.cancel", nil, nil); err != nil {
+			return err
+		}
+		fmt.Println("cancel: the running job was stopped")
+		return nil
 	case "deploy":
 		return modsJobCmd("mods.deploy", "deploy", []string{"profile"}, args[1:], func(fs *flag.FlagSet, pos []string) (map[string]any, error) {
 			if len(pos) < 1 {
