@@ -48,3 +48,18 @@ func TestInstallParamsTakeOneLinkOrOneArchive(t *testing.T) {
 		t.Fatal("an install with no source was accepted")
 	}
 }
+
+func TestNxmDomain(t *testing.T) {
+	cases := map[string]string{
+		"nxm://cyberpunk2077/mods/7054/files/91915?key=a&expires=1": "cyberpunk2077",
+		"nxm://skyrimspecialedition/mods/2014/files/1234":           "skyrimspecialedition",
+		"https://www.nexusmods.com/cyberpunk2077/mods/7054":         "",
+		"nxm://":      "",
+		"nxm://nomod": "",
+	}
+	for link, want := range cases {
+		if got := nxmDomain(link); got != want {
+			t.Errorf("nxmDomain(%q) = %q, want %q", link, got, want)
+		}
+	}
+}

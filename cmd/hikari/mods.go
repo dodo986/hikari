@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -73,10 +74,141 @@ func modsCmd(args []string) error {
 			}
 			return map[string]any{"game": pos[0]}, nil
 		})
+	case "nxm":
+		return modsNxmCmd(args[1:])
+	case "scheme":
+		return modsSchemeCmd(args[1:])
 	case "install":
 		return modsJobCmd("mods.install", "install", []string{"profile", "archive", "url", "name", "mod-id", "file-id"}, args[1:], installParams)
 	}
 	return fmt.Errorf("unknown mods command %q", args[0])
+}
+
+// modsNxmCmd is what a browser runs: nxm://<domain>/mods/<id>/files/<id>?key=…
+// The domain has to become one of Amethyst's game keys before anything else.
+func modsNxmCmd(args []string) error {
+	fs := flag.NewFlagSet("mods nxm", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods nxm nxm://<game>/mods/<id>/files/<id>?key=…")
+	}
+	link := pos[0]
+	domain := nxmDomain(link)
+	if domain == "" {
+		return fmt.Errorf("%q is not an nxm:// mod link", link)
+	}
+
+	client := dial(c)
+	var games struct {
+		Games []mods.Game `json:"games"`
+	}
+	if err := client.Call("mods.games", nil, &games); err != nil {
+		return err
+	}
+	game := ""
+	for _, known := range games.Games {
+		if strings.EqualFold(known.NexusDomain, domain) {
+			game = known.ID
+			break
+		}
+	}
+	if game == "" {
+		return fmt.Errorf("Amethyst has no game handler for %q; set the game up in Amethyst first", domain)
+	}
+	params := map[string]any{"game": game, "url": link}
+	if *profile != "" {
+		params["profile"] = *profile
+	}
+	return runModsJob(c, "mods.install", "installed", params)
+}
+
+// nxmDomain pulls the game domain out of an nxm link.
+func nxmDomain(link string) string {
+	rest, ok := strings.CutPrefix(link, "nxm://")
+	if !ok {
+		return ""
+	}
+	domain, _, found := strings.Cut(rest, "/")
+	if !found || domain == "" {
+		return ""
+	}
+	return domain
+}
+
+const nxmDesktop = "hikari-nxm.desktop"
+
+// modsSchemeCmd points the desktop's nxm:// handler at this binary.
+func modsSchemeCmd(args []string) error {
+	action := "status"
+	if len(args) > 0 {
+		action = args[0]
+	}
+	switch action {
+	case "status":
+		fmt.Println("nxm:// opens: " + currentNxmHandler())
+		return nil
+	case "set":
+		binary, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("cannot find my own path: %w", err)
+		}
+		dir := filepath.Join(xdgDataHome(), "applications")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		// The launcher wrapper opens the window so the download is visible.
+		command := binary + " mods nxm %u"
+		if app := filepath.Join(filepath.Dir(binary), "hikari-app"); fileExists(app) {
+			command = app + " nxm %u"
+		}
+		entry := "[Desktop Entry]\n" +
+			"Type=Application\n" +
+			"Name=Hikari (Nexus links)\n" +
+			"Comment=Install nxm:// mod downloads with Hikari\n" +
+			"Exec=" + command + "\n" +
+			"MimeType=x-scheme-handler/nxm;\n" +
+			"Terminal=false\n" +
+			"NoDisplay=true\n" +
+			"Categories=Game;\n"
+		if err := os.WriteFile(filepath.Join(dir, nxmDesktop), []byte(entry), 0o644); err != nil {
+			return err
+		}
+		if err := exec.Command("update-desktop-database", dir).Run(); err != nil {
+			// Not fatal: some systems have no update-desktop-database.
+			fmt.Fprintln(os.Stderr, "hikari: desktop database not refreshed:", err)
+		}
+		if err := exec.Command("xdg-mime", "default", nxmDesktop, "x-scheme-handler/nxm").Run(); err != nil {
+			return fmt.Errorf("wrote %s but could not make it the default: %w", nxmDesktop, err)
+		}
+		fmt.Println("nxm:// now opens: " + currentNxmHandler())
+		return nil
+	}
+	return fmt.Errorf("usage: hikari mods scheme [status|set]")
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func currentNxmHandler() string {
+	out, err := exec.Command("xdg-mime", "query", "default", "x-scheme-handler/nxm").Output()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return "nothing registered"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func xdgDataHome() string {
+	if value := os.Getenv("XDG_DATA_HOME"); value != "" {
+		return value
+	}
+	return filepath.Join(os.Getenv("HOME"), ".local", "share")
 }
 
 func modsAccountCmd(args []string) error {
@@ -382,7 +514,11 @@ func modsJobCmd(method, label string, names []string, args []string, build func(
 	if err != nil {
 		return err
 	}
+	return runModsJob(c, method, label, params)
+}
 
+// runModsJob starts one daemon job and streams it until mods.done.
+func runModsJob(c *commonFlags, method, label string, params map[string]any) error {
 	client := dial(c)
 	var done map[string]any
 	printed := false

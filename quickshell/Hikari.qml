@@ -44,6 +44,17 @@ Item {
     function closeModGame() { app.modGame = ""; }
     function requestQuit() { Qt.quit(); }
 
+    Connections {
+        target: Daemon
+        // An nxm:// link (or any mods job started elsewhere) opens the right page.
+        function onModsJobGame(game) {
+            if (!game) return;
+            app.detail = null;
+            app.page = "mods";
+            app.modGame = game;
+        }
+    }
+
     focus: true
     Keys.onEscapePressed: event => {
         if (app.modGame) { app.closeModGame(); }

@@ -44,6 +44,7 @@ Singleton {
     signal wineProgress(var ev)
     signal modsChanged(var ev)
     signal modsAuthURL(string url)
+    signal modsJobGame(string game)
 
     function gameKey(store, id) { return store + "/" + id; }
 
@@ -149,6 +150,16 @@ Singleton {
             rpc.modsChanged({ ok: true, action: "nexus" });
             rpc.refreshModsAccount();
         });
+    }
+
+    property string _jobGameSeen: ""
+
+    // Announce the game once per job: a link from the browser should bring the
+    // window to that game's mods page instead of leaving the user to find it.
+    function noteJobGame(ev) {
+        if (!ev || !ev.job || ev.job === rpc._jobGameSeen) return;
+        rpc._jobGameSeen = ev.job;
+        if (ev.game) rpc.modsJobGame(ev.game);
     }
 
     function modsJob(method, params) {
@@ -326,9 +337,11 @@ Singleton {
             wineProgress(ev);
             break;
         case "mods.progress":
+            rpc.noteJobGame(ev);
             rpc.modsProgress = ev;
             break;
         case "mods.log":
+            rpc.noteJobGame(ev);
             rpc.modsBusy = true;
             var tail = rpc.modsLog.slice(-7);
             tail.push(ev.line || "");
