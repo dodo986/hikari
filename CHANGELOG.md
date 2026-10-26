@@ -9,6 +9,11 @@
   from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
   never keeps a second copy of it. `hikari mods setup` gives the backend its
   own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Sign in to Nexus the way Amethyst does: `hikari mods login` (or Sign in on
+  the Mods page) opens Nexus in your browser, you approve there, and the
+  tokens land in the same store Amethyst reads — one sign-in covers both
+  apps. `hikari mods logout` forgets it, and a pasted API key
+  (`hikari mods nexus set`) still works if you have one.
 - Browse Nexus from the Mods page (or `hikari mods browse`): search a game's
   mods, sort by downloads/endorsements/newest/updated, see a mod's files and
   install one — using the API key Amethyst already stores. The profile's own

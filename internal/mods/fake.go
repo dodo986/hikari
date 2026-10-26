@@ -13,6 +13,7 @@ type Fake struct {
 	mu       sync.Mutex
 	games    []Game
 	deployed map[string]string
+	signedIn bool
 }
 
 func NewFake() *Fake {
@@ -121,7 +122,27 @@ func (f *Fake) Install(ctx context.Context, req InstallRequest, sink Sink) (stri
 func (f *Fake) Nexus(context.Context, string, string) (bool, error) { return true, nil }
 
 func (f *Fake) Account(context.Context) (Account, error) {
-	return Account{Stored: true, User: "demo", Premium: true}, nil
+	if !f.signedIn {
+		return Account{}, nil
+	}
+	return Account{Stored: true, Mode: "oauth", User: "demo", Premium: true}, nil
+}
+
+// Login stands in for the browser round trip so the page can be seen signed in.
+func (f *Fake) Login(_ context.Context, sink Sink) (Account, error) {
+	sink.log("waiting for you to authorise Hikari on the Nexus page")
+	sink.authURL("https://users.nexusmods.com/oauth/authorize?client_id=amethyst&demo=1")
+	f.mu.Lock()
+	f.signedIn = true
+	f.mu.Unlock()
+	return Account{Stored: true, Mode: "oauth", User: "demo", Premium: true}, nil
+}
+
+func (f *Fake) Logout(context.Context) error {
+	f.mu.Lock()
+	f.signedIn = false
+	f.mu.Unlock()
+	return nil
 }
 
 // demoMods is the demo daemon's Nexus catalogue, so the page has something to list.
@@ -143,8 +164,11 @@ var demoMods = map[string][]Mod{
 
 func (f *Fake) Browse(_ context.Context, game, query, sort string, page int) (Browse, error) {
 	f.mu.Lock()
-	known := f.find(game)
+	known, signedIn := f.find(game), f.signedIn
 	f.mu.Unlock()
+	if !signedIn {
+		return Browse{}, &Error{Kind: KindConfig, Message: "not signed in to Nexus; run `hikari mods login`"}
+	}
 	if known == nil {
 		return Browse{}, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
 	}

@@ -43,6 +43,8 @@ const (
 	probeTimeout = 90 * time.Second
 	// nexusTimeout covers one API round trip, thumbnails excluded.
 	nexusTimeout = 45 * time.Second
+	// loginTimeout covers the user reading and approving a browser page.
+	loginTimeout = 6 * time.Minute
 	bridgeDir    = "bridge"
 )
 
@@ -381,6 +383,29 @@ func (b *Bridge) Account(ctx context.Context) (Account, error) {
 }
 
 // Browse runs one page of Nexus search against the game's own domain.
+// Login runs Amethyst's own browser login and keeps it company until it ends.
+func (b *Bridge) Login(ctx context.Context, sink Sink) (Account, error) {
+	loginCtx, cancel := context.WithTimeout(ctx, loginTimeout)
+	defer cancel()
+	raw, err := b.run(loginCtx, "login", nil, sink)
+	if err != nil {
+		return Account{}, err
+	}
+	var out Account
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Account{}, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable account"}
+	}
+	return out, nil
+}
+
+// Logout forgets the stored browser login, leaving any pasted key alone.
+func (b *Bridge) Logout(ctx context.Context) error {
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	_, err := b.run(probeCtx, "logout", nil, Sink{})
+	return err
+}
+
 func (b *Bridge) Browse(ctx context.Context, game, query, sort string, page int) (Browse, error) {
 	args := gameArgs(game, "")
 	if query != "" {
@@ -550,6 +575,8 @@ func (b *Bridge) runWith(ctx context.Context, command string, args []string, sin
 				sink.log(event.Message)
 			case "progress":
 				sink.report(Progress{Current: event.Current, Total: event.Total, Message: event.Message})
+			case "url":
+				sink.authURL(event.URL)
 			case "result":
 				mu.Lock()
 				result = event.Data
@@ -583,6 +610,7 @@ func (b *Bridge) runWith(ctx context.Context, command string, args []string, sin
 type event struct {
 	Type    string          `json:"t"`
 	Message string          `json:"m"`
+	URL     string          `json:"u"`
 	Current int             `json:"cur"`
 	Total   int             `json:"total"`
 	Kind    string          `json:"kind"`

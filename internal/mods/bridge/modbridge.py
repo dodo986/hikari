@@ -25,6 +25,8 @@ REQUIRED_MODULES = (
     "xxhash", "yaml", "PIL",
 )
 
+LOGIN_TIMEOUT = 300
+
 FLAGS = {"--game", "--profile", "--archive", "--url", "--name", "--action",
          "--query", "--sort", "--page", "--mod-id", "--file-id"}
 
@@ -157,13 +159,34 @@ def _domain(game) -> str:
 
 
 def _nexus_api():
+    """Return (api, mode): Amethyst's own OAuth session if it has one, else the stored key."""
     _setup()
+    from Nexus import nexus_oauth
     from Nexus.nexus_api import NexusAPI, load_api_key
+
+    try:
+        tokens = nexus_oauth.load_oauth_tokens()
+    except Exception as exc:
+        log(f"ignoring unreadable Nexus login: {_one_line(exc)}")
+        tokens = None
+    if tokens is not None:
+        try:
+            return NexusAPI.from_oauth(tokens), "oauth"
+        except nexus_oauth.OAuthRefreshError as exc:
+            if getattr(exc, "token_revoked", False):
+                log("the Nexus login expired; sign in again")
+                try:
+                    nexus_oauth.clear_oauth_tokens()
+                except Exception:
+                    pass
+            else:
+                log(f"could not refresh the Nexus login: {_one_line(exc)}")
+
     key = load_api_key()
     if not key:
         raise BridgeError("config",
-                          "no Nexus API key is stored; run `hikari mods nexus set`")
-    return NexusAPI(key)
+                          "not signed in to Nexus; run `hikari mods login`")
+    return NexusAPI(key), "key"
 
 
 def _nexus_game(games: dict, key: str):
@@ -294,7 +317,7 @@ BROWSE_COUNT = 20
 
 
 def cmd_search(opts: dict) -> dict:
-    api = _nexus_api()
+    api, _ = _nexus_api()
     game, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
     page = max(0, int(opts.get("page", "0") or 0))
     sort = SORTS.get(opts.get("sort", ""), "downloads")
@@ -314,7 +337,7 @@ def cmd_search(opts: dict) -> dict:
 
 
 def cmd_files(opts: dict) -> dict:
-    api = _nexus_api()
+    api, _ = _nexus_api()
     game, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
     try:
         mod_id = int(opts.get("mod-id", "0") or 0)
@@ -343,13 +366,65 @@ def _size(kb: int) -> str:
 
 
 def cmd_account(_opts: dict) -> dict:
-    api = _nexus_api()
+    try:
+        api, mode = _nexus_api()
+    except BridgeError as exc:
+        if exc.kind == "config":
+            return {"stored": False}
+        raise
     try:
         user = api.validate()
     except Exception as exc:
-        raise BridgeError("config", f"Nexus rejected the stored API key: {_one_line(exc)}")
-    return {"stored": True, "user": getattr(user, "name", "") or "",
+        raise BridgeError("config", f"Nexus rejected the stored credentials: {_one_line(exc)}")
+    return {"stored": True, "mode": mode, "user": getattr(user, "name", "") or "",
             "premium": bool(getattr(user, "is_premium", False))}
+
+
+def cmd_login(_opts: dict) -> dict:
+    """Amethyst's own browser login: PKCE, loopback callback, its token store."""
+    _setup()
+    from Nexus import nexus_oauth
+    from Nexus.nexus_api import NexusAPI
+
+    done = threading.Event()
+    box = {}
+
+    def on_url(url):
+        emit({"t": "url", "u": url})
+
+    def on_token(tokens):
+        box["tokens"] = tokens
+        done.set()
+
+    def on_error(message):
+        box["error"] = message
+        done.set()
+
+    client = nexus_oauth.NexusOAuthClient(
+        on_token, on_error, lambda m: log(m), on_authorization_url=on_url)
+    log("waiting for you to authorise Hikari on the Nexus page")
+    client.start()
+    if not done.wait(LOGIN_TIMEOUT):
+        client.cancel()
+        raise BridgeError("auth", "Nexus did not answer in five minutes; start the login again")
+    if "error" in box:
+        raise BridgeError("auth", str(box["error"]))
+    tokens = box.get("tokens") or nexus_oauth.load_oauth_tokens()
+    if tokens is None:
+        raise BridgeError("auth", "the login finished without tokens")
+    try:
+        user = NexusAPI.from_oauth(tokens).validate(bypass_cache=True)
+    except Exception as exc:
+        raise BridgeError("auth", f"signed in, but Nexus refused the new session: {_one_line(exc)}")
+    return {"stored": True, "mode": "oauth", "user": getattr(user, "name", "") or "",
+            "premium": bool(getattr(user, "is_premium", False))}
+
+
+def cmd_logout(_opts: dict) -> dict:
+    _setup()
+    from Nexus import nexus_oauth
+    nexus_oauth.clear_oauth_tokens()
+    return {"stored": False}
 
 
 def cmd_installed(opts: dict) -> dict:
@@ -365,7 +440,7 @@ def cmd_installed(opts: dict) -> dict:
 def _download_file(domain: str, mod_id: int, file_id: int) -> str:
     """Fetch one browsed file; Nexus hands direct links to premium accounts."""
     import requests
-    api = _nexus_api()
+    api, _ = _nexus_api()
     info = api.get_file_info(domain, mod_id, file_id)
     try:
         links = api.get_download_links(domain, mod_id, file_id)
@@ -465,6 +540,8 @@ COMMANDS = {
     "search": cmd_search,
     "files": cmd_files,
     "account": cmd_account,
+    "login": cmd_login,
+    "logout": cmd_logout,
     "installed": cmd_installed,
 }
 

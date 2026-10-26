@@ -368,6 +368,9 @@ echo '{"t":"result","data":{"game":"Cyberpunk 2077","profile":"default","mods":[
 
 func TestFakeBackendAnswersBrowsing(t *testing.T) {
 	fake := NewFake()
+	if _, err := fake.Login(context.Background(), Sink{}); err != nil {
+		t.Fatalf("fake Login returned %v", err)
+	}
 	page, err := fake.Browse(context.Background(), "skyrim_se", "", "downloads", 0)
 	if err != nil {
 		t.Fatalf("fake Browse returned %v", err)
@@ -382,5 +385,36 @@ func TestFakeBackendAnswersBrowsing(t *testing.T) {
 	list, err := fake.Installed(context.Background(), "skyrim_se", "default")
 	if err != nil || len(list.Mods) == 0 {
 		t.Fatalf("fake Installed returned %+v %v", list, err)
+	}
+}
+
+func TestLoginStreamsTheAuthorisationPage(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo '{"t":"url","u":"https://users.nexusmods.com/oauth/authorize?client_id=amethyst"}'
+echo '{"t":"log","m":"waiting for you to authorise Hikari on the Nexus page"}'
+echo '{"t":"result","data":{"stored":true,"mode":"oauth","user":"someone","premium":false}}'
+`)
+	var links []string
+	account, err := bridge.Login(context.Background(), Sink{AuthURL: func(url string) {
+		links = append(links, url)
+	}})
+	if err != nil {
+		t.Fatalf("Login returned %v", err)
+	}
+	if len(links) != 1 || !strings.Contains(links[0], "users.nexusmods.com") {
+		t.Fatalf("authorisation links = %v", links)
+	}
+	if !account.Stored || account.Mode != "oauth" || account.User != "someone" {
+		t.Fatalf("Login returned %+v", account)
+	}
+}
+
+func TestLogoutClearsTheLogin(t *testing.T) {
+	bridge := newTestBridge(t, `#!/bin/sh
+echo "argv=$*"
+echo '{"t":"result","data":{"stored":false}}'
+`)
+	if err := bridge.Logout(context.Background()); err != nil {
+		t.Fatalf("Logout returned %v", err)
 	}
 }

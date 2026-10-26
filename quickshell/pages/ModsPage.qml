@@ -72,6 +72,7 @@ PageBase {
         page.search(0);
     }
     function search(pageIndex) {
+        if (!Daemon.modsAccount || !Daemon.modsAccount.stored) return;
         if (!page.game) return;
         Daemon.browseMods(page.game.id, page.query, page.sort, pageIndex || 0);
     }
@@ -120,6 +121,13 @@ PageBase {
     }
     onTabChanged: {
         if (page.tab === "browse" && Daemon.modsBrowse === null) page.search(0);
+    }
+    Connections {
+        target: Daemon
+        // A finished login makes browsing possible; load what the tab is waiting for.
+        function onModsAccountChanged() {
+            if (page.tab === "browse" && page.game && Daemon.modsBrowse === null) page.search(0);
+        }
     }
     onGamesChanged: {
         // A deep link can arrive before the game list does; search once it is here.
@@ -479,6 +487,22 @@ PageBase {
                 }
                 Item { Layout.fillWidth: true }
                 Text {
+                    visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
+                    text: (Daemon.modsAccount && Daemon.modsAccount.user
+                           ? I18n.tr("signed in as") + " " + Daemon.modsAccount.user
+                           : I18n.tr("signed in"))
+                          + (Daemon.modsAccount && Daemon.modsAccount.premium ? " · " + I18n.tr("premium") : "")
+                    color: Tokens.inkFaint
+                    font.family: Tokens.ui
+                    font.pixelSize: Tokens.fTiny
+                }
+                Btn {
+                    compact: true
+                    visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
+                    text: I18n.tr("Sign out")
+                    onAct: Daemon.logoutNexus()
+                }
+                Text {
                     text: page.game && page.game.nexus_domain
                           ? "nexusmods.com/" + page.game.nexus_domain
                           : I18n.tr("no Nexus domain for this game")
@@ -488,7 +512,12 @@ PageBase {
                 }
             }
 
-            JobPanel { visible: Daemon.modsBusy; Layout.fillWidth: true }
+            JobPanel {
+                visible: Daemon.modsBusy
+                Layout.fillWidth: true
+                actionText: Daemon.modsAuthLink !== "" ? I18n.tr("Open the Nexus page") : ""
+                onAction: Qt.openUrlExternally(Daemon.modsAuthLink)
+            }
 
             // Installed -----------------------------------------------------
             ColumnLayout {
@@ -611,19 +640,24 @@ PageBase {
                 visible: page.tab === "browse"
 
                 Panel {
-                    visible: Daemon.modsAccount === null
+                    visible: Daemon.modsAccount !== null && !Daemon.modsAccount.stored
                     Layout.fillWidth: true
-                    title: I18n.tr("Nexus needs an API key")
-                    subtitle: I18n.tr("Browsing and downloading use the key Amethyst already keeps; Hikari only reads the same entry.")
+                    title: I18n.tr("Sign in to Nexus")
+                    subtitle: I18n.tr("Your browser opens Nexus; approving there is the whole login. It is the same sign-in Amethyst uses, so one covers both.")
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Tokens.s3
                         Item { Layout.fillWidth: true }
                         Btn {
                             compact: true
-                            text: I18n.tr("Add key")
-                            primary: true
+                            text: I18n.tr("Use an API key")
                             onAct: keySheet.shown = true
+                        }
+                        Btn {
+                            compact: true
+                            text: I18n.tr("Sign in")
+                            primary: true
+                            onAct: Daemon.loginNexus()
                         }
                     }
                 }
@@ -631,7 +665,7 @@ PageBase {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Tokens.s3
-                    visible: Daemon.modsAccount !== null
+                    visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -751,6 +785,8 @@ PageBase {
                                             font.family: Tokens.ui
                                             font.pixelSize: Tokens.fSmall
                                             elide: Text.ElideRight
+                                            wrapMode: Text.Wrap
+                                            maximumLineCount: 2
                                             Layout.fillWidth: true
                                         }
                                     }
@@ -793,7 +829,8 @@ PageBase {
                         Empty {
                             Layout.fillWidth: true
                             Layout.topMargin: Tokens.s5
-                            visible: Daemon.modsAccount !== null && Daemon.modsBrowse !== null
+                            visible: Daemon.modsAccount !== null && Daemon.modsAccount.stored
+                                     && Daemon.modsBrowse !== null
                                      && Daemon.modsBrowse.error !== undefined
                             caption: Daemon.modsBrowse && Daemon.modsBrowse.error
                                      ? Daemon.modsBrowse.error : ""

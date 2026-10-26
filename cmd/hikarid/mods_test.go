@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -258,6 +259,9 @@ func TestModsSettingsApplyWithoutARestart(t *testing.T) {
 func TestModsBrowsingEndpoints(t *testing.T) {
 	d, client := startDaemon(t)
 	d.mods = mods.NewFake()
+	if _, err := d.mods.Login(context.Background(), mods.Sink{}); err != nil {
+		t.Fatalf("demo login: %v", err)
+	}
 
 	var page mods.Browse
 	if err := client.Call("mods.browse", map[string]any{"game": "skyrim_se"}, &page); err != nil {
@@ -286,18 +290,55 @@ func TestModsBrowsingEndpoints(t *testing.T) {
 		t.Fatalf("mods.installed returned %+v", list)
 	}
 
-	var account mods.Account
-	if err := client.Call("mods.account", nil, &account); err != nil {
-		t.Fatalf("mods.account: %v", err)
-	}
-	if !account.Stored {
-		t.Fatalf("mods.account returned %+v", account)
-	}
-
 	if err := client.Call("mods.browse", map[string]any{}, nil); err == nil {
 		t.Fatal("mods.browse accepted params without a game")
 	}
 	if err := client.Call("mods.files", map[string]any{"game": "skyrim_se"}, nil); err == nil {
 		t.Fatal("mods.files accepted no mod id")
+	}
+}
+
+func TestModsLoginAndLogout(t *testing.T) {
+	d, client := startDaemon(t)
+	d.mods = mods.NewFake()
+	if err := client.Subscribe("mods.done", "mods.auth_url", "mods.log"); err != nil {
+		t.Fatal(err)
+	}
+
+	var account mods.Account
+	if err := client.Call("mods.account", nil, &account); err != nil {
+		t.Fatalf("mods.account: %v", err)
+	}
+	if account.Stored {
+		t.Fatalf("the demo starts signed out, got %+v", account)
+	}
+
+	var started struct {
+		Job string `json:"job"`
+	}
+	if err := client.Call("mods.login", nil, &started); err != nil {
+		t.Fatalf("mods.login: %v", err)
+	}
+	if started.Job == "" {
+		t.Fatal("mods.login returned no job")
+	}
+	if done := awaitModsDone(t, client); done["ok"] != true {
+		t.Fatalf("mods.done = %+v", done)
+	}
+	if err := client.Call("mods.account", nil, &account); err != nil {
+		t.Fatalf("mods.account after login: %v", err)
+	}
+	if !account.Stored || account.Mode != "oauth" {
+		t.Fatalf("mods.account returned %+v", account)
+	}
+
+	if err := client.Call("mods.logout", nil, nil); err != nil {
+		t.Fatalf("mods.logout: %v", err)
+	}
+	if err := client.Call("mods.account", nil, &account); err != nil {
+		t.Fatalf("mods.account after logout: %v", err)
+	}
+	if account.Stored {
+		t.Fatalf("mods.account still signed in after logout: %+v", account)
 	}
 }

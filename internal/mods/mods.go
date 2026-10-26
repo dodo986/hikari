@@ -95,6 +95,7 @@ type Installed struct {
 // Account is who the stored Nexus key belongs to.
 type Account struct {
 	Stored  bool   `json:"stored"`
+	Mode    string `json:"mode,omitempty"` // "oauth" after a browser login, "key" for a pasted key
 	User    string `json:"user,omitempty"`
 	Premium bool   `json:"premium"`
 }
@@ -115,6 +116,8 @@ type Progress struct {
 type Sink struct {
 	Log      func(line string)
 	Progress func(p Progress)
+	// AuthURL carries the page the user has to authorise on.
+	AuthURL func(url string)
 }
 
 func (s Sink) log(line string) {
@@ -126,6 +129,12 @@ func (s Sink) log(line string) {
 func (s Sink) report(p Progress) {
 	if s.Progress != nil {
 		s.Progress(p)
+	}
+}
+
+func (s Sink) authURL(url string) {
+	if s.AuthURL != nil {
+		s.AuthURL(url)
 	}
 }
 
@@ -148,6 +157,8 @@ type Service interface {
 	Install(ctx context.Context, req InstallRequest, sink Sink) (string, error)
 	Nexus(ctx context.Context, action, key string) (bool, error)
 	Account(ctx context.Context) (Account, error)
+	Login(ctx context.Context, sink Sink) (Account, error)
+	Logout(ctx context.Context) error
 	Browse(ctx context.Context, game, query, sort string, page int) (Browse, error)
 	Files(ctx context.Context, game string, modID int) (Mod, []ModFile, error)
 	Installed(ctx context.Context, game, profile string) (Installed, error)

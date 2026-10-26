@@ -9,6 +9,10 @@ import "."
 Panel {
     id: root
 
+    // Set by callers whose job needs the owner to do something outside Hikari.
+    property string actionText: ""
+    signal action()
+
     title: Daemon.modsProgress
         ? Daemon.modsProgress.phase + "  " + Daemon.modsProgress.current + "/" + Daemon.modsProgress.total
         : I18n.tr("Working…")
@@ -40,6 +44,12 @@ Panel {
             font.family: Tokens.ui
             font.pixelSize: Tokens.fTiny
             elide: Text.ElideRight
+        }
+        Btn {
+            compact: true
+            visible: root.actionText !== ""
+            text: root.actionText
+            onAct: root.action()
         }
         Btn {
             compact: true

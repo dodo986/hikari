@@ -28,8 +28,9 @@ pipeline; the Quickshell UI is its face. No webview, **no Electron**.
   verified downloads, backup of replaced DLLs and INI profiles.
 - Adds your own games (local executables) with cover search and a native
   file picker.
-- Mods games through the Amethyst Mod Manager's own backend: browse and
-  search Nexus with the key Amethyst already stores, see a profile's modlist
+- Mods games through the Amethyst Mod Manager's own backend: sign in to
+  Nexus in your browser (Amethyst's own login, shared with it), browse and
+  search its mods, see a profile's modlist
   in priority order, pick a profile and deploy it, restore the game to
   vanilla, install mod archives (FOMOD installers included), browsed files
   or `nxm://` downloads. Amethyst owns the mod state and Hikari never keeps

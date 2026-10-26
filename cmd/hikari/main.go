@@ -58,7 +58,14 @@ Usage:
   hikari mods install <game> --archive PATH | --url nxm://…  [--profile P] [--name N]
                                          install one mod archive (FOMOD: defaults)
   hikari mods cancel                     stop the running deploy/install
-  hikari mods nexus [status|set|clear]   the Nexus API key Amethyst also uses
+  hikari mods login                      sign in to Nexus in your browser
+  hikari mods logout                     forget the browser login
+  hikari mods account                    who is signed in, and are they premium?
+  hikari mods browse <game> [query] [--sort downloads|endorsements|created|updated]
+                                         search a game's mods on Nexus
+  hikari mods files <game> <mod-id>      the files a browsed mod offers
+  hikari mods installed <game> [--profile P]  the profile's modlist, in order
+  hikari mods nexus [status|set|clear]   a Nexus API key, if you have one instead
   hikari shutdown                        stop the daemon
 
 Every command also accepts --json and --socket PATH.

@@ -30,6 +30,7 @@ Singleton {
     property var modsBrowse: null
     property var modsFiles: null
     property var modsAccount: null
+    property string modsAuthLink: ""
     property string modsError: ""
     property bool modsSearching: false
     property bool modsFilesBusy: false
@@ -42,6 +43,7 @@ Singleton {
     signal optiProgress(var ev)
     signal wineProgress(var ev)
     signal modsChanged(var ev)
+    signal modsAuthURL(string url)
 
     function gameKey(store, id) { return store + "/" + id; }
 
@@ -126,6 +128,17 @@ Singleton {
     function installNexusMod(game, profile, modId, fileId) {
         rpc.modsFiles = null;
         modsJob("mods.install", { game: game, profile: profile || "", mod_id: modId, file_id: fileId });
+    }
+    function loginNexus() {
+        rpc.modsAuthLink = "";
+        modsJob("mods.login", {});
+    }
+    function logoutNexus() {
+        call("mods.logout", null, () => {
+            rpc.modsAccount = { stored: false };
+            rpc.modsBrowse = null;
+            rpc.modsChanged({ ok: true, action: "nexus" });
+        });
     }
     function setNexusKey(key) {
         call("mods.nexus", { action: "set", key: key }, r => {
@@ -317,11 +330,20 @@ Singleton {
             tail.push(ev.line || "");
             rpc.modsLog = tail;
             break;
+        case "mods.auth_url":
+            rpc.modsAuthLink = ev.url || "";
+            rpc.modsAuthURL(ev.url || "");
+            Qt.openUrlExternally(ev.url || "");
+            break;
         case "mods.done":
             rpc.modsBusy = false;
             rpc.modsProgress = null;
+            rpc.modsAuthLink = "";
             rpc.modsChanged(ev);
-            if (ev.ok) rpc.refreshMods();
+            if (ev.ok) {
+                rpc.refreshMods();
+                rpc.refreshModsAccount();
+            }
             break;
         }
     }

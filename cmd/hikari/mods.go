@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ const modsJobTimeout = 24 * time.Hour
 
 func modsCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: hikari mods status|games|setup|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|browse <game> [query]|files <game> <mod-id>|installed <game>")
+		return errors.New("usage: hikari mods status|games|setup|login|logout|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|browse <game> [query]|files <game> <mod-id>|installed <game>")
 	}
 	switch args[0] {
 	case "status":
@@ -29,6 +30,12 @@ func modsCmd(args []string) error {
 		})
 	case "nexus":
 		return modsNexusCmd(args[1:])
+	case "login":
+		return modsJobCmd("mods.login", "login", nil, args[1:], func(*flag.FlagSet, []string) (map[string]any, error) {
+			return map[string]any{}, nil
+		})
+	case "logout":
+		return modsLogoutCmd(args[1:])
 	case "account":
 		return modsAccountCmd(args[1:])
 	case "browse":
@@ -94,6 +101,7 @@ func modsAccountCmd(args []string) error {
 	}
 	var res struct {
 		Stored  bool   `json:"stored"`
+		Mode    string `json:"mode"`
 		User    string `json:"user"`
 		Premium bool   `json:"premium"`
 	}
@@ -104,14 +112,31 @@ func modsAccountCmd(args []string) error {
 		return c.print(res)
 	}
 	if !res.Stored {
-		fmt.Println("Nexus API key: not stored")
+		fmt.Println("Nexus: not signed in (run `hikari mods login`)")
 		return nil
 	}
 	plan := "free (browsing only, use Mod manager download on the site)"
 	if res.Premium {
 		plan = "premium (direct downloads)"
 	}
-	fmt.Printf("Nexus account: %s — %s\n", res.User, plan)
+	how := "browser login"
+	if res.Mode == "key" {
+		how = "API key"
+	}
+	fmt.Printf("Nexus: %s — %s, by %s\n", res.User, plan, how)
+	return nil
+}
+
+func modsLogoutCmd(args []string) error {
+	fs := flag.NewFlagSet("mods logout", flag.ExitOnError)
+	c := addCommon(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := dial(c).Call("mods.logout", nil, nil); err != nil {
+		return err
+	}
+	fmt.Println("Nexus: signed out (the stored browser login was forgotten)")
 	return nil
 }
 
@@ -406,6 +431,18 @@ func modsJobCmd(method, label string, names []string, args []string, build func(
 			return
 		}
 		switch event {
+		case "mods.auth_url":
+			var p struct {
+				URL string `json:"url"`
+			}
+			if json.Unmarshal(payload, &p) == nil && p.URL != "" {
+				if printed {
+					fmt.Println()
+					printed = false
+				}
+				fmt.Println("  authorise Hikari here: " + p.URL)
+				openBrowser(p.URL)
+			}
 		case "mods.log":
 			var p struct {
 				Line string `json:"line"`
@@ -430,7 +467,7 @@ func modsJobCmd(method, label string, names []string, args []string, build func(
 			}
 		}
 	}
-	if err := client.Subscribe("mods.log", "mods.progress", "mods.done"); err != nil {
+	if err := client.Subscribe("mods.log", "mods.progress", "mods.done", "mods.auth_url"); err != nil {
 		return err
 	}
 
@@ -470,6 +507,26 @@ func copyFlags(fs *flag.FlagSet, params map[string]any, names ...string) {
 	for _, name := range names {
 		if value := fs.Lookup(name); value != nil && value.Value.String() != "" {
 			params[name] = value.Value.String()
+		}
+	}
+}
+
+// openBrowser shows the Nexus authorisation page; the printed URL stays the fallback.
+func openBrowser(url string) {
+	for _, opener := range []string{"xdg-open", "gio"} {
+		path, err := exec.LookPath(opener)
+		if err != nil {
+			continue
+		}
+		args := []string{url}
+		if opener == "gio" {
+			args = []string{"open", url}
+		}
+		cmd := exec.Command(path, args...)
+		cmd.Stdout, cmd.Stderr = nil, nil
+		if cmd.Start() == nil {
+			_ = cmd.Process.Release()
+			return
 		}
 	}
 }

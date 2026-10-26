@@ -119,6 +119,20 @@ func (d *daemon) registerMods(srv *api.Server) {
 		load()
 		return d.mods.Account(c)
 	})
+	srv.Register("mods.login", func(c context.Context, params json.RawMessage) (any, error) {
+		load()
+		return d.startModsJob(c, srv, "", "signing in", func(ctx context.Context, sink mods.Sink) (string, error) {
+			_, err := d.mods.Login(ctx, sink)
+			return "", err
+		})
+	})
+	srv.Register("mods.logout", func(c context.Context, params json.RawMessage) (any, error) {
+		load()
+		if err := d.mods.Logout(c); err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"stored": false}, nil
+	})
 
 	srv.Register("mods.browse", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
@@ -215,6 +229,9 @@ func (d *daemon) startModsJob(
 		sink := mods.Sink{
 			Log: func(line string) {
 				srv.Publish("mods.log", map[string]any{"job": job, "game": game, "line": line})
+			},
+			AuthURL: func(url string) {
+				srv.Publish("mods.auth_url", map[string]any{"job": job, "url": url})
 			},
 			Progress: func(p mods.Progress) {
 				srv.Publish("mods.progress", map[string]any{
