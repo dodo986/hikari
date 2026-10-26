@@ -18,7 +18,7 @@
 - The snapshot workflow skips a run when the commit is unchanged since the
   last successful snapshot.
 
-## Unreleased
+## 0.1.3
 
 - A single-file AppImage (`scripts/build-appimage.sh`) bundles the daemon,
   CLI and UI, updates itself in place, and is built by the release, snapshot

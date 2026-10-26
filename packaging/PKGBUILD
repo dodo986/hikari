@@ -1,6 +1,6 @@
 # Maintainer: Hikari contributors
 pkgname=hikari
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc="Game launcher: daemon, CLI and Quickshell UI (legendary, gogdl, nile, steam, umu)"
 arch=('x86_64')
