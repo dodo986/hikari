@@ -4,7 +4,7 @@ A native game launcher built with [Ryoku](https://ryoku.dev) in mind, but not
 limited to it. One Go daemon owns the library, the store engines and the launch
 pipeline; the Quickshell UI is its face. No webview, **no Electron**.
 
-Be aware that hikari is being developed as a hobby project for my own fun and usage right now, any issues report on github. PRs much appreciated.
+Be aware that hikari is being developed as a hobby project for my own fun and usage right now, any issues report on github. PRs much appreciated. i will put more effort in it once my exams are over.
  
 ## Screenshots
 
