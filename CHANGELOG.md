@@ -5,9 +5,10 @@
 - Updates follow the commits on `main` instead of published releases: the daemon
   compares the commit stamped into the build with the branch head and rebuilds
   from the source tarball, so no release is needed for testers to move forward.
-- The AppImage rebuilds itself in place: it compiles the tracked commit, squashes
-  a fresh tree and appends it to its own runtime, so single-file installs update
-  from source like the tarball does. It needs go and squashfs-tools.
+- The AppImage updates itself: it compiles the tracked commit into
+  `~/.local/share/hikari/app` and its launcher runs that from then on, so a
+  single-file install follows the source like the tarball does, with go as the
+  only extra tool.
 - `hikari update-check` reports how many commits the build is behind, and
   `hikari --version` names the commit it was built from.
 

@@ -2,7 +2,13 @@
 set -eu
 
 here="${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
-bin="$here/usr/bin"
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+payload="$data/hikari/app"
+root="$here"
+if [ -x "$payload/usr/bin/hikarid" ]; then
+	root="$payload"
+fi
+bin="$root/usr/bin"
 qs_bin="$(command -v qs 2>/dev/null || true)"
 if [ -z "$qs_bin" ]; then qs_bin=/usr/sbin/qs; fi
 
@@ -26,7 +32,7 @@ export HIKARI_APPIMAGE_DIR
 
 config="${XDG_CONFIG_HOME:-$HOME/.config}"
 cfg="$config/quickshell/hikari"
-src="$here/usr/share/hikari/quickshell"
+src="$root/usr/share/hikari/quickshell"
 if [ -d "$src" ]; then
 	mkdir -p "$config/quickshell"
 	if ! diff -qr "$src" "$cfg" >/dev/null 2>&1; then

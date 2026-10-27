@@ -6,49 +6,36 @@ import (
 	"testing"
 )
 
-func TestJoinAppImageKeepsTheRuntimeAndAppendsTheSquashfs(t *testing.T) {
-	dir := t.TempDir()
-	old := filepath.Join(dir, "old.AppImage")
-	runtime := []byte("runtime-bytes-here")
-	if err := os.WriteFile(old, append(append([]byte{}, runtime...), []byte("stale-squashfs")...), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	squashed := filepath.Join(dir, "root.squashfs")
-	if err := os.WriteFile(squashed, []byte("fresh-squashfs"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(dir, "new.AppImage")
-	if err := joinAppImage(old, out, int64(len(runtime)), squashed); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "runtime-bytes-herefresh-squashfs" {
-		t.Fatalf("new AppImage is %q", got)
+func TestAppPayloadDirSitsBesideTheDataDir(t *testing.T) {
+	t.Setenv("HIKARI_APP_PAYLOAD", "")
+	d := &daemon{}
+	d.paths.DataDir = "/home/someone/.local/share/hikari"
+	if got := d.appPayloadDir(); got != "/home/someone/.local/share/hikari/app" {
+		t.Fatalf("payload dir = %q", got)
 	}
 }
 
-func TestAppImageOffsetRejectsWhatIsNotAnAppImage(t *testing.T) {
-	dir := t.TempDir()
-	plain := filepath.Join(dir, "not.AppImage")
-	if err := os.WriteFile(plain, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := appImageOffset(t.Context(), plain); err == nil {
-		t.Fatal("a file without an AppImage runtime must not report an offset")
+func TestAppPayloadDirHonoursTheOverride(t *testing.T) {
+	t.Setenv("HIKARI_APP_PAYLOAD", "/tmp/payload")
+	d := &daemon{}
+	if got := d.appPayloadDir(); got != "/tmp/payload" {
+		t.Fatalf("payload dir = %q", got)
 	}
 }
 
-func TestAppDirPathFallsBackToTheRunningBinary(t *testing.T) {
+func TestAppDirPathPrefersTheEnvironment(t *testing.T) {
 	t.Setenv("HIKARI_APPIMAGE_DIR", "/tmp/.mount_hikari/")
 	if got := appDirPath(); got != "/tmp/.mount_hikari/" {
 		t.Fatalf("appDirPath = %q", got)
 	}
 	t.Setenv("HIKARI_APPIMAGE_DIR", "")
-	t.Setenv("APPDIR", "")
-	if got := appDirPath(); got == "" {
-		t.Skip("the test binary is not inside an AppDir")
+	t.Setenv("APPDIR", "/tmp/.mount_other/")
+	if got := appDirPath(); got != "/tmp/.mount_other/" {
+		t.Fatalf("appDirPath = %q", got)
 	}
+	t.Setenv("APPDIR", "")
+	if got := appDirPath(); got != "" && !fileExists(filepath.Join(got, "usr", "bin")) {
+		t.Fatalf("appDirPath invented %q", got)
+	}
+	_ = os.Getenv("HOME")
 }

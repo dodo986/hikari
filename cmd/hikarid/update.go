@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -100,8 +98,8 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		fail(fmt.Errorf("updating from source needs the Go toolchain; install go and try again"))
 		return
 	}
-	if image := appImagePath(); image != "" {
-		d.rebuildAppImage(ctx, info, image, goTool, publish, fail)
+	if appImagePath() != "" {
+		d.installAppPayload(ctx, info, goTool, publish, fail)
 		return
 	}
 	if err := writable(binDir()); err != nil {
@@ -197,30 +195,15 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 	}()
 }
 
-// rebuildAppImage builds the tracked commit and swaps a fresh squashfs into the
-// running AppImage, which is the only way a single-file install can update.
-func (d *daemon) rebuildAppImage(ctx context.Context, info update.Info, image, goTool string, publish func(string, *float64, string), fail func(error)) {
-	dir := filepath.Dir(image)
-	if err := writable(dir); err != nil {
-		fail(fmt.Errorf("the folder holding the AppImage is not writable (%s); move it somewhere writable first", dir))
-		return
-	}
-	appdir := appDirPath()
-	if appdir == "" || !fileExists(filepath.Join(appdir, "usr", "bin", "hikarid")) {
-		fail(fmt.Errorf("cannot see the running AppImage contents; start Hikari from the AppImage itself and retry"))
-		return
-	}
-	squash, err := exec.LookPath("mksquashfs")
-	if err != nil {
-		fail(fmt.Errorf("rebuilding the AppImage needs squashfs-tools; install it (pacman -S squashfs-tools) and retry"))
-		return
-	}
-	offset, err := appImageOffset(ctx, image)
-	if err != nil {
+// installAppPayload gives an AppImage its update without rewriting the image: the
+// new build lands beside the data dir and AppRun runs it from there.
+func (d *daemon) installAppPayload(ctx context.Context, info update.Info, goTool string, publish func(string, *float64, string), fail func(error)) {
+	payload := d.appPayloadDir()
+	if err := os.MkdirAll(filepath.Join(payload, "usr", "bin"), 0o755); err != nil {
 		fail(err)
 		return
 	}
-	stage, err := os.MkdirTemp(dir, ".hikari-update-*")
+	stage, err := os.MkdirTemp(d.paths.DataDir, "update-*")
 	if err != nil {
 		fail(err)
 		return
@@ -249,16 +232,8 @@ func (d *daemon) rebuildAppImage(ctx context.Context, info update.Info, image, g
 		fail(err)
 		return
 	}
-	app := filepath.Join(stage, "appdir")
-	if err := os.MkdirAll(app, 0o755); err != nil {
-		fail(err)
-		return
-	}
-	if out, err := runQuiet(ctx, "cp", "-a", appdir+"/.", app); err != nil {
-		fail(fmt.Errorf("copying the running AppImage contents failed: %s", out))
-		return
-	}
-	version, err := d.buildInto(ctx, goTool, src, filepath.Join(app, "usr", "bin"), info)
+	publish("installing", nil, "")
+	version, err := d.buildInto(ctx, goTool, src, filepath.Join(payload, "usr", "bin"), info)
 	if err != nil {
 		fail(err)
 		return
@@ -267,8 +242,12 @@ func (d *daemon) rebuildAppImage(ctx context.Context, info update.Info, image, g
 		fail(fmt.Errorf("%s holds %s and this build is already %s; nothing to install", info.Latest, version, d.version))
 		return
 	}
-	shell := filepath.Join(app, "usr", "share", "hikari", "quickshell")
+	shell := filepath.Join(payload, "usr", "share", "hikari", "quickshell")
 	if err := os.RemoveAll(shell); err != nil {
+		fail(err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(shell), 0o755); err != nil {
 		fail(err)
 		return
 	}
@@ -276,75 +255,33 @@ func (d *daemon) rebuildAppImage(ctx context.Context, info update.Info, image, g
 		fail(fmt.Errorf("copying the shell files failed: %s", out))
 		return
 	}
-	publish("installing", nil, "")
-	squashed := filepath.Join(stage, "root.squashfs")
-	if out, err := runQuiet(ctx, squash, app, squashed, "-comp", "zstd", "-noappend", "-root-owned", "-no-progress", "-quiet", "-b", "131072"); err != nil {
-		fail(fmt.Errorf("mksquashfs failed: %s", out))
+	from := filepath.Join(appDirPath(), "usr", "share", "hikari", "amethyst_filegraph.abi3.so")
+	if fileExists(from) {
+		to := filepath.Join(payload, "usr", "share", "hikari", "amethyst_filegraph.abi3.so")
+		if out, err := runQuiet(ctx, "cp", "-a", from, to); err != nil {
+			fail(fmt.Errorf("copying the file catalog module failed: %s", out))
+			return
+		}
+	}
+	out, err := runQuiet(ctx, filepath.Join(payload, "usr", "bin", "hikarid"), "--version")
+	if err != nil || !strings.Contains(out, info.Latest[:8]) {
+		fail(fmt.Errorf("the new build does not run: %s", strings.TrimSpace(out)))
 		return
 	}
-	built := filepath.Join(stage, filepath.Base(image))
-	if err := joinAppImage(image, built, offset, squashed); err != nil {
+	if err := os.WriteFile(filepath.Join(payload, "commit"), []byte(info.Sha+"\n"), 0o644); err != nil {
 		fail(err)
 		return
 	}
-	if err := os.Chmod(built, 0o755); err != nil {
-		fail(err)
-		return
-	}
-	if out, err := runQuiet(ctx, built, "--appimage-extract-and-run", "--hikari-version"); err != nil {
-		fail(fmt.Errorf("the rebuilt AppImage does not run: %s", out))
-		return
-	} else if !strings.Contains(out, version) {
-		fail(fmt.Errorf("the rebuilt AppImage reports %q instead of %s", strings.TrimSpace(out), version))
-		return
-	}
-	if err := os.Rename(built, image); err != nil {
-		fail(fmt.Errorf("replacing %s failed: %v", image, err))
-		return
-	}
-	d.log.Info("AppImage rebuilt", "commit", info.Latest, "version", version, "path", image)
-	d.restartAppImage(image)
+	d.log.Info("AppImage payload installed", "commit", info.Latest, "version", version, "path", payload)
+	d.restartAppImage(appImagePath())
 }
 
-// joinAppImage writes the runtime part of the old file and the new squashfs into
-// one executable, which is what an AppImage is.
-func joinAppImage(old, out string, offset int64, squashed string) error {
-	in, err := os.Open(old)
-	if err != nil {
-		return err
+// appPayloadDir is where an AppImage keeps the build it updated itself to.
+func (d *daemon) appPayloadDir() string {
+	if dir := os.Getenv("HIKARI_APP_PAYLOAD"); dir != "" {
+		return dir
 	}
-	defer in.Close()
-	file, err := os.Create(out)
-	if err != nil {
-		return err
-	}
-	if _, err := io.CopyN(file, in, offset); err != nil {
-		file.Close()
-		return err
-	}
-	tail, err := os.Open(squashed)
-	if err != nil {
-		file.Close()
-		return err
-	}
-	defer tail.Close()
-	if _, err := io.Copy(file, tail); err != nil {
-		file.Close()
-		return err
-	}
-	return file.Close()
-}
-
-func appImageOffset(ctx context.Context, image string) (int64, error) {
-	out, err := runQuiet(ctx, image, "--appimage-offset")
-	if err != nil {
-		return 0, fmt.Errorf("cannot read the AppImage offset: %s", out)
-	}
-	offset, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
-	if err != nil || offset <= 0 {
-		return 0, fmt.Errorf("the AppImage reported an unusable offset: %q", strings.TrimSpace(out))
-	}
-	return offset, nil
+	return filepath.Join(filepath.Dir(d.paths.DataDir), "hikari", "app")
 }
 
 func appDirPath() string {
