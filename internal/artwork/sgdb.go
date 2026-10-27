@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -25,7 +26,8 @@ type Cover struct {
 }
 
 type Searcher struct {
-	APIKey string
+	mu     sync.RWMutex
+	apiKey string
 	client *http.Client
 
 	sgdbBase  string
@@ -34,11 +36,40 @@ type Searcher struct {
 
 func New(apiKey string) *Searcher {
 	return &Searcher{
-		APIKey:    apiKey,
+		apiKey:    apiKey,
 		client:    &http.Client{Timeout: 15 * time.Second},
 		sgdbBase:  "https://www.steamgriddb.com/api/v2",
 		steamBase: "https://store.steampowered.com/api",
 	}
+}
+
+// SetKey swaps the SteamGridDB key without a restart, so a key entered in the UI
+// starts working on the next refresh.
+func (s *Searcher) SetKey(key string) {
+	s.mu.Lock()
+	s.apiKey = trim(key)
+	s.mu.Unlock()
+}
+
+func (s *Searcher) Key() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.apiKey
+}
+
+// Check confirms a key is accepted by SteamGridDB before it is stored.
+func (s *Searcher) Check(ctx context.Context, key string) error {
+	if trim(key) == "" {
+		return fmt.Errorf("a key is required")
+	}
+	var out struct {
+		Success bool `json:"success"`
+	}
+	err := s.getJSON(ctx, s.sgdbBase+"/search/autocomplete/portal", trim(key), &out)
+	if err != nil {
+		return fmt.Errorf("steamgriddb rejected that key: %w", err)
+	}
+	return nil
 }
 
 func (s *Searcher) Search(ctx context.Context, title string) ([]Candidate, error) {
@@ -46,7 +77,7 @@ func (s *Searcher) Search(ctx context.Context, title string) ([]Candidate, error
 	if title == "" {
 		return nil, fmt.Errorf("a title is required")
 	}
-	if s.APIKey != "" {
+	if s.Key() != "" {
 		if cands, err := s.searchSGDB(ctx, title); err == nil && len(cands) > 0 {
 			return cands, nil
 		}
@@ -59,6 +90,11 @@ type sgdbGame struct {
 	Name string `json:"name"`
 }
 
+type sgdbHero struct {
+	URL   string `json:"url"`
+	Thumb string `json:"thumb"`
+}
+
 type sgdbGrid struct {
 	URL    string `json:"url"`
 	Thumb  string `json:"thumb"`
@@ -68,7 +104,7 @@ type sgdbGrid struct {
 
 func (s *Searcher) searchSGDB(ctx context.Context, title string) ([]Candidate, error) {
 	var games []sgdbGame
-	if err := s.getJSON(ctx, s.sgdbBase+"/search/autocomplete/"+url.PathEscape(title), s.APIKey, &games); err != nil {
+	if err := s.getJSON(ctx, s.sgdbBase+"/search/autocomplete/"+url.PathEscape(title), s.Key(), &games); err != nil {
 		return nil, err
 	}
 	if len(games) == 0 {
@@ -81,7 +117,7 @@ func (s *Searcher) searchSGDB(ctx context.Context, title string) ([]Candidate, e
 	for _, g := range games {
 		var grids []sgdbGrid
 		q := fmt.Sprintf("%s/grids/game/%d?dimensions=600x900", s.sgdbBase, g.ID)
-		if err := s.getJSON(ctx, q, s.APIKey, &grids); err != nil || len(grids) == 0 {
+		if err := s.getJSON(ctx, q, s.Key(), &grids); err != nil || len(grids) == 0 {
 			continue
 		}
 		if len(grids) > 6 {

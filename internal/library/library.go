@@ -36,6 +36,13 @@ const (
 	SourceDemo         = "demo"
 )
 
+// Artwork carries one URL per slot. Providers fill what their store exposes and
+// the daemon upgrades the gaps, so the meaning of each slot is fixed:
+//
+//	Cover  portrait grid art, close to 2:3, the card face
+//	Square wide banner, 16:9 or wider, hero backgrounds
+//	Logo   wordmark on transparency, drawn over the banner
+//	Icon   small square mark, list rows and mods
 type Artwork struct {
 	Cover  string `json:"cover,omitempty"`
 	Square string `json:"square,omitempty"`

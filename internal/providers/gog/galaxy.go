@@ -162,13 +162,11 @@ func (r *gamesdbRelease) toGame() (library.Game, bool) {
 		g.Developer += d.Name
 	}
 	logo := fmtURL(r.Game.Logo.URLFormat, "jpg")
-	cover := logo
-	if cover == "" {
-		cover = fmtURL(r.Game.Background.URLFormat, "webp")
-	}
+	wide := fmtURL(r.Game.Background.URLFormat, "webp")
 	g.Artwork = library.Artwork{
-		Cover:  cover,
-		Square: orStr(fmtURL(r.Game.VerticalCover.URLFormat, "jpg"), cover),
+		Cover:  orStr(fmtURL(r.Game.VerticalCover.URLFormat, "jpg"), wide),
+		Square: wide,
+		Logo:   logo,
 		Icon:   fmtURL(r.Game.SquareIcon.URLFormat, "jpg"),
 	}
 	for _, os := range r.SupportedOperatingSystems {

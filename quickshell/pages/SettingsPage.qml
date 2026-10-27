@@ -32,6 +32,10 @@ PageBase {
     property var logTail: null
     property string reportStatus: ""
 
+    property bool artKeyStored: false
+    property string artKeyStatus: ""
+    property bool artKeyError: false
+
     Component.onCompleted: {
         Daemon.refreshStatus();
         refreshWines();
@@ -390,9 +394,80 @@ PageBase {
                     TextEdit { id: reportBuffer; visible: false; width: 1; height: 1 }
                 }
 
+                Panel {
+                    Layout.fillWidth: true
+                    title: I18n.tr("Artwork")
+                    subtitle: I18n.tr("Hikari fills missing covers from Steam. A SteamGridDB key covers the games Steam does not have, and it stays on this machine.")
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Tokens.s3
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: Tokens.ctlH
+                            radius: Tokens.radius
+                            color: Tokens.paper
+                            border.width: Tokens.border
+                            border.color: keyField.activeFocus ? Tokens.line : Tokens.lineSoft
+                            TextField {
+                                id: keyField
+                                anchors.fill: parent
+                                anchors.leftMargin: Tokens.s3
+                                anchors.rightMargin: Tokens.s3
+                                background: null
+                                color: Tokens.ink
+                                font.family: Tokens.ui
+                                font.pixelSize: Tokens.fSmall
+                                placeholderText: page.artKeyStored ? I18n.tr("a key is stored, paste a new one to replace it") : I18n.tr("paste your SteamGridDB key")
+                                placeholderTextColor: Tokens.inkFaint
+                                echoMode: TextInput.Password
+                                selectByMouse: true
+                            }
+                        }
+                        ActionButton {
+                            compact: true
+                            text: I18n.tr("Save")
+                            armed: keyField.text.trim().length > 8
+                            onAct: page.saveArtKey(keyField.text.trim())
+                        }
+                        ActionButton {
+                            compact: true
+                            visible: page.artKeyStored
+                            text: I18n.tr("Forget")
+                            onAct: page.saveArtKey("")
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: page.artKeyStatus.length > 0
+                        text: page.artKeyStatus
+                        color: page.artKeyError ? Tokens.ink : Tokens.inkDim
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
                 Item { Layout.fillHeight: true }
             }
         }
+    }
+
+    function saveArtKey(key) {
+        page.artKeyStatus = I18n.tr("checking")
+        Daemon.call("artwork.key", { key: key }, (r, e) => {
+            if (e) {
+                page.artKeyError = true;
+                page.artKeyStatus = e.message || I18n.tr("that key was rejected");
+                return;
+            }
+            page.artKeyError = false;
+            page.artKeyStored = !!(r && r.stored);
+            page.artKeyStatus = page.artKeyStored
+                ? I18n.tr("saved, covers are being looked up again")
+                : I18n.tr("forgotten, Steam art will be used");
+            keyField.text = "";
+            Daemon.refreshLibrary();
+        });
     }
 
     function loadLogs() {

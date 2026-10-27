@@ -81,8 +81,11 @@ func TestListAcrossLibraries(t *testing.T) {
 	if !strings.Contains(hl.InstallPath, "steamapps/common/Half-Life 2 Episode One") {
 		t.Fatalf("install path: %q", hl.InstallPath)
 	}
-	if hl.Artwork.Square == "" || !strings.HasSuffix(hl.Artwork.Square, "librarycache/546050/library_600x900.jpg") {
-		t.Fatalf("artwork: %+v", hl.Artwork)
+	if !strings.HasSuffix(hl.Artwork.Cover, "librarycache/546050/library_600x900.jpg") {
+		t.Fatalf("the portrait cache belongs in Cover: %+v", hl.Artwork)
+	}
+	if !strings.HasSuffix(hl.Artwork.Logo, "apps/546050/logo.png") {
+		t.Fatalf("the wordmark comes from the CDN: %+v", hl.Artwork)
 	}
 	if sos.Installed {
 		t.Fatalf("downloading game must not be installed: %+v", sos)
@@ -153,25 +156,23 @@ func TestSteamArtFindsEveryCacheLayout(t *testing.T) {
 		}
 	}
 	art := steamArt(root, "5172140")
-	if art.Square != portrait {
-		t.Errorf("Square = %q, want the flat portrait", art.Square)
+	if art.Cover != portrait {
+		t.Errorf("Cover = %q, want the flat portrait", art.Cover)
 	}
-	if art.Cover != header {
-		t.Errorf("Cover = %q, want the hashed header", art.Cover)
+	if art.Square != header {
+		t.Errorf("Square = %q, want the hashed header", art.Square)
 	}
 
-	capsule := filepath.Join(hash, "library_capsule.jpg")
-	if err := os.WriteFile(capsule, []byte("jpg"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	os.Remove(portrait)
-	if art := steamArt(root, "5172140"); art.Square != capsule {
-		t.Errorf("Square = %q, want the capsule fallback", art.Square)
+	os.Remove(header)
+	art = steamArt(root, "5172140")
+	if !strings.HasSuffix(art.Cover, "apps/5172140/library_600x900_2x.jpg") {
+		t.Errorf("Cover = %q, want the double resolution CDN grid", art.Cover)
 	}
 
 	art = steamArt(t.TempDir(), "999")
-	if !strings.HasPrefix(art.Square, "https://cdn.akamai.steamstatic.com/steam/apps/999/") ||
-		!strings.HasPrefix(art.Cover, "https://cdn.akamai.steamstatic.com/steam/apps/999/") {
+	if !strings.HasPrefix(art.Cover, "https://cdn.akamai.steamstatic.com/steam/apps/999/") ||
+		!strings.HasPrefix(art.Square, "https://cdn.akamai.steamstatic.com/steam/apps/999/") {
 		t.Errorf("no-cache art = %+v, want CDN URLs", art)
 	}
 }

@@ -70,8 +70,7 @@ Item {
         GameArt {
             anchors.fill: parent
             game: tile.game
-            role: "square"
-            showTitle: true
+            kind: "portrait"
             scale: tile.highlighted ? 1.015 : 1
             radius: Tokens.radius + Tokens.px(2)
             border.width: tile.activeFocus ? Tokens.border * 2 : Tokens.border

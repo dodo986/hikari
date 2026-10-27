@@ -102,8 +102,11 @@ func TestRefreshThenList(t *testing.T) {
 	if g.Platform != "Windows" || !g.CanRunOffline || g.Runner != library.RunnerNile {
 		t.Fatalf("bad flags: %+v", g)
 	}
-	if g.Artwork.Cover != "https://cdn.example.test/bg2.jpg" || g.Artwork.Square != "https://cdn.example.test/icon.jpg" {
+	if g.Artwork.Square != "https://cdn.example.test/bg2.jpg" || g.Artwork.Icon != "https://cdn.example.test/icon.jpg" {
 		t.Fatalf("bad artwork: %+v", g.Artwork)
+	}
+	if g.Artwork.Cover != "" {
+		t.Errorf("amazon has no portrait art, Cover = %q", g.Artwork.Cover)
 	}
 	if g.Installed {
 		t.Error("not installed yet")

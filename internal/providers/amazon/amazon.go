@@ -74,9 +74,9 @@ func (p *Provider) List(ctx context.Context) ([]library.Game, error) {
 			Platform:      "Windows",
 			CanRunOffline: true,
 			Artwork: library.Artwork{
-				Cover:  e.Product.ProductDetail.Details.BackgroundUrl2,
-				Square: e.Product.ProductDetail.IconUrl,
+				Square: e.Product.ProductDetail.Details.BackgroundUrl2,
 				Logo:   e.Product.ProductDetail.Details.LogoUrl,
+				Icon:   e.Product.ProductDetail.IconUrl,
 			},
 		}
 		if g.Title == "" {

@@ -10,10 +10,20 @@ import (
 	"time"
 )
 
+// ArtworkOverride holds artwork the daemon resolved for a game, so a store that
+// ships no portrait art keeps its upgraded slots across restarts.
+type ArtworkOverride struct {
+	Cover  string `json:"cover,omitempty"`
+	Square string `json:"square,omitempty"`
+	Logo   string `json:"logo,omitempty"`
+	Icon   string `json:"icon,omitempty"`
+}
+
 type GameEntry struct {
-	Settings   GameSettings `json:"settings"`
-	LastPlayed time.Time    `json:"last_played,omitempty"`
-	PlayCount  int          `json:"play_count,omitempty"`
+	Settings   GameSettings     `json:"settings"`
+	Artwork    *ArtworkOverride `json:"artwork,omitempty"`
+	LastPlayed time.Time        `json:"last_played,omitempty"`
+	PlayCount  int              `json:"play_count,omitempty"`
 
 	SettingsComplete bool `json:"settings_complete,omitempty"`
 	Imported         bool `json:"imported,omitempty"`
@@ -51,6 +61,19 @@ func LoadState(paths Paths) (*StateStore, error) {
 }
 
 func GameKey(store, id string) string { return store + "/" + id }
+
+func (s *StateStore) SetArtwork(store, id string, a ArtworkOverride) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := GameKey(store, id)
+	e := s.state.Games[key]
+	if e == nil {
+		e = &GameEntry{}
+		s.state.Games[key] = e
+	}
+	e.Artwork = &a
+	s.dirty = true
+}
 
 func (s *StateStore) Entry(store, id string) *GameEntry {
 	s.mu.Lock()

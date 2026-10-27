@@ -140,8 +140,11 @@ func TestGalaxyRefreshPaginatesAndMerges(t *testing.T) {
 	if ww.Developer != "Fake Studio" || ww.Title != "Wasabi Wars" {
 		t.Fatalf("enrichment lost: %+v", ww)
 	}
-	if ww.Artwork.Square != "https://images.gog.com//cover.jpg" {
-		t.Fatalf("art url template: %+v", ww.Artwork)
+	if ww.Artwork.Cover != "https://images.gog.com//cover.jpg" {
+		t.Fatalf("portrait art must go to Cover: %+v", ww.Artwork)
+	}
+	if ww.Artwork.Square != "https://images.gog.com//bg.webp" {
+		t.Fatalf("the wide background must go to Square: %+v", ww.Artwork)
 	}
 	var mm library.Game
 	for _, g := range games {

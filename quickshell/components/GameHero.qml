@@ -19,7 +19,7 @@ Rectangle {
         id: heroArt
         anchors.fill: parent
         game: page.info
-        role: "cover"
+        kind: "wide"
         showTitle: false
         artOpacity: 0.88
         scale: 1.0
@@ -63,7 +63,7 @@ Rectangle {
         width: Tokens.px(132)
         height: Tokens.px(176)
         game: page.info
-        role: "square"
+        kind: "portrait"
         showTitle: false
         radius: Tokens.radius + Tokens.px(2)
         border.width: Tokens.border

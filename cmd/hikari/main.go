@@ -36,6 +36,7 @@ Usage:
   hikari update <store> <id> [--workers N] [--follow]
   hikari options <store> <id>            the game's launch options
   hikari favorite <store> <id> [on|off]  pin/unpin a game
+  hikari artwork-key <key> [--clear]       store a SteamGridDB key for covers
   hikari add-local <title> <exe> [--platform Linux|Windows] [--artwork PATH]
   hikari remove-local <id>               forget a local game
   hikari repair <store> <id>             verify and repair the install
@@ -650,6 +651,33 @@ func dispatch(cmd string, args []string) error {
 			return err
 		}
 		return c.print(res)
+
+	case "artwork-key":
+		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+		c := addCommon(fs)
+		clear := fs.Bool("clear", false, "forget the stored key")
+		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+			return err
+		}
+		key := strings.Join(fs.Args(), "")
+		if *clear {
+			key = ""
+		} else if key == "" {
+			return fmt.Errorf("usage: hikari artwork-key <key> | --clear\nGet a key at steamgriddb.com, it stays on this machine in settings.toml")
+		}
+		var res map[string]any
+		if err := dial(c).Call("artwork.key", map[string]any{"key": key}, &res); err != nil {
+			return err
+		}
+		if c.json {
+			return c.print(res)
+		}
+		if key == "" {
+			fmt.Println("hikari: forgot the SteamGridDB key, Steam art will be used")
+			return nil
+		}
+		fmt.Println("hikari: key saved, covers are being looked up again")
+		return nil
 
 	case "auth":
 		return authCmd(args)

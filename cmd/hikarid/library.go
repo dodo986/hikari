@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"hikari/internal/api"
 	"hikari/internal/art"
+	"hikari/internal/config"
 	"hikari/internal/library"
+	"strings"
 	"time"
 )
 
@@ -73,6 +75,9 @@ func (d *daemon) decorateState(games []library.Game) {
 func (d *daemon) decorateArtwork(games []library.Game) {
 	for i := range games {
 		g := &games[i]
+		if e := d.state.Entry(g.Store, g.ID); e != nil && e.Artwork != nil {
+			applyOverride(&g.Artwork, *e.Artwork)
+		}
 		local := library.Artwork{
 			Cover:  d.cachedPath(g.Artwork.Cover),
 			Square: d.cachedPath(g.Artwork.Square),
@@ -96,10 +101,69 @@ func (d *daemon) cachedPath(url string) string {
 	return ""
 }
 
+// reResolveArtwork forgets what it tried and looks the whole library up again,
+// which is what a newly entered SteamGridDB key should trigger.
+func (d *daemon) reResolveArtwork(srv *api.Server) {
+	games, err := d.library.List(context.Background(), "", false)
+	if err != nil {
+		d.log.Warn("cannot relist the library for artwork", "err", err)
+		return
+	}
+	d.fetchMu.Lock()
+	d.artTried = map[string]bool{}
+	d.artShape = map[string]bool{}
+	d.fetchMu.Unlock()
+	d.decorateArtwork(games)
+	go d.fetchMissingArtwork(srv, games)
+}
+
+func (d *daemon) landscapeCover(g library.Game) bool {
+	p := d.art.PathFor(g.Artwork.Cover)
+	if p == "" || !d.art.Has(g.Artwork.Cover) {
+		return false
+	}
+	d.fetchMu.Lock()
+	known, seen := d.artShape[p]
+	d.fetchMu.Unlock()
+	if seen {
+		return known
+	}
+	w, h, err := art.Dimensions(p)
+	wide := err == nil && w > h
+	d.fetchMu.Lock()
+	d.artShape[p] = wide
+	d.fetchMu.Unlock()
+	return wide
+}
+
+// withoutRetina drops the 2x suffix, since plenty of older app ids only publish
+// the plain grid.
+func withoutRetina(url string) string {
+	return strings.Replace(url, "_2x.jpg", ".jpg", 1)
+}
+
+// applyOverride lets stored artwork win over what a store reports, which is how
+// an upgraded portrait grid survives a library rescan.
+func applyOverride(into *library.Artwork, o config.ArtworkOverride) {
+	if o.Cover != "" {
+		into.Cover = o.Cover
+	}
+	if o.Square != "" {
+		into.Square = o.Square
+	}
+	if o.Logo != "" {
+		into.Logo = o.Logo
+	}
+	if o.Icon != "" {
+		into.Icon = o.Icon
+	}
+}
+
 func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 	var todo []library.Game
 	for _, g := range games {
-		if !anyMissing(d.art, g.Artwork) {
+		wanted := g.Artwork.Cover == "" || (g.Artwork.Square == "" && g.Artwork.Icon == "")
+		if !wanted && !anyMissing(d.art, g.Artwork) && !d.landscapeCover(g) {
 			continue
 		}
 		d.fetchMu.Lock()
@@ -114,20 +178,56 @@ func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 	}
 	fetchedStores := map[string]bool{}
 	for _, g := range todo {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		urls := []string{g.Artwork.Cover, g.Artwork.Square, g.Artwork.Logo, g.Artwork.Icon}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ask := g
+		if d.landscapeCover(g) {
+			ask.Artwork.Cover = ""
+		}
+		resolved := ask.Artwork
+		d.fetchMu.Lock()
+		tried := d.artTried[g.Key()]
+		d.artTried[g.Key()] = true
+		d.fetchMu.Unlock()
+		if !tried {
+			got, err := d.resolveArt(ctx, ask)
+			if err != nil {
+				d.log.Debug("artwork not resolved", "game", g.Key(), "err", err)
+			}
+			resolved = got
+		}
+		keep := library.Artwork{}
 		anyFetched := false
-		for _, u := range urls {
-			if u == "" || d.art.Has(u) {
+		for _, slot := range []struct {
+			url string
+			set func(*library.Artwork, string)
+		}{
+			{resolved.Cover, func(a *library.Artwork, u string) { a.Cover = u }},
+			{resolved.Square, func(a *library.Artwork, u string) { a.Square = u }},
+			{resolved.Logo, func(a *library.Artwork, u string) { a.Logo = u }},
+			{resolved.Icon, func(a *library.Artwork, u string) { a.Icon = u }},
+		} {
+			if slot.url == "" {
 				continue
 			}
-			if _, err := d.art.Fetch(ctx, u); err != nil {
-				d.log.Debug("artwork fetch failed", "game", g.Key(), "url", u, "err", err)
-			} else {
+			if !d.art.Has(slot.url) {
+				if _, err := d.art.Fetch(ctx, slot.url); err != nil {
+					d.log.Debug("artwork fetch failed", "game", g.Key(), "url", slot.url, "err", err)
+					if smaller := withoutRetina(slot.url); smaller != slot.url {
+						if _, err := d.art.Fetch(ctx, smaller); err == nil {
+							slot.url = smaller
+							anyFetched = true
+						}
+					}
+					if !d.art.Has(slot.url) {
+						continue
+					}
+				}
 				anyFetched = true
 			}
+			slot.set(&keep, slot.url)
 		}
 		cancel()
+		d.state.SetArtwork(g.Store, g.ID, config.ArtworkOverride(keep))
 		d.fetchMu.Lock()
 		delete(d.fetchPending, g.Key())
 		d.fetchMu.Unlock()

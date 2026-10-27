@@ -58,6 +58,9 @@ type daemon struct {
 
 	fetchMu      sync.Mutex
 	fetchPending map[string]bool
+	artTried     map[string]bool
+	resolveArt   func(context.Context, library.Game) (library.Artwork, error)
+	artShape     map[string]bool
 
 	demo     map[string]*demo.Provider
 	local    *local.Provider
@@ -169,6 +172,7 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 		})
 	}
 
+	searcher := artwork.New(settings.Library.SteamGridDBKey)
 	return &daemon{
 		log:      log,
 		paths:    paths,
@@ -180,11 +184,14 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 		games:    launch.NewManager(log, runner),
 		umu:      umuresolver.NewResolver(filepath.Join(paths.DataDir, "umu_ids.json")),
 		art:      art.New(filepath.Join(cacheDir(), "hikari", "art")),
-		artwork:  artwork.New(settings.Library.SteamGridDBKey),
+		artwork:  searcher,
 		wine:     winemgr.New(paths.DataDir),
 		started:  time.Now(),
 
 		fetchPending: map[string]bool{},
+		artTried:     map[string]bool{},
+		artShape:     map[string]bool{},
+		resolveArt:   searcher.Resolve,
 		demo:         demoProviders,
 		opti:         optiMgr,
 		mods:         modsService,

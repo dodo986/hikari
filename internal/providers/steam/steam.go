@@ -135,23 +135,46 @@ func parseManifest(path, lib string) (library.Game, bool) {
 	return g, true
 }
 
-// Steam caches art flat or under a content hash; fall back to the CDN filenames.
+// steamArt prefers the images Steam itself uses at their double resolution and
+// keeps the local cache as a fallback, since the cache is often the small copy.
 func steamArt(lib, appID string) library.Artwork {
 	dir := filepath.Join(lib, "appcache", "librarycache", appID)
-	square := cacheImage(dir,
-		"library_600x900.jpg", "library_capsule.jpg", "capsule_616x353.jpg", "header.jpg")
-	cover := cacheImage(dir,
-		"library_header.jpg", "header.jpg", "library_hero.jpg")
-	if square == "" {
-		square = fmt.Sprintf(steamArtURL, appID, "library_600x900.jpg")
+	cover := cdn(appID, "library_600x900_2x.jpg", "library_600x900.jpg")
+	if c := cacheImage(dir, "library_600x900_2x.jpg", "library_600x900.jpg"); c != "" {
+		cover = c
 	}
-	if cover == "" {
-		cover = fmt.Sprintf(steamArtURL, appID, "library_header.jpg")
+	square := cdn(appID, "library_hero.jpg", "library_header.jpg")
+	if s := cacheImage(dir, "library_hero.jpg", "library_header.jpg", "header.jpg"); s != "" {
+		square = s
 	}
-	return library.Artwork{Cover: cover, Square: square}
+	return library.Artwork{
+		Cover:  cover,
+		Square: square,
+		Logo:   cdn(appID, "logo.png"),
+	}
+}
+
+func cdn(appID string, names ...string) string {
+	if appID == "" {
+		return ""
+	}
+	return fmt.Sprintf(steamArtURL, appID, names[0])
 }
 
 const steamArtURL = "https://cdn.akamai.steamstatic.com/steam/apps/%s/%s"
+
+// SteamCDN exposes the artwork URLs for an app id so other stores can borrow
+// them once a title is matched to Steam.
+func SteamCDN(appID string) library.Artwork {
+	if appID == "" {
+		return library.Artwork{}
+	}
+	return library.Artwork{
+		Cover:  fmt.Sprintf(steamArtURL, appID, "library_600x900_2x.jpg"),
+		Square: fmt.Sprintf(steamArtURL, appID, "library_hero.jpg"),
+		Logo:   fmt.Sprintf(steamArtURL, appID, "logo.png"),
+	}
+}
 
 func cacheImage(dir string, names ...string) string {
 	for _, name := range names {

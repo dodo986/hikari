@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"image"
+	"image/jpeg"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -130,6 +132,9 @@ func TestArtworkLocalFillsAsync(t *testing.T) {
 
 	d, client := startDaemon(t)
 	d.art = art.NewWithGetter(filepath.Join(t.TempDir(), "art"), &loopbackGetter{base: imgSrv.URL})
+	d.resolveArt = func(_ context.Context, g library.Game) (library.Artwork, error) {
+		return g.Artwork, nil
+	}
 
 	if err := client.Subscribe("library.changed"); err != nil {
 		t.Fatal(err)
@@ -480,5 +485,95 @@ func TestLaunchRunningAndStopEndToEnd(t *testing.T) {
 	}
 	if len(running.Games) != 0 {
 		t.Fatalf("stopped game still listed: %+v", running)
+	}
+}
+
+type imageGetter struct {
+	base    string
+	widths  map[string][2]int
+	request []string
+}
+
+func (g *imageGetter) Get(url string) (*http.Response, error) {
+	g.request = append(g.request, url)
+	return http.Get(g.base + "/" + strings.TrimPrefix(url, "https://cdn.example.test/"))
+}
+
+func imageServer(t *testing.T, sizes map[string][2]int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		size, ok := sizes[strings.TrimPrefix(r.URL.Path, "/")]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		img := image.NewRGBA(image.Rect(0, 0, size[0], size[1]))
+		w.Header().Set("Content-Type", "image/jpeg")
+		if err := jpeg.Encode(w, img, nil); err != nil {
+			t.Errorf("encode: %v", err)
+		}
+	}))
+}
+
+func TestWideCoverIsReplacedByAPortrait(t *testing.T) {
+	srv := imageServer(t, map[string][2]int{
+		"nativegame/cover.jpg": {640, 360},
+		"portrait.jpg":         {600, 900},
+	})
+	defer srv.Close()
+
+	d, client := startDaemon(t)
+	d.art = art.NewWithGetter(filepath.Join(t.TempDir(), "art"), &imageGetter{base: srv.URL})
+	d.resolveArt = func(context.Context, library.Game) (library.Artwork, error) {
+		return library.Artwork{Cover: "https://cdn.example.test/portrait.jpg"}, nil
+	}
+	if err := client.Subscribe("library.changed"); err != nil {
+		t.Fatal(err)
+	}
+	var res struct {
+		Games []library.Game `json:"games"`
+	}
+	if err := client.Call("library.list", map[string]any{"store": "epic"}, &res); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.AwaitEvent("library.changed", 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call("library.list", map[string]any{"store": "epic"}, &res); err != nil {
+		t.Fatal(err)
+	}
+	cover := res.Games[0].Artwork.Cover
+	if !strings.HasSuffix(cover, "portrait.jpg") {
+		t.Fatalf("Cover = %q, want the portrait", cover)
+	}
+	local := res.Games[0].ArtworkLocal.Cover
+	w, h, err := art.Dimensions(local)
+	if err != nil || h <= w {
+		t.Fatalf("local cover is not a portrait: %dx%d %v", w, h, err)
+	}
+	entry := d.state.Entry("epic", "nativegame")
+	if entry == nil || entry.Artwork == nil || !strings.HasSuffix(entry.Artwork.Cover, "portrait.jpg") {
+		t.Fatalf("artwork was not remembered: %+v", entry)
+	}
+}
+
+func TestArtworkKeyIsForgettable(t *testing.T) {
+	d, client := startDaemon(t)
+	var res map[string]any
+	if err := client.Call("artwork.key", map[string]any{"key": ""}, &res); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _ := res["stored"].(bool); stored {
+		t.Fatalf("empty key must not be stored: %v", res)
+	}
+	body, err := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hikari", "settings.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "steamgriddb_key = \"\"") {
+		t.Fatalf("settings.toml does not carry the cleared key:\n%s", body)
+	}
+	if d.artwork.Key() != "" {
+		t.Fatalf("searcher still holds a key")
 	}
 }

@@ -336,7 +336,7 @@ PageBase {
                                         Layout.preferredWidth: Tokens.px(60)
                                         Layout.preferredHeight: Tokens.px(60)
                                         game: page.artFor(modelData)
-                                        role: "square"
+                                        kind: "square"
                                         showTitle: false
                                     }
                                     ColumnLayout {

@@ -93,7 +93,7 @@ PageBase {
                                         Layout.preferredWidth: Tokens.px(64)
                                         Layout.preferredHeight: Tokens.px(84)
                                         game: page.gameFor(modelData)
-                                        role: "square"
+                                        kind: "portrait"
                                         showTitle: false
                                         radius: Tokens.radius
                                         border.width: Tokens.border
@@ -153,7 +153,7 @@ PageBase {
                                         Layout.preferredWidth: Tokens.px(56)
                                         Layout.preferredHeight: Tokens.px(74)
                                         game: page.gameFor(modelData)
-                                        role: "square"
+                                        kind: "portrait"
                                         showTitle: false
                                         radius: Tokens.radius
                                         border.width: Tokens.border

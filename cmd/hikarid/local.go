@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 
+	"strings"
+
 	"hikari/internal/api"
 	"hikari/internal/artwork"
+	"hikari/internal/config"
 	"hikari/internal/library"
 	"hikari/internal/providers/local"
 )
@@ -39,6 +42,27 @@ func (d *daemon) registerLocal(srv *api.Server) {
 }
 
 func (d *daemon) registerArtwork(srv *api.Server) {
+	srv.Register("artwork.key", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Key string `json:"key"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {key}")
+		}
+		key := strings.TrimSpace(p.Key)
+		if key != "" {
+			if err := d.artwork.Check(c, key); err != nil {
+				return nil, api.Errorf(api.CodeInvalidParams, "%s", err)
+			}
+		}
+		d.artwork.SetKey(key)
+		d.settings.Library.SteamGridDBKey = key
+		if err := config.SaveSettings(d.paths, d.settings); err != nil {
+			return nil, api.Errorf(api.CodeInternal, "%s", err)
+		}
+		d.reResolveArtwork(srv)
+		return map[string]any{"stored": key != ""}, nil
+	})
 	srv.Register("artwork.search", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Title string `json:"title"`

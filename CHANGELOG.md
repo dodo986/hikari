@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.4
+
+- Covers are the real portrait grids now: Steam games use Steam's high
+  resolution portrait, hero banner and wordmark instead of the wide header, and
+  the same art is borrowed for store games that ship none.
+- Store covers are judged by their pixels, so a wide banner stops being zoomed
+  into a portrait card. A tight crop is only used when the source has the
+  resolution for it, otherwise the banner is shown whole over a dimmed backdrop.
+- `hikari artwork-key <key>` stores a SteamGridDB key in `settings.toml`, and
+  Settings has the same field. Covers for games Steam does not carry are looked
+  up again as soon as a key is saved; it is never compiled into the binary.
+
 ## 0.8.3
 
 - An AppImage now updates itself without squashfs-tools: the new build is
