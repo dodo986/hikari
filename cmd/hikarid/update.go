@@ -94,8 +94,8 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		return
 	}
 	if image := appImagePath(); image != "" {
-		fail(fmt.Errorf("this is the AppImage build and it cannot rebuild itself; "+
-			"install the tarball once with `hikari-update` from a source build of %s and this button updates from then on", info.Latest))
+		fail(fmt.Errorf("an AppImage cannot rebuild itself in place; install the tarball build once "+
+			"and it will follow the source from then on (main is at %s)", info.Latest))
 		return
 	}
 	goTool, err := exec.LookPath("go")
