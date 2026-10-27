@@ -21,7 +21,7 @@ const modsJobTimeout = 24 * time.Hour
 
 func modsCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: hikari mods status|games|setup|configure <game> --path DIR|login|logout|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|browse <game> [query]|files <game> <mod-id>|installed <game>")
+		return errors.New("usage: hikari mods status|games|setup|configure <game> --path DIR|login|logout|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|updates <game>|update <game> --name MOD|browse <game> [query]|files <game> <mod-id>|installed <game>")
 	}
 	switch args[0] {
 	case "status":
