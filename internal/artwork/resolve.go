@@ -223,10 +223,19 @@ func matchScore(want, got string) (float64, bool) {
 	return score, true
 }
 
+func isDigit(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
 func tokens(s string) map[string]bool {
 	out := map[string]bool{}
 	for _, f := range strings.Fields(s) {
-		if len(f) < 2 || noise[f] {
+		if noise[f] || (len(f) < 2 && !isDigit(f)) {
 			continue
 		}
 		out[f] = true

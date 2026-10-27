@@ -177,8 +177,29 @@ func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 		return
 	}
 	fetchedStores := map[string]bool{}
-	for _, g := range todo {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	base := d.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	var emptied []string
+	for i, g := range todo {
+		if base.Err() != nil {
+			return
+		}
+		if i > 0 && i%6 == 0 && !d.artwork.StoreReachable(base) {
+			d.log.Debug("store stopped answering artwork lookups, continuing next time", "left", len(todo)-i)
+			for _, rest := range todo[i:] {
+				emptied = append(emptied, rest.Key())
+			}
+			for _, key := range emptied {
+				d.fetchMu.Lock()
+				delete(d.artTried, key)
+				delete(d.fetchPending, key)
+				d.fetchMu.Unlock()
+			}
+			return
+		}
+		ctx, cancel := context.WithTimeout(base, 30*time.Second)
 		ask := g
 		if d.landscapeCover(g) {
 			ask.Artwork.Cover = ""
@@ -192,6 +213,7 @@ func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 			got, err := d.resolveArt(ctx, ask)
 			if err != nil {
 				d.log.Debug("artwork not resolved", "game", g.Key(), "err", err)
+				emptied = append(emptied, g.Key())
 			}
 			resolved = got
 		}
@@ -209,6 +231,9 @@ func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 			if slot.url == "" {
 				continue
 			}
+			if !strings.HasPrefix(slot.url, "http") {
+				continue
+			}
 			if !d.art.Has(slot.url) {
 				if _, err := d.art.Fetch(ctx, slot.url); err != nil {
 					d.log.Debug("artwork fetch failed", "game", g.Key(), "url", slot.url, "err", err)
@@ -217,6 +242,9 @@ func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 							slot.url = smaller
 							anyFetched = true
 						}
+					}
+					if !strings.HasPrefix(slot.url, "http") {
+						continue
 					}
 					if !d.art.Has(slot.url) {
 						continue

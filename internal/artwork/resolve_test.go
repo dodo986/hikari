@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"hikari/internal/library"
 )
@@ -43,6 +44,13 @@ func TestPickRefusesASequel(t *testing.T) {
 	cands := []Candidate{{ID: "5", Name: "Doom Eternal"}}
 	if best := pick("Doom", cands); best != nil {
 		t.Fatalf("picked the sequel %+v", best)
+	}
+}
+
+func TestPickKeepsTheSequelNumber(t *testing.T) {
+	cands := []Candidate{{ID: "517630", Name: "Just Cause 4 Reloaded"}}
+	if best := pick("Just Cause 4", cands); best == nil || best.ID != "517630" {
+		t.Fatalf("picked %+v, want the reloaded edition", best)
 	}
 }
 
@@ -98,5 +106,30 @@ func TestResolveAsksSteamForTheStoreArtOfItsOwnGames(t *testing.T) {
 	got, _ := s.Resolve(context.Background(), library.Game{Store: library.StoreSteam, ID: "570", Title: "Dota 2"})
 	if !strings.Contains(got.Cover, "apps/570/library_600x900_2x.jpg") {
 		t.Fatalf("Cover = %q", got.Cover)
+	}
+}
+
+func TestSearcherPacesItsSteamLookups(t *testing.T) {
+	var hits []time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, time.Now())
+		w.Write([]byte(`{"items":[{"id":1,"name":"Portal"}]}`))
+	}))
+	defer srv.Close()
+
+	s := New("")
+	s.steamBase = srv.URL
+	for i := 0; i < 3; i++ {
+		if _, err := s.searchSteam(context.Background(), "Portal"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(hits) != 3 {
+		t.Fatalf("made %d requests, want 3", len(hits))
+	}
+	for i := 1; i < len(hits); i++ {
+		if gap := hits[i].Sub(hits[i-1]); gap < 300*time.Millisecond {
+			t.Fatalf("requests %d and %d were %v apart", i-1, i, gap)
+		}
 	}
 }

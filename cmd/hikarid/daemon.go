@@ -58,6 +58,7 @@ type daemon struct {
 
 	fetchMu      sync.Mutex
 	fetchPending map[string]bool
+	ctx          context.Context
 	artTried     map[string]bool
 	resolveArt   func(context.Context, library.Game) (library.Artwork, error)
 	artShape     map[string]bool
@@ -203,6 +204,7 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 }
 
 func (d *daemon) register(srv *api.Server, ctx context.Context) {
+	d.ctx = ctx
 	srv.Register("daemon.status", d.handleStatus)
 	srv.Register("daemon.stop", d.handleStop)
 	d.registerLibrary(srv)
@@ -221,9 +223,25 @@ func (d *daemon) register(srv *api.Server, ctx context.Context) {
 	srv.Register("library.refresh", d.handleRefresh)
 	d.registerWine(srv)
 	d.watchStateFiles(ctx, srv)
+	go d.flushState(ctx)
 	if len(d.demo) > 0 {
 		if err := d.demo[library.StoreEpic].SeedArtwork(d.art); err != nil {
 			d.log.Warn("demo artwork seeding failed", "err", err)
+		}
+	}
+}
+
+func (d *daemon) flushState(ctx context.Context) {
+	tick := time.NewTicker(3 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if err := d.state.Flush(); err != nil {
+				d.log.Warn("cannot save state", "err", err)
+			}
 		}
 	}
 }

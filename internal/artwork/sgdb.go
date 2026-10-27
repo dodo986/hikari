@@ -26,9 +26,10 @@ type Cover struct {
 }
 
 type Searcher struct {
-	mu     sync.RWMutex
-	apiKey string
-	client *http.Client
+	mu        sync.RWMutex
+	apiKey    string
+	lastSteam time.Time
+	client    *http.Client
 
 	sgdbBase  string
 	steamBase string
@@ -55,6 +56,41 @@ func (s *Searcher) Key() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.apiKey
+}
+
+// paceSteam keeps store searches at a rate the endpoint answers properly; a
+// library pass asks it once per game.
+func (s *Searcher) paceSteam(ctx context.Context) error {
+	s.mu.Lock()
+	wait := time.Until(s.lastSteam.Add(700 * time.Millisecond))
+	s.mu.Unlock()
+	if wait > 0 {
+		if err := sleepCtx(ctx, wait); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	s.lastSteam = time.Now()
+	s.mu.Unlock()
+	return nil
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// StoreReachable tells a lookup that found nothing apart from the store quietly
+// refusing a burst, which is what it does after a few dozen searches.
+func (s *Searcher) StoreReachable(ctx context.Context) bool {
+	cands, err := s.searchSteam(ctx, "portal")
+	return err == nil && len(cands) > 0
 }
 
 // Check confirms a key is accepted by SteamGridDB before it is stored.
@@ -143,9 +179,13 @@ type steamSearch struct {
 func (s *Searcher) searchSteam(ctx context.Context, title string) ([]Candidate, error) {
 	q := fmt.Sprintf("%s/storesearch/?term=%s&cc=us&l=en", s.steamBase, url.QueryEscape(title))
 	var res steamSearch
+	if err := s.paceSteam(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.getJSON(ctx, q, "", &res); err != nil {
 		return nil, err
 	}
+
 	var out []Candidate
 	for i, item := range res.Items {
 		if i >= 4 {

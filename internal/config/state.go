@@ -75,6 +75,18 @@ func (s *StateStore) SetArtwork(store, id string, a ArtworkOverride) {
 	s.dirty = true
 }
 
+// Flush writes pending changes; artwork overrides accumulate during a library
+// pass, so they are batched instead of rewriting the file once per game.
+func (s *StateStore) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.dirty {
+		return nil
+	}
+	s.dirty = false
+	return s.saveLocked()
+}
+
 func (s *StateStore) Entry(store, id string) *GameEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()

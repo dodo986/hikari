@@ -150,3 +150,23 @@ func TestStateCorruptFileIsError(t *testing.T) {
 		t.Fatal("corrupt state should be reported, not silently reset")
 	}
 }
+
+func TestSetArtworkSurvivesAFlush(t *testing.T) {
+	p := Paths{State: filepath.Join(t.TempDir(), "state.json")}
+	st, err := LoadState(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.SetArtwork("epic", "hue", ArtworkOverride{Cover: "https://cdn.example.test/portrait.jpg"})
+	if err := st.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	again, err := LoadState(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := again.Entry("epic", "hue")
+	if e == nil || e.Artwork == nil || e.Artwork.Cover != "https://cdn.example.test/portrait.jpg" {
+		t.Fatalf("artwork was not written: %+v", e)
+	}
+}
