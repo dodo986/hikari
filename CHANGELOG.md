@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+
+- An AppImage now updates itself without squashfs-tools: the new build is
+  installed in `~/.local/share/hikari/app` and the launcher runs it from there.
+  Builds older than this one may need to be reinstalled once.
+
 ## 0.8.2
 
 - Updates follow the commits on `main` instead of published releases: the daemon
