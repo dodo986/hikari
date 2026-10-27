@@ -71,7 +71,7 @@ def _parse(argv: list) -> tuple:
     if not argv:
         raise BridgeError("usage", "usage: modbridge.py <doctor|games|configure|"
                                    "deploy|restore|install|nexus|search|files|"
-                                   "account|installed|health|lastlog>"
+                                   "account|installed|updates|update|health|lastlog>"
                                    " [--flag value]")
     command, rest = argv[0], argv[1:]
     opts: dict = {}
@@ -839,6 +839,99 @@ def cmd_missing(opts: dict) -> dict:
     } for item in found]}
 
 
+def cmd_updates(opts: dict) -> dict:
+    """Installed Nexus mods with a newer file published since they were added."""
+    game = _require(_bootstrap(), opts.get("game", ""))
+    _name, profile_dir = _profile(game, opts.get("profile", ""))
+    api, _mode = _nexus_api()
+    _key, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+    from Utils.mods.modlist import read_modlist
+    from Nexus.nexus_update_checker import check_for_updates
+    staging = pathlib.Path(game.get_effective_mod_staging_path())
+    enabled = {entry.name for entry in read_modlist(profile_dir / "modlist.txt")
+               if entry.enabled and not entry.is_separator}
+    found, _missing = check_for_updates(
+        api, staging, game_domain=domain, progress_cb=log, save_results=False,
+        enabled_only=enabled or None)
+    updates = []
+    for item in found:
+        updates.append({
+            "mod": item.mod_name,
+            "mod_id": int(item.mod_id or 0),
+            "installed_version": item.installed_version or "",
+            "latest_version": item.latest_version or "",
+            "file_id": int(item.latest_file_id or 0),
+            "file_name": item.latest_file_name or "",
+            "url": item.nexus_url or "",
+        })
+    return {"game": game.name, "updates": updates}
+
+
+def cmd_update(opts: dict) -> dict:
+    """Install the newer file Nexus published for one installed mod."""
+    game = _require(_bootstrap(), opts.get("game", ""))
+    profile, profile_dir = _profile(game, opts.get("profile", ""))
+    wanted = opts.get("name", "") or ""
+    if not wanted:
+        raise BridgeError("usage", "update needs --name <mod>")
+    game.set_active_profile_dir(profile_dir)
+    game.load_paths()
+    path, entries, write_modlist = _modlist(profile_dir)
+    entry = _entry_named(entries, wanted)
+    if entry is None:
+        raise BridgeError("notfound", f"the profile has no mod called '{wanted}'")
+    api, _mode = _nexus_api()
+    _key, domain = _nexus_game(_bootstrap(), opts.get("game", ""))
+    from Nexus.nexus_update_checker import check_for_updates
+    staging = pathlib.Path(game.get_effective_mod_staging_path())
+    found, _missing = check_for_updates(
+        api, staging, game_domain=domain, progress_cb=log, save_results=False,
+        enabled_only={wanted})
+    if not found or int(found[0].latest_file_id or 0) <= 0:
+        raise BridgeError("notfound", f"{wanted} is already the newest file")
+    info = found[0]
+    slot = [e for e in entries if not e.is_separator].index(entry)
+    was_enabled = bool(entry.enabled)
+    deploy_active = bool(game.get_deploy_active())
+    archive = _download_file(domain, int(info.mod_id), int(info.latest_file_id))
+    log(f"{wanted}: {info.installed_version or '?'} -> {info.latest_version or '?'}")
+    from Utils.mods.remove import remove_mods
+    remove_mods(game, profile_dir, [wanted], log_fn=log)
+    write_modlist(path, [e for e in entries if e.name != wanted])
+    from Utils.mods.install import install_archive
+    mod = install_archive(archive, game, profile_dir, log_fn=log,
+                          progress_fn=progress, preferred_name=wanted)
+    if not mod:
+        raise BridgeError("failure", f"the new files of {wanted} did not install")
+    _restore_modlist_slot(path, mod, slot, was_enabled)
+    deployed = False
+    if deploy_active:
+        from Utils.deployment.pipeline import run_deploy_pipeline
+        deployed = bool(run_deploy_pipeline(game, profile, log_fn=log,
+                                            progress_fn=progress))
+    return {"game": game.name, "profile": profile, "mod": mod,
+            "from": info.installed_version or "", "to": info.latest_version or "",
+            "deployed": deployed}
+
+
+def _restore_modlist_slot(path, name, slot, enabled):
+    """Put an updated mod back where it was in the load order, still disabled if it was."""
+    from Utils.mods.modlist import read_modlist, write_modlist
+    entries = read_modlist(path)
+    row = next((e for e in entries if e.name == name), None)
+    if row is None:
+        return
+    row.enabled = enabled
+    rest = [e for e in entries if e.name != name]
+    rows = [e for e in rest if not e.is_separator]
+    if slot < len(rows):
+        index = rest.index(rows[slot])
+    else:
+        index = len(rest)
+    rest.insert(index, row)
+    write_modlist(path, rest)
+
+
 def cmd_installed(opts: dict) -> dict:
     game = _require(_bootstrap(), opts.get("game", ""))
     name, profile_dir = _profile(game, opts.get("profile", ""))
@@ -964,6 +1057,8 @@ COMMANDS = {
     "login": cmd_login,
     "logout": cmd_logout,
     "installed": cmd_installed,
+    "updates": cmd_updates,
+    "update": cmd_update,
     "toggle": cmd_toggle,
     "remove": cmd_remove,
     "missing": cmd_missing,

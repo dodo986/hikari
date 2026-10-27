@@ -206,6 +206,22 @@ func (d *daemon) registerMods(srv *api.Server) {
 		return done, nil
 	})
 
+	srv.Register("mods.updates", func(c context.Context, params json.RawMessage) (any, error) {
+		var p struct {
+			Game    string `json:"game"`
+			Profile string `json:"profile"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
+		}
+		load()
+		updates, err := d.mods.Updates(c, p.Game, p.Profile)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		return map[string]any{"updates": updates}, nil
+	})
+
 	srv.Register("mods.health", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Game    string `json:"game"`

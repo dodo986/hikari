@@ -83,6 +83,20 @@ func modsCmd(args []string) error {
 		return modsToggleCmd(args[1:])
 	case "configure":
 		return modsConfigureCmd(args[1:])
+	case "updates":
+		return modsUpdatesCmd(args[1:])
+	case "update":
+		return modsJobCmd("mods.update", "update", []string{"profile", "name"}, args[1:], func(fs *flag.FlagSet, pos []string) (map[string]any, error) {
+			if len(pos) < 1 {
+				return nil, errors.New("usage: hikari mods update <game> --name <mod> [--profile NAME]")
+			}
+			params := map[string]any{"game": pos[0]}
+			copyFlags(fs, params, "profile", "name")
+			if params["name"] == "" {
+				return nil, errors.New("usage: hikari mods update <game> --name <mod>")
+			}
+			return params, nil
+		})
 	case "health":
 		return modsHealthCmd(args[1:])
 	case "repair":
@@ -99,6 +113,49 @@ func modsCmd(args []string) error {
 		return modsJobCmd("mods.install", "install", []string{"profile", "archive", "url", "name", "mod-id", "file-id"}, args[1:], installParams)
 	}
 	return fmt.Errorf("unknown mods command %q", args[0])
+}
+
+// modsUpdatesCmd lists Nexus files newer than what is installed.
+func modsUpdatesCmd(args []string) error {
+	fs := flag.NewFlagSet("mods updates", flag.ExitOnError)
+	c := addCommon(fs)
+	profile := fs.String("profile", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 {
+		return errors.New("usage: hikari mods updates <game> [--profile NAME]")
+	}
+	params := map[string]any{"game": pos[0]}
+	if *profile != "" {
+		params["profile"] = *profile
+	}
+	var res struct {
+		Updates []mods.Update `json:"updates"`
+	}
+	if err := dial(c).Call("mods.updates", params, &res); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(res)
+	}
+	if len(res.Updates) == 0 {
+		fmt.Println("updates: every installed mod is current")
+		return nil
+	}
+	for _, update := range res.Updates {
+		fmt.Printf("%-40s %s -> %s\n", update.Mod, orQuestion(update.InstalledVersion), orQuestion(update.LatestVersion))
+	}
+	return nil
+}
+
+// orQuestion keeps a blank version readable in a table.
+func orQuestion(value string) string {
+	if value == "" {
+		return "?"
+	}
+	return value
 }
 
 // modsConfigureCmd points a game at its folder before anything is installed.

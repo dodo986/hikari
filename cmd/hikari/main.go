@@ -54,6 +54,8 @@ Usage:
   hikari mods setup                      install the Python packages mods need
   hikari mods configure <game> --path DIR point a game at its folder
   hikari mods games                      games Hikari can mod, with their profiles
+  hikari mods updates <game>             installed mods with a newer Nexus file
+  hikari mods update <game> --name M     download and install that newer file
   hikari mods deploy <game> [--profile P]  apply a profile to the game
   hikari mods restore <game>             strip the deployed mods again
   hikari mods install <game> --archive PATH | --url nxm://…  [--profile P] [--name N]

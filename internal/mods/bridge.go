@@ -321,6 +321,35 @@ func (b *Bridge) Configure(ctx context.Context, req ConfigureRequest) (Configure
 	return out, nil
 }
 
+func (b *Bridge) Updates(ctx context.Context, game, profile string) ([]Update, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, nexusTimeout)
+	defer cancel()
+	raw, err := b.run(probeCtx, "updates", gameArgs(game, profile), Sink{})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Updates []Update `json:"updates"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, &Error{Kind: KindFailure, Message: "the modding backend sent an unreadable update list"}
+	}
+	return out.Updates, nil
+}
+
+func (b *Bridge) Update(ctx context.Context, game, profile, name string, sink Sink) (Updated, error) {
+	args := append(gameArgs(game, profile), "--name", name)
+	raw, err := b.run(ctx, "update", args, sink)
+	if err != nil {
+		return Updated{}, err
+	}
+	var out Updated
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Updated{}, &Error{Kind: KindFailure, Message: "the modding backend sent an unreadable update result"}
+	}
+	return out, nil
+}
+
 func (b *Bridge) Deploy(ctx context.Context, game, profile string, sink Sink) error {
 	_, err := b.run(ctx, "deploy", gameArgs(game, profile), sink)
 	return err

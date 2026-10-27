@@ -68,6 +68,25 @@ func (f *Fake) Configure(_ context.Context, req ConfigureRequest) (Configured, e
 		Staging: staging, ProfileDir: staging + "/profiles/default", Configured: true}, nil
 }
 
+func (f *Fake) Updates(_ context.Context, game, _ string) ([]Update, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return []Update{{Mod: "Cyber Engine Tweaks", ModID: 107, InstalledVersion: "1.32.0",
+		LatestVersion: "1.33.0", FileID: 4242, FileName: "cet-1.33.0.zip",
+		URL: "https://www.nexusmods.com/cyberpunk2077/mods/107"}}, nil
+}
+
+func (f *Fake) Update(_ context.Context, game, _, name string, _ Sink) (Updated, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, mod := range f.list(game) {
+		if mod.Name == name {
+			return Updated{Mod: name, From: "1.32.0", To: "1.33.0", Deployed: true}, nil
+		}
+	}
+	return Updated{}, &Error{Kind: KindNotFound, Message: "the profile has no mod called " + name}
+}
+
 func (f *Fake) Games(context.Context) ([]Game, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

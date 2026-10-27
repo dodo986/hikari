@@ -17,6 +17,7 @@ PageBase {
     readonly property var restGames: page.games.filter(g => !g.configured)
     readonly property var game: page.selectedGame()
 
+
     property var chosen: ({})
     property bool showAll: false
     property string tab: "installed"
@@ -25,6 +26,7 @@ PageBase {
     property string pendingGame: ""
     property var installingFile: null
     property bool showArchived: false
+    property string pendingUpdate: ""
 
     readonly property var sortKeys: ["created", "updated", "downloads", "endorsements"]
     readonly property var sortLabels: ({
@@ -85,6 +87,15 @@ PageBase {
         app.openModGame(entry.id);
         page.tab = "installed";
         Daemon.loadModsInstalled(entry.id, page.profileFor(entry));
+    }
+    // Upgrades one installed mod to the file Nexus published since.
+    function updateRow() {
+        if (!page.game || !Daemon.modsUpdates) return null;
+        for (var i = 0; i < (Daemon.modsUpdates.updates || []).length; i++) {
+            var row = Daemon.modsUpdates.updates[i];
+            if (row.mod === page.pendingUpdate) return row;
+        }
+        return null;
     }
     function applyTab() {
         if (!app.modTab) return;
@@ -175,6 +186,10 @@ PageBase {
         if (page.game) {
             page.tab = "installed";
             Daemon.loadModsInstalled(page.game.id, page.profileFor(page.game));
+            // One background question to Nexus, so an outdated mod shows up on
+            // its own instead of after a click.
+            if (page.game.configured)
+                Daemon.loadModsUpdates(page.game.id, page.profileFor(page.game));
             if (Daemon.modsBrowse && Daemon.modsBrowse.game !== page.game.name) Daemon.modsBrowse = null;
             Qt.callLater(page.applyTab);
         }
@@ -508,6 +523,64 @@ PageBase {
             Layout.margins: Tokens.s5
             spacing: Tokens.s4
 
+            Rectangle {
+                visible: Daemon.modsUpdates !== null && Daemon.modsUpdates.updates !== undefined
+                         && Daemon.modsUpdates.updates.length > 0
+                Layout.fillWidth: true
+                implicitHeight: updateRows.implicitHeight + Tokens.s4 * 2
+                radius: Tokens.radius
+                color: Tokens.tint5
+                border.width: Tokens.border
+                border.color: Tokens.lineSoft
+                ColumnLayout {
+                    id: updateRows
+                    anchors.fill: parent
+                    anchors.margins: Tokens.s4
+                    spacing: Tokens.s2
+                    Text {
+                        readonly property int count: Daemon.modsUpdates && Daemon.modsUpdates.updates
+                                                     ? Daemon.modsUpdates.updates.length : 0
+                        text: count + " " + (count === 1 ? I18n.tr("update") : I18n.tr("updates"))
+                              + " " + I18n.tr("on Nexus")
+                        color: Tokens.ink
+                        font.family: Tokens.ui
+                        font.pixelSize: Tokens.fSmall
+                    }
+                    Repeater {
+                        model: Daemon.modsUpdates && Daemon.modsUpdates.updates
+                               ? Daemon.modsUpdates.updates : []
+                        RowLayout {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: Tokens.s3
+                            Text {
+                                text: modelData.mod
+                                color: Tokens.ink
+                                font.family: Tokens.ui
+                                font.pixelSize: Tokens.fSmall
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: (modelData.installed_version || "?") + "  ->  " + (modelData.latest_version || "?")
+                                color: Tokens.inkFaint
+                                font.family: Tokens.ui
+                                font.pixelSize: Tokens.fTiny
+                            }
+                            Btn {
+                                compact: true
+                                text: I18n.tr("Update")
+                                armed: !Daemon.modsBusy
+                                onAct: {
+                                    page.pendingUpdate = modelData.mod;
+                                    Daemon.updateMod(page.game.id, page.profileFor(page.game), modelData.mod);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Tokens.s2
@@ -647,10 +720,18 @@ PageBase {
                     }
                     Item { Layout.fillWidth: true }
                     Text {
-                        text: I18n.tr("Click a row to enable or disable it; deploy applies the list.")
+                        Layout.fillWidth: true
+                        text: I18n.tr("Click a row to toggle it; deploy applies the list.")
                         color: Tokens.inkFaint
                         font.family: Tokens.ui
                         font.pixelSize: Tokens.fTiny
+                        elide: Text.ElideRight
+                    }
+                    Btn {
+                        compact: true
+                        text: Daemon.modsUpdatesBusy ? I18n.tr("Checking") : I18n.tr("Check updates")
+                        armed: !Daemon.modsBusy && !Daemon.modsUpdatesBusy
+                        onAct: Daemon.loadModsUpdates(page.game.id, page.profileFor(page.game))
                     }
                     Btn {
                         compact: true

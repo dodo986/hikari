@@ -27,6 +27,8 @@ Singleton {
     property var modsLog: []
     property bool modsBusy: false
     property var modsInstalled: null
+    property var modsUpdates: null
+    property bool modsUpdatesBusy: false
     property var modsBrowse: null
     property var modsFiles: null
     property var modsAccount: null
@@ -112,6 +114,17 @@ Singleton {
         rpc.modsInstalled = null;
         call("mods.installed", { game: game, profile: profile || "" },
              r => rpc.modsInstalled = r);
+    }
+    function loadModsUpdates(game, profile) {
+        if (!game) return;
+        rpc.modsUpdatesBusy = true;
+        call("mods.updates", { game: game, profile: profile || "" }, (r, e) => {
+            rpc.modsUpdatesBusy = false;
+            rpc.modsUpdates = e ? { game: game, updates: [], error: e.message } : r;
+        });
+    }
+    function updateMod(game, profile, name) {
+        modsJob("mods.update", { game: game, profile: profile || "", name: name });
     }
     function browseMods(game, query, sort, page) {
         if (!game) return;

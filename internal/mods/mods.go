@@ -136,6 +136,25 @@ type Configured struct {
 	Problems   []string `json:"problems,omitempty"`
 }
 
+// Update is a newer file Nexus holds for a mod that is already installed.
+type Update struct {
+	Mod              string `json:"mod"`
+	ModID            int    `json:"mod_id"`
+	InstalledVersion string `json:"installed_version"`
+	LatestVersion    string `json:"latest_version"`
+	FileID           int    `json:"file_id"`
+	FileName         string `json:"file_name"`
+	URL              string `json:"url"`
+}
+
+// Updated reports what an update replaced, and whether the game folder followed.
+type Updated struct {
+	Mod      string `json:"mod"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Deployed bool   `json:"deployed"`
+}
+
 type Progress struct {
 	Current int
 	Total   int
@@ -231,6 +250,8 @@ type Service interface {
 	Restore(ctx context.Context, game string, sink Sink) error
 	Install(ctx context.Context, req InstallRequest, sink Sink) (string, error)
 	Configure(ctx context.Context, req ConfigureRequest) (Configured, error)
+	Updates(ctx context.Context, game, profile string) ([]Update, error)
+	Update(ctx context.Context, game, profile, name string, sink Sink) (Updated, error)
 	Nexus(ctx context.Context, action, key string) (bool, error)
 	Account(ctx context.Context) (Account, error)
 	Login(ctx context.Context, sink Sink) (Account, error)
