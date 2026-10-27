@@ -271,6 +271,9 @@ Singleton {
             return (updatePhase || I18n.tr("Updating")) + pct;
         }
         if (updatePhase === "failed") return I18n.tr("Update failed — retry");
+        if (updateInfo && updateInfo.behind > 0) {
+            return I18n.tr("Source is") + " " + updateInfo.behind + " " + I18n.tr("commits ahead") + ": " + updateInfo.latest;
+        }
         return I18n.tr("Update available") + ": " + (updateInfo ? updateInfo.latest : "");
     }
     function checkUpdates() {

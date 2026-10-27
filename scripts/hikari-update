@@ -13,7 +13,7 @@ icons="$data/icons/hicolor/scalable/apps"
 log="${HIKARI_UPDATE_LOG:-$data/update.log}"
 mkdir -p "$(dirname "$log")"
 exec >>"$log" 2>&1
-echo "[update] $(date -Is) release $tag from $stage (running ${HIKARI_UPDATE_FROM:-unknown})"
+echo "[update] $(date -Is) build $tag from $stage commit ${HIKARI_UPDATE_COMMIT:-unknown} (running ${HIKARI_UPDATE_FROM:-unknown})"
 
 start_daemon() {
 	systemctl --user stop hikarid >/dev/null 2>&1 || true

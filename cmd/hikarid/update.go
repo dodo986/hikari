@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -24,8 +26,11 @@ func (d *daemon) updateChecker() *update.Checker {
 	if base := os.Getenv("HIKARI_UPDATE_API"); base != "" {
 		c.Base = base
 	}
-	if appImagePath() != "" {
-		c.Format = "appimage"
+	if base := os.Getenv("HIKARI_UPDATE_CODELOAD"); base != "" {
+		c.Codeload = base
+	}
+	if branch := os.Getenv("HIKARI_UPDATE_BRANCH"); branch != "" {
+		c.Branch = branch
 	}
 	return c
 }
@@ -39,16 +44,9 @@ func appImagePath() string {
 	return ""
 }
 
-func qsBin() string {
-	if p, err := exec.LookPath("qs"); err == nil {
-		return p
-	}
-	return "/usr/sbin/qs"
-}
-
 func (d *daemon) registerUpdate(srv *api.Server) {
 	srv.Register("app.update.check", func(c context.Context, params json.RawMessage) (any, error) {
-		info, err := d.updateChecker().Check(c, d.version)
+		info, err := d.updateChecker().Check(c, d.version, d.commit)
 		if err != nil {
 			return nil, api.Errorf(api.CodeNotAvailable, "%s", err)
 		}
@@ -83,10 +81,10 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		updateBusy.Store(false)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	publish("checking", nil, "")
-	info, err := d.updateChecker().Check(ctx, d.version)
+	info, err := d.updateChecker().Check(ctx, d.version, d.commit)
 	if err != nil {
 		fail(err)
 		return
@@ -95,34 +93,35 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		fail(fmt.Errorf("already up to date"))
 		return
 	}
-	if appImage := appImagePath(); appImage != "" {
-		d.applyAppImageUpdate(ctx, info, appImage, publish, fail)
+	if image := appImagePath(); image != "" {
+		fail(fmt.Errorf("this is the AppImage build and it cannot rebuild itself; "+
+			"install the tarball once with `hikari-update` from a source build of %s and this button updates from then on", info.Latest))
+		return
+	}
+	goTool, err := exec.LookPath("go")
+	if err != nil {
+		fail(fmt.Errorf("updating from source needs the Go toolchain; install go and try again"))
 		return
 	}
 	if err := writable(binDir()); err != nil {
 		fail(fmt.Errorf("this install is not writable (%s); update it through your package manager", binDir()))
 		return
 	}
+	d.sweepUpdateStages()
 	stage, err := os.MkdirTemp(d.paths.DataDir, "update-*")
 	if err != nil {
 		fail(err)
 		return
 	}
 	publish("downloading", nil, "")
-	archivePath, err := d.updateChecker().Download(ctx, info, stage, func(done, total int64) {
-		if total <= 0 {
-			return
-		}
-		pct := float64(done) / float64(total) * 100
-		if pct > 100 {
-			pct = 100
-		}
-		publish("downloading", &pct, "")
+	archivePath, sum, err := d.updateChecker().Source(ctx, info, stage, func(done int64) {
+		publish("downloading", nil, "")
 	})
 	if err != nil {
 		fail(err)
 		return
 	}
+	d.log.Info("update source fetched", "commit", info.Latest, "sha256", sum)
 	tree := filepath.Join(stage, "tree")
 	if err := os.MkdirAll(tree, 0o755); err != nil {
 		fail(err)
@@ -132,7 +131,18 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		fail(err)
 		return
 	}
-	root, err := releaseRoot(tree)
+	src, err := singleDir(tree)
+	if err != nil {
+		fail(err)
+		return
+	}
+	root := filepath.Join(stage, "out")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		fail(err)
+		return
+	}
+	publish("installing", nil, "")
+	built, err := d.buildFromSource(ctx, goTool, src, root, info, publish)
 	if err != nil {
 		fail(err)
 		return
@@ -145,17 +155,16 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		}
 	}
 	if !fileExists(updater) {
-		fail(fmt.Errorf("release has no hikari-update script"))
+		fail(fmt.Errorf("the source tree has no scripts/hikari-update"))
 		return
 	}
 	publish("installing", nil, "")
 	logFile, _ := os.OpenFile(filepath.Join(d.paths.DataDir, "update.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	// The updater must outlive this daemon's systemd unit: a child in the
-	// same cgroup is killed when the unit's main process exits.
 	var cmd *exec.Cmd
 	if _, err := exec.LookPath("systemd-run"); err == nil {
 		args := []string{"--user", "--unit=hikari-update", "--collect",
 			"--setenv=HIKARI_UPDATE_FROM=" + d.version,
+			"--setenv=HIKARI_UPDATE_COMMIT=" + info.Latest,
 			"--setenv=HIKARI_INSTALL_DIR=" + binDir(),
 			"--setenv=HIKARI_UPDATE_LOG=" + filepath.Join(d.paths.DataDir, "update.log")}
 		for _, k := range []string{"WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "QT_QPA_PLATFORM", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
@@ -163,11 +172,12 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 				args = append(args, "--setenv="+k+"="+v)
 			}
 		}
-		args = append(args, updater, root, info.Latest)
+		args = append(args, updater, root, built)
 		cmd = exec.Command("systemd-run", args...)
 	} else {
-		cmd = exec.Command(updater, root, info.Latest)
-		cmd.Env = append(os.Environ(), "HIKARI_UPDATE_FROM="+d.version, "HIKARI_INSTALL_DIR="+binDir())
+		cmd = exec.Command(updater, root, built)
+		cmd.Env = append(os.Environ(), "HIKARI_UPDATE_FROM="+d.version,
+			"HIKARI_UPDATE_COMMIT="+info.Latest, "HIKARI_INSTALL_DIR="+binDir())
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	}
 	if logFile != nil {
@@ -178,7 +188,7 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 		fail(err)
 		return
 	}
-	d.log.Info("update handed to the updater", "version", info.Latest, "pid", cmd.Process.Pid)
+	d.log.Info("update handed to the updater", "commit", info.Latest, "version", built, "pid", cmd.Process.Pid)
 	go func() {
 		time.Sleep(700 * time.Millisecond)
 		_ = os.Remove(config.SocketPath())
@@ -186,88 +196,93 @@ func (d *daemon) applyUpdate(srv *api.Server) {
 	}()
 }
 
-func (d *daemon) applyAppImageUpdate(ctx context.Context, info update.Info, appImage string, publish func(string, *float64, string), fail func(error)) {
-	if resolved, err := filepath.EvalSymlinks(appImage); err == nil {
-		appImage = resolved
+// buildFromSource turns a fetched tree into the layout the installer expects and
+// returns the version the new daemon reports.
+func (d *daemon) buildFromSource(ctx context.Context, goTool, src, root string, info update.Info, publish func(string, *float64, string)) (string, error) {
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		return "", err
 	}
-	dir := filepath.Dir(appImage)
-	if err := writable(dir); err != nil {
-		fail(fmt.Errorf("the AppImage folder is not writable (%s); move Hikari somewhere writable or download the new release by hand", dir))
-		return
-	}
-	stage, err := os.MkdirTemp(dir, ".hikari-update-*")
-	if err != nil {
-		fail(err)
-		return
-	}
-	defer os.RemoveAll(stage)
-	publish("downloading", nil, "")
-	asset, err := d.updateChecker().Download(ctx, info, stage, func(done, total int64) {
-		if total <= 0 {
-			return
+	for _, name := range []string{"hikarid", "hikari"} {
+		out := filepath.Join(root, name)
+		args := []string{"build", "-trimpath", "-buildvcs=false",
+			"-ldflags", "-s -w -X main.commit=" + info.Sha,
+			"-o", out, "./cmd/" + name}
+		cmd := exec.CommandContext(ctx, goTool, args...)
+		cmd.Dir = src
+		cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "CGO_ENABLED=0")
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return "", fmt.Errorf("building %s from %s failed: %s", name, info.Latest, lastNonEmpty(stderr.String()))
 		}
-		pct := float64(done) / float64(total) * 100
-		if pct > 100 {
-			pct = 100
+		if err := os.Chmod(out, 0o755); err != nil {
+			return "", err
 		}
-		publish("downloading", &pct, "")
-	})
+	}
+	for _, item := range []struct{ from, to string }{
+		{filepath.Join(src, "scripts", "hikari-app"), filepath.Join(root, "hikari-app")},
+		{filepath.Join(src, "scripts", "hikari-update"), filepath.Join(root, "hikari-update")},
+		{filepath.Join(src, "packaging", "hikari.desktop"), filepath.Join(root, "hikari.desktop")},
+		{filepath.Join(src, "packaging", "hikari.svg"), filepath.Join(root, "hikari.svg")},
+	} {
+		if !fileExists(item.from) {
+			return "", fmt.Errorf("the source tree is missing %s", filepath.Base(item.from))
+		}
+		content, err := os.ReadFile(item.from)
+		if err != nil {
+			return "", err
+		}
+		mode := os.FileMode(0o644)
+		if strings.HasPrefix(item.to, filepath.Join(root, "hikari-")) {
+			mode = 0o755
+		}
+		if err := os.WriteFile(item.to, content, mode); err != nil {
+			return "", err
+		}
+	}
+	if err := copyTree(filepath.Join(src, "quickshell"), filepath.Join(root, "quickshell")); err != nil {
+		return "", err
+	}
+	version, err := sourceVersion(filepath.Join(src, "cmd", "hikarid", "main.go"))
 	if err != nil {
-		fail(err)
-		return
+		return "", err
 	}
-	if err := os.Chmod(asset, 0o755); err != nil {
-		fail(err)
-		return
-	}
-	publish("installing", nil, "")
-	if err := os.Rename(asset, appImage); err != nil {
-		fail(err)
-		return
-	}
-	d.log.Info("AppImage replaced, restarting", "version", info.Latest, "path", appImage)
-	d.restartAppImage(appImage)
+	return version, nil
 }
 
-func (d *daemon) restartAppImage(appImage string) {
-	script := `sleep 0.5
-if [ -x "$1" ]; then "$1" -c hikari ipc call hikari close >/dev/null 2>&1 || true; fi
-i=0
-while [ -S "$2" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i+1)); done
-systemctl --user stop hikarid-appimage >/dev/null 2>&1 || true
-rm -f "$2"
-exec "$3"`
-	argv := []string{"/bin/sh", "-c", script, "sh", qsBin(), config.SocketPath(), appImage}
-	var cmd *exec.Cmd
-	if _, err := exec.LookPath("systemd-run"); err == nil {
-		args := []string{"--user", "--unit=hikari-update", "--collect"}
-		for _, k := range []string{"WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "QT_QPA_PLATFORM", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
-			if v := os.Getenv(k); v != "" {
-				args = append(args, "--setenv="+k+"="+v)
-			}
+func sourceVersion(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	m := regexp.MustCompile(`(?m)^\s*version\s*=\s*"([^"]+)"`).FindSubmatch(raw)
+	if len(m) != 2 {
+		return "", fmt.Errorf("cannot read the version of the fetched source")
+	}
+	return string(m[1]), nil
+}
+
+func lastNonEmpty(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			return strings.TrimSpace(lines[i])
 		}
-		args = append(args, argv...)
-		cmd = exec.Command("systemd-run", args...)
-	} else {
-		cmd = exec.Command(argv[0], argv[1:]...)
-		cmd.Env = os.Environ()
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	}
-	logFile, _ := os.OpenFile(filepath.Join(d.paths.DataDir, "update.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if logFile != nil {
-		cmd.Stdout = logFile
-		cmd.Stderr = logFile
-	}
-	if err := cmd.Start(); err != nil {
-		d.log.Error("could not schedule the AppImage restart", "err", err)
-		updateBusy.Store(false)
+	return "no output"
+}
+
+func (d *daemon) sweepUpdateStages() {
+	entries, err := os.ReadDir(d.paths.DataDir)
+	if err != nil {
 		return
 	}
-	go func() {
-		time.Sleep(700 * time.Millisecond)
-		_ = os.Remove(config.SocketPath())
-		os.Exit(0)
-	}()
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "update-") && entry.IsDir() {
+			_ = os.RemoveAll(filepath.Join(d.paths.DataDir, entry.Name()))
+		}
+	}
 }
 
 func installExecutable(src, dst string) error {
@@ -303,35 +318,53 @@ func binDir() string {
 	return filepath.Dir(exe)
 }
 
-func releaseRoot(dir string) (string, error) {
-	if fileExists(filepath.Join(dir, "hikarid")) {
-		return dir, nil
-	}
+func singleDir(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", err
 	}
 	var found string
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
-		if fileExists(filepath.Join(dir, e.Name(), "hikarid")) {
-			if found != "" {
-				return "", fmt.Errorf("release has more than one top-level directory")
-			}
-			found = filepath.Join(dir, e.Name())
+		if found != "" {
+			return "", fmt.Errorf("the source archive has more than one top-level directory")
 		}
+		found = filepath.Join(dir, entry.Name())
 	}
 	if found == "" {
-		return "", fmt.Errorf("release has no hikarid binary")
-	}
-	for _, name := range []string{"hikari", "hikari-app", "hikari-update", "quickshell/shell.qml"} {
-		if !fileExists(filepath.Join(found, name)) {
-			return "", fmt.Errorf("release is missing %s", name)
-		}
+		return "", fmt.Errorf("the source archive is empty")
 	}
 	return found, nil
+}
+
+func copyTree(from, to string) error {
+	return filepath.WalkDir(from, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(from, path)
+		if relErr != nil {
+			return relErr
+		}
+		dst := filepath.Join(to, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		body, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		return os.WriteFile(dst, body, info.Mode().Perm())
+	})
 }
 
 func fileExists(p string) bool {

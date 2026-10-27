@@ -89,19 +89,39 @@ and uninstall belong to the launcher that owns them.
 `
 
 // version is the client build; release scripts set it with -ldflags.
-var version = "dev"
+var (
+	version = "dev"
+	commit  = ""
+)
 
 // versionLine names both halves, since the CLI and the daemon ship together but
 // a report can come from either.
 func versionLine() string {
 	var res statusView
 	line := "hikari " + version
+	if commit != "" {
+		line += " (" + shortCommit(commit) + ")"
+	}
 	if client, err := dialQuiet(&commonFlags{}); err == nil {
 		if err := client.Call("daemon.status", nil, &res); err == nil && res.Version != "" && res.Version != version {
 			line += ", daemon " + res.Version
 		}
 	}
 	return line
+}
+
+func localCommit(sha string) string {
+	if sha == "" {
+		return "unknown"
+	}
+	return shortCommit(sha)
+}
+
+func shortCommit(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
+	}
+	return sha
 }
 
 func main() {
@@ -388,8 +408,10 @@ func dispatch(cmd string, args []string) error {
 		}
 		var info struct {
 			Current   string `json:"current"`
+			Commit    string `json:"commit"`
 			Latest    string `json:"latest"`
 			Available bool   `json:"available"`
+			Behind    int    `json:"behind"`
 			URL       string `json:"url"`
 			Notes     string `json:"notes"`
 		}
@@ -399,10 +421,17 @@ func dispatch(cmd string, args []string) error {
 		if c.json {
 			return c.print(info)
 		}
-		if info.Available {
-			fmt.Printf("update available: %s -> %s\n%s\n", info.Current, info.Latest, info.URL)
-		} else {
-			fmt.Printf("up to date (%s)\n", info.Current)
+		switch {
+		case info.Available && info.Behind > 0:
+			fmt.Printf("%d commits behind main: %s -> %s\n", info.Behind, localCommit(info.Commit), info.Latest)
+			fmt.Println(strings.TrimSpace(info.Notes))
+		case info.Available:
+			fmt.Printf("source moved to %s since this build\n", info.Latest)
+			fmt.Println(strings.TrimSpace(info.Notes))
+		case info.Commit == "":
+			fmt.Printf("this build has no commit stamp, main is at %s\n", info.Latest)
+		default:
+			fmt.Printf("up to date (%s at %s)\n", info.Current, localCommit(info.Commit))
 		}
 		return nil
 
@@ -1062,6 +1091,7 @@ type engineView struct {
 
 type statusView struct {
 	Version       string                `json:"version"`
+	Commit        string                `json:"commit"`
 	Socket        string                `json:"socket"`
 	UptimeSeconds int64                 `json:"uptime_seconds"`
 	Engines       map[string]engineView `json:"engines"`

@@ -15,7 +15,24 @@ import (
 	"hikari/internal/logging"
 )
 
-var version = "0.8.1"
+var (
+	version = "0.8.2"
+	commit  = ""
+)
+
+func versionLine() string {
+	if commit == "" {
+		return version
+	}
+	return version + " (" + shortCommit(commit) + ")"
+}
+
+func shortCommit(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
+	}
+	return sha
+}
 
 func main() {
 	socket := flag.String("socket", "", "socket path (default $XDG_RUNTIME_DIR/hikari.sock)")
@@ -24,7 +41,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Println("hikarid", version)
+		fmt.Println("hikarid", versionLine())
 		return
 	}
 
@@ -60,10 +77,11 @@ func main() {
 	d.logRing = ring
 	d.logPath = paths.Log
 	d.version = version
+	d.commit = commit
 	srv := api.NewServer(log)
 	d.register(srv, ctx)
 
-	log.Info("hikarid starting", "version", version, "socket", path)
+	log.Info("hikarid starting", "version", version, "commit", commit, "socket", path)
 	if err := srv.ListenAndServe(ctx, path); err != nil {
 		log.Error("daemon stopped", "err", err)
 		os.Exit(1)
