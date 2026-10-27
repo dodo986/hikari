@@ -111,7 +111,10 @@ for f in hikarid hikari hikari-app hikari-update; do
 done
 if [ -d "$stage/quickshell" ] && ! diff -qr "$stage/quickshell" "$cfg" >/dev/null 2>&1; then
 	rm -rf "$cfg.tmp"
-	cp -a "$stage/quickshell" "$cfg.tmp"
+	mkdir -p "$(dirname "$cfg")"
+	if ! cp -a "$stage/quickshell" "$cfg.tmp"; then
+		rollback "cannot write the shell files into $(dirname "$cfg")"
+	fi
 	rm -rf "$cfg.old"
 	if [ -d "$cfg" ]; then mv "$cfg" "$cfg.old"; fi
 	mv "$cfg.tmp" "$cfg"
