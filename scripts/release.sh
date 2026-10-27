@@ -11,7 +11,7 @@ rm -rf "$dist"
 mkdir -p "$dist"
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$dist/hikarid" ./cmd/hikarid)
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$dist/hikari" ./cmd/hikari)
-if [ "$("$dist/hikarid" --version)" != "hikarid $version" ]; then
+if [ "$("$dist/hikarid" --version | awk '{print $2}')" != "$version" ]; then
 	echo "release.sh: built daemon reports the wrong version" >&2
 	exit 1
 fi

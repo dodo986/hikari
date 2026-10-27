@@ -20,7 +20,7 @@ mkdir -p "$appdir/usr/bin" "$appdir/usr/share/hikari" "$appdir/usr/share/applica
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$appdir/usr/bin/hikarid" ./cmd/hikarid)
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$appdir/usr/bin/hikari" ./cmd/hikari)
 "$here/scripts/build-backend.sh" "$appdir/usr/share/hikari/amethyst_filegraph.abi3.so"
-if [ "$("$appdir/usr/bin/hikarid" --version)" != "hikarid $version" ]; then
+if [ "$("$appdir/usr/bin/hikarid" --version | awk '{print $2}')" != "$version" ]; then
 	echo "build-appimage.sh: the daemon reports the wrong version" >&2
 	exit 1
 fi
