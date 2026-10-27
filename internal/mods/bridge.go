@@ -687,9 +687,8 @@ func (b *Bridge) Setup(ctx context.Context, sink Sink) error {
 		return &Error{Kind: KindConfig, Message: blocked}
 	}
 	venv := filepath.Join(b.root, "venv")
-	python := filepath.Join(venv, "bin", "python")
 	base := b.snapshot().python
-	if base == "" || base == python {
+	if base == "" || strings.HasPrefix(base, venv) {
 		base, _ = exec.LookPath("python3")
 	}
 	if base == "" {
@@ -698,38 +697,92 @@ func (b *Bridge) Setup(ctx context.Context, sink Sink) error {
 	if err := b.materialize(); err != nil {
 		return &Error{Kind: KindConfig, Message: fmt.Sprintf("cannot write the mods bridge into %s: %v", b.root, err)}
 	}
-	for _, argv := range [][]string{
-		{base, "-m", "venv", venv},
-		{python, "-m", "pip", "install", "--no-input", "--disable-pip-version-check", "--upgrade", "-r", b.requirementsPath()},
-	} {
-		sink.log(strings.Join(argv, " "))
-		res := b.runner.Run(ctx, argv[0], argv[1:], engine.RunOptions{
-			Env:      map[string]string{"PYTHONUNBUFFERED": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1"},
-			Sanitize: func(line string) string { return line },
-			OnLine: func(line string) {
-				if strings.TrimSpace(line) != "" {
-					sink.log(line)
-				}
-			},
-		})
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if res.Err != nil {
-			return &Error{
-				Kind:    KindFailure,
-				Message: fmt.Sprintf("installing Amethyst's Python packages failed: %s", lastLine(res.Stderr)),
-			}
+	b.sweepStaleVenvs()
+	if _, err := os.Stat(venv); err == nil {
+		if existing := filepath.Join(venv, "bin", "python"); !isFile(existing) || !b.usableVenv(existing) {
+			_ = os.RemoveAll(venv)
 		}
 	}
+	staging := fmt.Sprintf("%s.build-%d", venv, os.Getpid())
+	if err := os.RemoveAll(staging); err != nil {
+		return &Error{Kind: KindFailure, Message: fmt.Sprintf("cannot clear %s: %v", staging, err)}
+	}
+	defer os.RemoveAll(staging)
+	python := filepath.Join(staging, "bin", "python")
+	if err := b.runSetupStep(ctx, sink, base, "-m", "venv", staging); err != nil {
+		return err
+	}
+	if err := b.runSetupStep(ctx, sink, python, "-m", "pip", "--version"); err != nil {
+		if err := b.runSetupStep(ctx, sink, python, "-m", "ensurepip", "--upgrade"); err != nil {
+			return err
+		}
+	}
+	if err := b.runSetupStep(ctx, sink, python, "-m", "pip", "install",
+		"--no-input", "--disable-pip-version-check", "--upgrade", "-r", b.requirementsPath()); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(venv); err != nil {
+		return &Error{Kind: KindFailure, Message: fmt.Sprintf("cannot replace %s: %v", venv, err)}
+	}
+	if err := os.Rename(staging, venv); err != nil {
+		return &Error{Kind: KindFailure, Message: fmt.Sprintf("cannot move the new environment into %s: %v", venv, err)}
+	}
+	installed := filepath.Join(venv, "bin", "python")
 	b.mu.Lock()
-	b.python = python
+	b.python = installed
+	b.status = nil
 	b.mu.Unlock()
 	if err := b.adoptFilegraph(); err != nil {
 		return &Error{Kind: KindConfig, Message: err.Error()}
 	}
 	b.prepare()
 	return nil
+}
+
+func (b *Bridge) runSetupStep(ctx context.Context, sink Sink, bin string, args ...string) error {
+	sink.log(strings.Join(append([]string{bin}, args...), " "))
+	res := b.runner.Run(ctx, bin, args, engine.RunOptions{
+		Env:      map[string]string{"PYTHONUNBUFFERED": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1"},
+		Sanitize: func(line string) string { return line },
+		OnLine: func(line string) {
+			if strings.TrimSpace(line) != "" {
+				sink.log(line)
+			}
+		},
+	})
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if res.Err != nil {
+		return &Error{
+			Kind: KindFailure,
+			Message: fmt.Sprintf("installing the modding backend's Python packages failed: %s; "+
+				"the half-built environment was discarded, so running setup again starts clean", lastLine(res.Stderr)),
+		}
+	}
+	return nil
+}
+
+func (b *Bridge) sweepStaleVenvs() {
+	entries, err := os.ReadDir(b.root)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "venv.build-") || entry.Name() == "venv.new" {
+			_ = os.RemoveAll(filepath.Join(b.root, entry.Name()))
+		}
+	}
+}
+
+func (b *Bridge) usableVenv(python string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res := b.runner.Run(ctx, python, []string{"-m", "pip", "--version"}, engine.RunOptions{
+		Env:      map[string]string{"PYTHONUNBUFFERED": "1"},
+		Sanitize: func(line string) string { return line },
+	})
+	return res.Err == nil
 }
 
 func (b *Bridge) run(ctx context.Context, command string, args []string, sink Sink) (json.RawMessage, error) {

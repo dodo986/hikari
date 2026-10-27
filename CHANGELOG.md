@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1
+
+- A mods setup that is interrupted no longer leaves a broken Python environment
+  behind.
+
 ## 0.8.0
 
 - Amethyst's backend is now part of Hikari: its source is vendored under

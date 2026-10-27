@@ -389,3 +389,39 @@ echo '{"t":"result","data":{"stored":false}}'
 		t.Fatalf("Logout returned %v", err)
 	}
 }
+
+func TestSetupThatFailsLeavesNoEnvironmentBehind(t *testing.T) {
+	root := t.TempDir()
+	bridge := New(Options{Root: root, Python: "/bin/false"})
+	// A venv from an earlier run must not be trusted or kept half-built.
+	stale := filepath.Join(root, "venv")
+	if err := os.MkdirAll(filepath.Join(stale, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	leftover := filepath.Join(root, "venv.build-999")
+	if err := os.MkdirAll(leftover, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	err := bridge.Setup(context.Background(), Sink{Log: func(line string) { lines = append(lines, line) }})
+	if err == nil {
+		t.Fatal("setup reported success with a python that cannot make a venv")
+	}
+	if len(lines) == 0 {
+		t.Fatal("setup said nothing about what it ran")
+	}
+	for _, path := range []string{stale, leftover} {
+		if _, statErr := os.Stat(path); statErr == nil {
+			t.Fatalf("%s survived a failed setup", path)
+		}
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "venv.build-") {
+			t.Fatalf("a half-built environment was left behind: %s", entry.Name())
+		}
+	}
+}
