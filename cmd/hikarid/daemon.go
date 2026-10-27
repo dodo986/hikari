@@ -74,6 +74,7 @@ type daemon struct {
 	modsJob        string
 	modsCancel     context.CancelFunc
 	modsSettingsAt time.Time
+	modsSetupTried bool
 }
 
 type installJob struct {

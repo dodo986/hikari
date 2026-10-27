@@ -46,13 +46,25 @@ func (d *daemon) refreshModsSettings() {
 }
 
 func (d *daemon) registerMods(srv *api.Server) {
-	load := func() { d.refreshModsSettings() }
+	load := func(c context.Context) {
+		d.refreshModsSettings()
+		d.ensureBackend(c, srv)
+	}
+	// The setup handler must not trigger the automatic setup it implements.
+	loadOnly := func() { d.refreshModsSettings() }
 	srv.Register("mods.status", func(c context.Context, params json.RawMessage) (any, error) {
-		load()
-		return d.mods.Status(c), nil
+		load(c)
+		status := d.mods.Status(c)
+		d.modsMu.Lock()
+		settingUp := d.modsJob == "setting up"
+		d.modsMu.Unlock()
+		if settingUp && !status.Available {
+			status.Reason = "installing the Python packages the backend needs; this takes a minute the first time"
+		}
+		return status, nil
 	})
 	srv.Register("mods.games", func(c context.Context, params json.RawMessage) (any, error) {
-		load()
+		load(c)
 		games, err := d.mods.Games(c)
 		if err != nil {
 			return nil, modsError(err)
@@ -60,7 +72,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		return map[string]any{"games": d.annotateModsGames(c, games)}, nil
 	})
 	srv.Register("mods.setup", func(c context.Context, params json.RawMessage) (any, error) {
-		load()
+		loadOnly()
 		return d.startModsJob(c, srv, "", "setting up", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Setup(ctx, sink)
 		})
@@ -73,7 +85,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
 		}
-		load()
+		load(c)
 		return d.startModsJob(c, srv, p.Game, "deploying", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Deploy(ctx, p.Game, p.Profile, sink)
 		})
@@ -85,7 +97,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game}")
 		}
-		load()
+		load(c)
 		return d.startModsJob(c, srv, p.Game, "restoring", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Restore(ctx, p.Game, sink)
 		})
@@ -96,7 +108,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 			Key    string `json:"key"`
 		}
 		_ = json.Unmarshal(params, &p)
-		load()
+		load(c)
 		stored, err := d.mods.Nexus(c, p.Action, p.Key)
 		if err != nil {
 			return nil, modsError(err)
@@ -114,18 +126,18 @@ func (d *daemon) registerMods(srv *api.Server) {
 		return map[string]any{"canceled": true}, nil
 	})
 	srv.Register("mods.account", func(c context.Context, params json.RawMessage) (any, error) {
-		load()
+		load(c)
 		return d.mods.Account(c)
 	})
 	srv.Register("mods.login", func(c context.Context, params json.RawMessage) (any, error) {
-		load()
+		load(c)
 		return d.startModsJob(c, srv, "", "signing in", func(ctx context.Context, sink mods.Sink) (string, error) {
 			_, err := d.mods.Login(ctx, sink)
 			return "", err
 		})
 	})
 	srv.Register("mods.logout", func(c context.Context, params json.RawMessage) (any, error) {
-		load()
+		load(c)
 		if err := d.mods.Logout(c); err != nil {
 			return nil, modsError(err)
 		}
@@ -142,7 +154,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, query?, sort?, page?}")
 		}
-		load()
+		load(c)
 		return d.mods.Browse(c, p.Game, p.Query, p.Sort, p.Page)
 	})
 
@@ -154,7 +166,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.ModID <= 0 {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, mod_id}")
 		}
-		load()
+		load(c)
 		mod, files, err := d.mods.Files(c, p.Game, p.ModID)
 		if err != nil {
 			return nil, modsError(err)
@@ -171,7 +183,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.Name == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, name, profile?}")
 		}
-		load()
+		load(c)
 		enabled, err := d.mods.Toggle(c, p.Game, p.Profile, p.Name)
 		if err != nil {
 			return nil, modsError(err)
@@ -187,7 +199,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.Name == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, name, profile?}")
 		}
-		load()
+		load(c)
 		return d.startModsJob(c, srv, p.Game, "removing", func(ctx context.Context, sink mods.Sink) (string, error) {
 			return "", d.mods.Remove(ctx, p.Game, p.Profile, p.Name, sink)
 		})
@@ -197,7 +209,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.Path == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, path, staging?, prefix?}")
 		}
-		load()
+		load(c)
 		done, err := d.mods.Configure(c, p)
 		if err != nil {
 			return nil, modsError(err)
@@ -214,7 +226,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
 		}
-		load()
+		load(c)
 		updates, err := d.mods.Updates(c, p.Game, p.Profile)
 		if err != nil {
 			return nil, modsError(err)
@@ -231,7 +243,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?, network?}")
 		}
-		load()
+		load(c)
 		findings, err := d.mods.Health(c, p.Game, p.Profile, p.Network)
 		if err != nil {
 			return nil, modsError(err)
@@ -247,7 +259,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
 		}
-		load()
+		load(c)
 		findings, err := d.mods.Health(c, p.Game, p.Profile, false)
 		if err != nil {
 			return nil, modsError(err)
@@ -286,7 +298,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game}")
 		}
-		load()
+		load(c)
 		overrides, err := d.mods.Overrides(c, p.Game)
 		if err != nil {
 			return nil, modsError(err)
@@ -301,7 +313,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
 		}
-		load()
+		load(c)
 		missing, err := d.mods.Missing(c, p.Game, p.Profile)
 		if err != nil {
 			return nil, modsError(err)
@@ -318,7 +330,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.ModID <= 0 {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, mod_id, file_id?}")
 		}
-		load()
+		load(c)
 		found, err := d.mods.Downloads(c, p.Game, p.ModID, p.FileID)
 		if err != nil {
 			return nil, modsError(err)
@@ -333,7 +345,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" {
 			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, profile?}")
 		}
-		load()
+		load(c)
 		return d.mods.Installed(c, p.Game, p.Profile)
 	})
 
@@ -354,7 +366,7 @@ func (d *daemon) registerMods(srv *api.Server) {
 		if p.URL != "" || p.ModID > 0 {
 			phase = "downloading"
 		}
-		load()
+		load(c)
 		return d.startModsJob(c, srv, p.Game, phase, func(ctx context.Context, sink mods.Sink) (string, error) {
 			return d.mods.Install(ctx, mods.InstallRequest{
 				Game: p.Game, Profile: p.Profile, Archive: p.Archive, URL: p.URL,
@@ -362,6 +374,35 @@ func (d *daemon) registerMods(srv *api.Server) {
 			}, sink)
 		})
 	})
+}
+
+// ensureBackend runs the one-time Python package install on a fresh machine, so
+// opening the Mods page does not stop at "run hikari mods setup".
+func (d *daemon) ensureBackend(c context.Context, srv *api.Server) {
+	status := d.mods.Status(c)
+	if status.Available || status.Reason == "" {
+		return
+	}
+	d.modsMu.Lock()
+	if d.modsSetupTried || d.modsJob != "" {
+		d.modsMu.Unlock()
+		return
+	}
+	d.modsSetupTried = true
+	d.modsMu.Unlock()
+	d.log.Info("mods: installing the backend packages", "reason", status.Reason)
+	go func() {
+		ctx := context.WithoutCancel(c)
+		_, err := d.startModsJob(ctx, srv, "", "setting up", func(job context.Context, sink mods.Sink) (string, error) {
+			return "", d.mods.Setup(job, sink)
+		})
+		if err != nil {
+			d.log.Warn("mods: cannot start the backend setup", "err", err)
+			d.modsMu.Lock()
+			d.modsSetupTried = false
+			d.modsMu.Unlock()
+		}
+	}()
 }
 
 func (d *daemon) startModsJob(
