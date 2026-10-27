@@ -30,6 +30,10 @@ type RunOptions struct {
 	OnLine   func(line string)
 	Sanitize func(line string) string
 	OnStart  func(pid int)
+	// Stdin gives the child a pipe to read; OnStdin receives the write end so
+	// the caller can answer a program that asks questions mid-run.
+	Stdin   bool
+	OnStdin func(w *os.File)
 }
 
 type Runner struct {
@@ -71,7 +75,23 @@ func (r *Runner) Run(ctx context.Context, bin string, args []string, opts RunOpt
 	}
 	cmd.Stdout = stdoutW
 	cmd.Stderr = stderrW
+	var stdinR, stdinW *os.File
+	if opts.Stdin {
+		stdinR, stdinW, err = os.Pipe()
+		if err != nil {
+			stdoutR.Close()
+			stdoutW.Close()
+			stderrR.Close()
+			stderrW.Close()
+			return Result{Err: err}
+		}
+		cmd.Stdin = stdinR
+	}
 	if err := cmd.Start(); err != nil {
+		if stdinR != nil {
+			stdinR.Close()
+			stdinW.Close()
+		}
 		stdoutR.Close()
 		stdoutW.Close()
 		stderrR.Close()
@@ -80,6 +100,14 @@ func (r *Runner) Run(ctx context.Context, bin string, args []string, opts RunOpt
 	}
 	stdoutW.Close()
 	stderrW.Close()
+	if stdinR != nil {
+		stdinR.Close()
+		if opts.OnStdin != nil {
+			opts.OnStdin(stdinW)
+		} else {
+			stdinW.Close()
+		}
+	}
 	if opts.OnStart != nil && cmd.Process != nil {
 		opts.OnStart(cmd.Process.Pid)
 	}

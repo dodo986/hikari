@@ -45,6 +45,76 @@ func migrateState(root, home string, log *slog.Logger) {
 	if err := rewriteStaging(filepath.Join(newConfig, "games"), oldStaging, newStaging); err != nil && log != nil {
 		log.Warn("cannot repoint migrated staging", "err", err)
 	}
+	if repaired, err := repairDeployState(filepath.Join(newConfig, "games"), newStaging, oldStaging); err != nil || repaired > 0 {
+		if err != nil && log != nil {
+			log.Warn("cannot repoint migrated deployments", "err", err)
+		} else if log != nil {
+			log.Info("repointed deployments at the new staging root", "games", repaired)
+		}
+	}
+}
+
+// repairDeployState rewrites the deployment journal of games that were deployed
+// before the move, so Amethyst's restore guard sees one consistent staging root
+// instead of refusing every deploy from then on.
+func repairDeployState(gamesDir, stagingRoot, oldRoot string) (int, error) {
+	entries, err := os.ReadDir(gamesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	repaired := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		oldGameRoot := filepath.Join(oldRoot, entry.Name())
+		gameRoot := filepath.Join(stagingRoot, entry.Name())
+		file := filepath.Join(gamesDir, entry.Name(), "deploy_state.json")
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		var data map[string]any
+		if err := json.Unmarshal(raw, &data); err != nil {
+			continue
+		}
+		context, _ := data["recovery_context"].(map[string]any)
+		if context == nil {
+			continue
+		}
+		changed := false
+		if root, _ := context["staging_root"].(map[string]any); root != nil {
+			if path, _ := root["path"].(string); underDir(path, oldGameRoot) {
+				root["path"] = gameRoot
+				// The recorded identity belongs to the folder that just moved.
+				delete(root, "identity")
+				changed = true
+			}
+		}
+		for _, key := range []string{"profile_dir", "filemap_path"} {
+			path, _ := context[key].(string)
+			if !underDir(path, oldGameRoot) {
+				continue
+			}
+			context[key] = filepath.Join(gameRoot, strings.TrimPrefix(filepath.ToSlash(path), filepath.ToSlash(oldGameRoot)+"/"))
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+		updated, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return repaired, err
+		}
+		if err := os.WriteFile(file, append(updated, '\n'), 0o600); err != nil {
+			return repaired, err
+		}
+		repaired++
+	}
+	return repaired, nil
 }
 
 // copyTree links src into dst, skipping work when dst already exists. It reports

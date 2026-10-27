@@ -517,6 +517,25 @@ PageBase {
             }
         }
 
+        Panel {
+            visible: Daemon.modsError !== ""
+            Layout.fillWidth: true
+            Layout.leftMargin: Tokens.s5
+            Layout.rightMargin: Tokens.s5
+            Layout.topMargin: Tokens.s3
+            title: I18n.tr("That did not work")
+            subtitle: Daemon.modsError
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Btn {
+                    compact: true
+                    text: I18n.tr("Dismiss")
+                    onAct: Daemon.modsError = ""
+                }
+            }
+        }
+
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
