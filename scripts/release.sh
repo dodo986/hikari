@@ -9,7 +9,7 @@ dist="$here/dist"
 rm -rf "$dist"
 mkdir -p "$dist"
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$dist/hikarid" ./cmd/hikarid)
-(cd "$here" && go build -trimpath -ldflags "-s -w" -o "$dist/hikari" ./cmd/hikari)
+(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$dist/hikari" ./cmd/hikari)
 if [ "$("$dist/hikarid" --version)" != "hikarid $version" ]; then
 	echo "release.sh: built daemon reports the wrong version" >&2
 	exit 1

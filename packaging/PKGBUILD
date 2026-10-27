@@ -23,8 +23,8 @@ source=()
 _repo="$startdir/.."
 build() {
   cd "$_repo"
-  CGO_ENABLED=0 go build -trimpath -mod=vendor -o "$srcdir/hikarid" ./cmd/hikarid
-  CGO_ENABLED=0 go build -trimpath -mod=vendor -o "$srcdir/hikari" ./cmd/hikari
+  CGO_ENABLED=0 go build -trimpath -mod=vendor -ldflags "-X main.version=$pkgver" -o "$srcdir/hikarid" ./cmd/hikarid
+  CGO_ENABLED=0 go build -trimpath -mod=vendor -ldflags "-X main.version=$pkgver" -o "$srcdir/hikari" ./cmd/hikari
   "$_repo/scripts/build-backend.sh" "$srcdir/amethyst_filegraph.abi3.so"
 }
 package() {

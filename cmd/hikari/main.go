@@ -80,12 +80,29 @@ Usage:
   hikari mods repair <game>              redeploy when that is the fix
   hikari mods nexus [status|set|clear]   a Nexus API key, if you have one instead
   hikari shutdown                        stop the daemon
+  hikari --version                       the CLI and daemon versions
 
 Every command also accepts --json and --socket PATH.
 Stores: epic, gog, amazon, steam. Games discovered in the Heroic launcher
 appear under their real store (epic/gog/amazon); they launch, but install
 and uninstall belong to the launcher that owns them.
 `
+
+// version is the client build; release scripts set it with -ldflags.
+var version = "dev"
+
+// versionLine names both halves, since the CLI and the daemon ship together but
+// a report can come from either.
+func versionLine() string {
+	var res statusView
+	line := "hikari " + version
+	if client, err := dialQuiet(&commonFlags{}); err == nil {
+		if err := client.Call("daemon.status", nil, &res); err == nil && res.Version != "" && res.Version != version {
+			line += ", daemon " + res.Version
+		}
+	}
+	return line
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -95,6 +112,10 @@ func main() {
 	cmd, args := os.Args[1], os.Args[2:]
 	if cmd == "help" || cmd == "-h" || cmd == "--help" {
 		fmt.Print(usage)
+		return
+	}
+	if cmd == "version" || cmd == "--version" || cmd == "-v" {
+		fmt.Println(versionLine())
 		return
 	}
 	if err := dispatch(cmd, args); err != nil {
