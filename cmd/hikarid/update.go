@@ -248,6 +248,9 @@ func (d *daemon) buildFromSource(ctx context.Context, goTool, src, root string, 
 	if err != nil {
 		return "", err
 	}
+	if !update.VersionAtLeast(version, d.version) {
+		return "", fmt.Errorf("%s holds %s and this build is already %s; nothing to install", info.Latest, version, d.version)
+	}
 	return version, nil
 }
 

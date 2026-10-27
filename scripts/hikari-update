@@ -147,4 +147,4 @@ if [ "$ui_was_running" = 1 ]; then
 	sleep 0.5
 	start_ui
 fi
-echo "[update] done: $current -> $want"
+echo "[update] done: $current -> $want (${HIKARI_UPDATE_COMMIT:-release})"

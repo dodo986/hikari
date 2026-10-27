@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2
+
+- Updates follow the commits on `main` instead of published releases: the daemon
+  compares the commit stamped into the build with the branch head and rebuilds
+  from the source tarball, so no release is needed for testers to move forward.
+- `hikari update-check` reports how many commits the build is behind, and
+  `hikari --version` names the commit it was built from.
+
 ## 0.8.1
 
 - A mods setup that is interrupted no longer leaves a broken Python environment

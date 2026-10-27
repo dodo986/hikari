@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -144,6 +145,32 @@ func sameCommit(a, b string) bool {
 		return a == b
 	}
 	return strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
+}
+
+// VersionAtLeast reports whether a is b or newer, so building an older tree over
+// a newer install can be refused.
+func VersionAtLeast(a, b string) bool {
+	pa, pb := parseVersion(a), parseVersion(b)
+	for i := 0; i < 3; i++ {
+		if pa[i] != pb[i] {
+			return pa[i] > pb[i]
+		}
+	}
+	return true
+}
+
+func parseVersion(v string) [3]int {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	var out [3]int
+	parts := strings.Split(v, ".")
+	for i := 0; i < 3 && i < len(parts); i++ {
+		n, _ := strconv.Atoi(strings.TrimSpace(parts[i]))
+		out[i] = n
+	}
+	return out
 }
 
 func short(sha string) string {
