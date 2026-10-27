@@ -54,6 +54,7 @@ type daemon struct {
 	logPath string
 	logRing *logging.Ring
 	version string
+	commit  string
 
 	fetchMu      sync.Mutex
 	fetchPending map[string]bool
@@ -291,6 +292,7 @@ func (d *daemon) handleStatus(c context.Context, params json.RawMessage) (any, e
 	}
 	return map[string]any{
 		"version":        version,
+		"commit":         commit,
 		"uptime_seconds": int(time.Since(d.started).Seconds()),
 		"socket":         config.SocketPath(),
 		"stores":         stores,

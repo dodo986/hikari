@@ -5,12 +5,13 @@ version="${1:?usage: scripts/release.sh <version> [arch]}"
 version="${version#v}"
 arch="${2:-x86_64}"
 tag="v$version"
+commit="$(git -C "$here" rev-parse HEAD 2>/dev/null || echo "")"
 dist="$here/dist"
 rm -rf "$dist"
 mkdir -p "$dist"
-(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$dist/hikarid" ./cmd/hikarid)
-(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$dist/hikari" ./cmd/hikari)
-if [ "$("$dist/hikarid" --version)" != "hikarid $version" ]; then
+(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$dist/hikarid" ./cmd/hikarid)
+(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$dist/hikari" ./cmd/hikari)
+if [ "$("$dist/hikarid" --version | awk '{print $2}')" != "$version" ]; then
 	echo "release.sh: built daemon reports the wrong version" >&2
 	exit 1
 fi

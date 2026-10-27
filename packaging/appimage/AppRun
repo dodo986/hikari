@@ -51,6 +51,7 @@ if ! daemon_up; then
 		if [ -n "${HIKARI_APPIMAGE:-}" ]; then
 			set -- "$@" --setenv=HIKARI_APPIMAGE="$HIKARI_APPIMAGE"
 		fi
+		set -- "$@" --setenv=HIKARI_APPIMAGE_DIR="$HIKARI_APPIMAGE_DIR"
 		if [ -n "${XDG_CONFIG_HOME:-}" ]; then
 			set -- "$@" --setenv=XDG_CONFIG_HOME="$XDG_CONFIG_HOME"
 		fi

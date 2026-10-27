@@ -9,10 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -22,23 +19,25 @@ const defaultRepo = "dodo986/hikari"
 
 type Info struct {
 	Current   string `json:"current"`
+	Commit    string `json:"commit,omitempty"`
 	Latest    string `json:"latest,omitempty"`
 	Available bool   `json:"available"`
+	Behind    int    `json:"behind,omitempty"`
+	Branch    string `json:"branch,omitempty"`
 	URL       string `json:"url,omitempty"`
 	Notes     string `json:"notes,omitempty"`
 
-	Asset    string `json:"-"`
-	Checksum string `json:"-"`
-	Size     int64  `json:"-"`
+	Sha string `json:"-"`
 }
 
-// Checker looks up the latest release. Format selects the asset kind:
-// "appimage" for the single-file build, empty for the tarball.
+// Checker tracks the source branch instead of releases, so a build is out of
+// date as soon as a commit lands rather than when somebody publishes.
 type Checker struct {
-	Repo   string
-	Base   string
-	Format string
-	Client *http.Client
+	Repo     string
+	Branch   string
+	Base     string
+	Codeload string
+	Client   *http.Client
 }
 
 func New(repo string) *Checker {
@@ -46,95 +45,118 @@ func New(repo string) *Checker {
 		repo = defaultRepo
 	}
 	return &Checker{
-		Repo:   repo,
-		Base:   "https://api.github.com",
-		Client: &http.Client{Timeout: 15 * time.Second},
+		Repo:     repo,
+		Branch:   "main",
+		Base:     "https://api.github.com",
+		Codeload: "https://codeload.github.com",
+		Client:   &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
-func (c *Checker) Check(ctx context.Context, current string) (Info, error) {
-	info := Info{Current: current}
-	if !regexp.MustCompile(`^[\w.-]+/[\w.-]+$`).MatchString(c.Repo) {
-		return info, fmt.Errorf("invalid update repo %q", c.Repo)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/repos/"+c.Repo+"/releases/latest", nil)
+type commit struct {
+	Sha    string `json:"sha"`
+	Commit struct {
+		Message string `json:"message"`
+		Author  struct {
+			Date time.Time `json:"date"`
+		} `json:"author"`
+	} `json:"commit"`
+	HTMLURL string `json:"html_url"`
+}
+
+func (c *Checker) commits(ctx context.Context, perPage int) ([]commit, error) {
+	url := fmt.Sprintf("%s/repos/%s/commits?sha=%s&per_page=%d", c.Base, c.Repo, c.Branch, perPage)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return info, err
+		return nil, err
 	}
+	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.Client.Do(req)
 	if err != nil {
-		return info, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return info, fmt.Errorf("release check: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("commit check: status %d", resp.StatusCode)
 	}
-	var rel struct {
-		Tag    string `json:"tag_name"`
-		URL    string `json:"html_url"`
-		Body   string `json:"body"`
-		Assets []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-			Size int64  `json:"size"`
-		} `json:"assets"`
+	var out []commit
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil {
+		return nil, err
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rel); err != nil {
+	if len(out) == 0 {
+		return nil, fmt.Errorf("commit check: %s has no commits", c.Branch)
+	}
+	return out, nil
+}
+
+// Check reports how far the running build is behind the branch head. A build
+// without a stamped commit cannot answer, so it only reports the head.
+func (c *Checker) Check(ctx context.Context, current, commit string) (Info, error) {
+	info := Info{Current: current, Commit: commit, Branch: c.Branch}
+	history, err := c.commits(ctx, 60)
+	if err != nil {
 		return info, err
 	}
-	info.Latest = rel.Tag
-	info.URL = rel.URL
-	info.Notes = rel.Body
-	if compareVersions(rel.Tag, current) <= 0 {
+	head := history[0]
+	info.Latest, info.Sha = short(head.Sha), head.Sha
+	info.URL = fmt.Sprintf("https://github.com/%s/compare/%s...%s", c.Repo, commit, c.Branch)
+	if commit == "" {
+		info.Notes = subject(head)
 		return info, nil
 	}
-	suffix, kind := ".tar.gz", "tar.gz"
-	if strings.EqualFold(c.Format, "appimage") {
-		suffix, kind = ".appimage", "AppImage"
+	if sameCommit(commit, head.Sha) {
+		return info, nil
 	}
-	for _, a := range rel.Assets {
-		name := strings.ToLower(a.Name)
-		if strings.HasPrefix(name, "hikari-") && strings.HasSuffix(name, suffix) && archMatch(name) {
-			info.Asset, info.Size = a.URL, a.Size
+	ahead := subjects(history[:1])
+	for i, cm := range history {
+		if sameCommit(commit, cm.Sha) {
+			info.Behind = i
+			ahead = subjects(history[:i])
 			break
 		}
 	}
-	if info.Asset == "" {
-		return info, fmt.Errorf("release %s has no hikari-*.%s asset", rel.Tag, kind)
-	}
-	want := path.Base(info.Asset) + ".sha256"
-	for _, a := range rel.Assets {
-		if a.Name == want {
-			info.Checksum = a.URL
-			break
-		}
-	}
-	if info.Checksum == "" {
-		return info, fmt.Errorf("release %s has no %s", rel.Tag, want)
+	if info.Behind == 0 && !sameCommit(commit, head.Sha) {
+		info.Behind = -1
 	}
 	info.Available = true
+	info.Notes = ahead
 	return info, nil
 }
 
-func archMatch(name string) bool {
-	arch := map[string]string{"amd64": "x86_64", "arm64": "arm64"}[runtime.GOARCH]
-	if arch == "" || strings.Contains(name, arch) {
-		return true
+func subjects(list []commit) string {
+	var lines []string
+	for _, cm := range list {
+		lines = append(lines, "- "+subject(cm))
 	}
-	return !strings.Contains(name, "x86_64") && !strings.Contains(name, "arm64")
+	return strings.Join(lines, "\n")
 }
 
-func compareVersions(a, b string) int {
+func subject(cm commit) string {
+	line := strings.TrimSpace(cm.Commit.Message)
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	return line
+}
+
+func sameCommit(a, b string) bool {
+	a, b = strings.ToLower(strings.TrimSpace(a)), strings.ToLower(strings.TrimSpace(b))
+	if len(a) < 7 || len(b) < 7 {
+		return a == b
+	}
+	return strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
+}
+
+// VersionAtLeast reports whether a is b or newer, so building an older tree over
+// a newer install can be refused.
+func VersionAtLeast(a, b string) bool {
 	pa, pb := parseVersion(a), parseVersion(b)
 	for i := 0; i < 3; i++ {
 		if pa[i] != pb[i] {
-			if pa[i] > pb[i] {
-				return 1
-			}
-			return -1
+			return pa[i] > pb[i]
 		}
 	}
-	return 0
+	return true
 }
 
 func parseVersion(v string) [3]int {
@@ -145,36 +167,42 @@ func parseVersion(v string) [3]int {
 	var out [3]int
 	parts := strings.Split(v, ".")
 	for i := 0; i < 3 && i < len(parts); i++ {
-		n, _ := strconv.Atoi(parts[i])
+		n, _ := strconv.Atoi(strings.TrimSpace(parts[i]))
 		out[i] = n
 	}
 	return out
 }
 
-func (c *Checker) Download(ctx context.Context, info Info, dest string, progress func(done, total int64)) (string, error) {
-	if info.Asset == "" || info.Checksum == "" {
-		return "", fmt.Errorf("release is missing its asset or checksum")
+func short(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
 	}
-	want, err := c.checksum(ctx, info.Checksum)
-	if err != nil {
-		return "", err
+	return sha
+}
+
+// Source fetches the tree of one commit and returns the archive path and its
+// digest, so an install can build what the branch actually holds.
+func (c *Checker) Source(ctx context.Context, info Info, dest string, progress func(done int64)) (string, string, error) {
+	if info.Sha == "" {
+		return "", "", fmt.Errorf("the update check did not name a commit to build")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.Asset, nil)
+	url := fmt.Sprintf("%s/%s/tar.gz/%s", c.Codeload, c.Repo, info.Sha)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	resp, err := c.Client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download: status %d", resp.StatusCode)
+		return "", "", fmt.Errorf("fetching the source: status %d", resp.StatusCode)
 	}
-	file := filepath.Join(dest, path.Base(info.Asset))
+	file := filepath.Join(dest, fmt.Sprintf("source-%s.tar.gz", short(info.Sha)))
 	f, err := os.Create(file)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	hash := sha256.New()
 	var done int64
@@ -185,12 +213,12 @@ func (c *Checker) Download(ctx context.Context, info Info, dest string, progress
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				f.Close()
 				os.Remove(file)
-				return "", werr
+				return "", "", werr
 			}
 			hash.Write(buf[:n])
 			done += int64(n)
 			if progress != nil {
-				progress(done, info.Size)
+				progress(done)
 			}
 		}
 		if rerr == io.EOF {
@@ -199,43 +227,11 @@ func (c *Checker) Download(ctx context.Context, info Info, dest string, progress
 		if rerr != nil {
 			f.Close()
 			os.Remove(file)
-			return "", rerr
+			return "", "", rerr
 		}
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(file)
-		return "", err
+		return "", "", err
 	}
-	if got := hex.EncodeToString(hash.Sum(nil)); got != want {
-		os.Remove(file)
-		return "", fmt.Errorf("checksum mismatch (got %s…, want %s…)", got[:12], want[:12])
-	}
-	return file, nil
-}
-
-func (c *Checker) checksum(ctx context.Context, url string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := c.Client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("checksum: status %d", resp.StatusCode)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return "", err
-	}
-	for _, field := range strings.Fields(string(b)) {
-		if len(field) == 64 {
-			if _, err := hex.DecodeString(field); err == nil {
-				return strings.ToLower(field), nil
-			}
-		}
-	}
-	return "", fmt.Errorf("checksum file has no sha256")
+	return file, hex.EncodeToString(hash.Sum(nil)), nil
 }

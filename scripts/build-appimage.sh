@@ -3,6 +3,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 version="${1:?usage: scripts/build-appimage.sh <version> [arch]}"
 version="${version#v}"
+commit="$(git -C "$here" rev-parse HEAD 2>/dev/null || echo "")"
 arch="${2:-x86_64}"
 tool="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
 if [ -z "$tool" ]; then
@@ -16,10 +17,10 @@ appdir="$work/Hikari.AppDir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share/hikari" "$appdir/usr/share/applications" \
 	"$appdir/usr/share/icons/hicolor/scalable/apps" "$appdir/usr/share/licenses/hikari"
 
-(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$appdir/usr/bin/hikarid" ./cmd/hikarid)
-(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$appdir/usr/bin/hikari" ./cmd/hikari)
+(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$appdir/usr/bin/hikarid" ./cmd/hikarid)
+(cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$appdir/usr/bin/hikari" ./cmd/hikari)
 "$here/scripts/build-backend.sh" "$appdir/usr/share/hikari/amethyst_filegraph.abi3.so"
-if [ "$("$appdir/usr/bin/hikarid" --version)" != "hikarid $version" ]; then
+if [ "$("$appdir/usr/bin/hikarid" --version | awk '{print $2}')" != "$version" ]; then
 	echo "build-appimage.sh: the daemon reports the wrong version" >&2
 	exit 1
 fi
