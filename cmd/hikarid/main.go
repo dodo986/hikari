@@ -15,7 +15,7 @@ import (
 	"hikari/internal/logging"
 )
 
-var version = "0.1.3"
+var version = "0.8.0"
 
 func main() {
 	socket := flag.String("socket", "", "socket path (default $XDG_RUNTIME_DIR/hikari.sock)")

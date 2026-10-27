@@ -1,14 +1,31 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
-- The Mods page drives the Amethyst Mod Manager's own backend as a
-  supervised child process: list the games Amethyst can mod, pick a profile,
-  deploy it, restore the game to vanilla, and install a mod archive (FOMOD
-  installers take Amethyst's default selections) or an `nxm://` download —
-  from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
-  never keeps a second copy of it. `hikari mods setup` gives the backend its
-  own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- Amethyst's backend is now part of Hikari: its source is vendored under
+  `internal/mods/backend`, built into `hikarid`, and unpacked to
+  `$XDG_DATA_HOME/hikari/mods` on first use. Nothing reads an Amethyst
+  installation any more, and nothing is written to `~/.config/AmethystModManager`
+  or `~/Games/Amethyst`. Existing Amethyst state is copied in and the profiles
+  are repointed, deployments included.
+- The first visit to the Mods page installs the Python packages the backend
+  needs, so a fresh machine no longer stops at "run `hikari mods setup`".
+- `hikari mods configure <game> --path DIR`, and **Set folder** in the UI: a game
+  gets its folder, staging and default profile in one step, which is what the
+  backend needs before it will install anything.
+- `hikari mods updates <game>` and the update panel above the tabs: the enabled
+  mods that have a newer file on Nexus, with a per-row update that keeps the
+  load order slot and the enabled state and redeploys when the game was
+  deployed.
+- Deploy no longer dies after the mod state moves: the deployment journal is
+  repointed at the new staging folder, and a failed job is reported on the game
+  page, not only in the game list.
+- The Mods page drives Hikari's own copy of the Amethyst backend as a
+  supervised child process: list the games it can mod, pick a profile, deploy
+  it, restore the game to vanilla, and install a mod archive (FOMOD installers
+  take the default selections) or an `nxm://` download, from the UI or with
+  `hikari mods`. The backend runs in its own Python environment under
+  `$XDG_DATA_HOME/hikari/mods`.
 - **Game settings → Game** now has the executable: a field with **Choose…**
   (starts in the game's folder) and **Use game's**, plus a line naming the
   executable the game reports. It is the fix for a launcher that starts the
