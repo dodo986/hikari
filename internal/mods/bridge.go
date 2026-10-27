@@ -148,6 +148,18 @@ func filegraphDirs(root, source string) []string {
 	if source != "" {
 		dirs = append(dirs, filepath.Join(source, "..", "native", "amethyst_filegraph", "target", "release"))
 	}
+	// Next to the daemon: covers an AppImage and any prefix install.
+	if exe, err := os.Executable(); err == nil {
+		bin := filepath.Dir(exe)
+		dirs = append(dirs,
+			bin,
+			filepath.Join(bin, "..", "share", "hikari"),
+			filepath.Join(bin, "..", "lib", "hikari"),
+		)
+	}
+	if dir := os.Getenv("HIKARI_APPIMAGE_DIR"); dir != "" {
+		dirs = append(dirs, filepath.Join(dir, "usr", "share", "hikari"))
+	}
 	return append(dirs, "/usr/lib/hikari", "/usr/share/hikari")
 }
 
@@ -155,6 +167,9 @@ func filegraphDirs(root, source string) []string {
 func firstFilegraph(root, configured string) string {
 	if configured != "" && isFile(configured) {
 		return configured
+	}
+	if env := os.Getenv("HIKARI_FILEGRAPH"); env != "" && isFile(env) {
+		return env
 	}
 	for _, dir := range filegraphDirs(root, "") {
 		for _, name := range filegraphNames {

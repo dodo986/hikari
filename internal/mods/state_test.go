@@ -126,3 +126,31 @@ func TestRepairDeployStateFollowsTheMovedStagingRoot(t *testing.T) {
 		t.Fatal("the deployment was switched off")
 	}
 }
+
+func TestFilegraphDirsCoverTheDaemonPrefix(t *testing.T) {
+	root := t.TempDir()
+	dirs := filegraphDirs(root, "")
+	want := []string{root, filepath.Dir(root)}
+	for _, dir := range want {
+		found := false
+		for _, got := range dirs {
+			if got == dir {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("filegraphDirs lost %s", dir)
+		}
+	}
+	// An AppImage keeps the extension beside the daemon's prefix, not at /usr.
+	t.Setenv("HIKARI_APPIMAGE_DIR", "/tmp/.mount_hikari")
+	var appdir string
+	for _, dir := range filegraphDirs(root, "") {
+		if dir == "/tmp/.mount_hikari/usr/share/hikari" {
+			appdir = dir
+		}
+	}
+	if appdir == "" {
+		t.Fatalf("filegraphDirs missed the AppImage tree: %v", dirs)
+	}
+}
