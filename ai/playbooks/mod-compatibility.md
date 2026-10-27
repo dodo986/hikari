@@ -28,12 +28,13 @@ folder.
 
 ## 2. Does the loader itself get loaded?
 
-`mods_health` also reports the newest log per loader (the script extender's log,
-the framework's plugin logs).
+`mods_health` also reports `loader-log`: the newest log the game wrote, whatever
+its engine calls it, with the timestamp. That is the ground truth for "did
+anything run at all".
 
-- `loader-ok` with a timestamp **older than the last launch** — the files are
+- `loader-log` with a timestamp **older than the last launch** — the files are
   there but the loader never ran. Go to step 3.
-- `loader-not-run` — no log at all. Either the game has not been launched since
+- `loader-never-ran` — no log at all. Either the game has not been launched since
   the mod was installed, or the loader is not loading at all. Say which one you
   know: if `library` says the game was played after the deploy, then it is not
   loading.

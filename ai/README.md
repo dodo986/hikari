@@ -2,7 +2,8 @@
 
 Hikari already talks to everything an agent needs: a typed JSON-RPC daemon
 (`hikarid`) that owns the library, the launch path, the Wine/Proton settings and
-Amethyst's mod backend, plus every log those produce. That is the whole reason
+the mod backend it owns (vendored from Amethyst, with its state under
+`$XDG_DATA_HOME/hikari/mods`), plus every log those produce. That is the whole reason
 an agent is worth wiring in — it is not there to chat, it is there to *close
 loops a person would otherwise close by hand*.
 
