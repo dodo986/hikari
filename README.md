@@ -4,6 +4,8 @@ A native game launcher built with [Ryoku](https://ryoku.dev) in mind, but not
 limited to it. One Go daemon owns the library, the store engines and the launch
 pipeline; the Quickshell UI is its face. No webview, **no Electron**.
 
+Be aware that hikari is being developed as a hobby project for my own fun and usage right now, any issues report on github. PRs much appreciated.
+ 
 ## Screenshots
 
 <p align="center">
@@ -164,4 +166,4 @@ scripts/dev.sh                # demo daemon + UI, nothing real touched
 GPL-3.0-or-later. See `LICENSE`; `NOTICE` credits the projects whose
 behaviour Hikari mirrors (Heroic Games Launcher, Ryoku, OptiScaler).
 
-**LLM(s) were used for optimization, bug fixes, code cleanup, distribution etc.**
+**LLM(s) were used for optimization, bug fixes, code cleanup, improvement, distribution etc. the project itself is not vibecoded, it has my own code, improvments and effort in it, + i've reviewed every ai line and quality-checked it.**
