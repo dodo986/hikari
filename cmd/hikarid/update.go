@@ -256,7 +256,7 @@ func sourceVersion(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	m := regexp.MustCompile(`(?m)^\s*version\s*=\s*"([^"]+)"`).FindSubmatch(raw)
+	m := regexp.MustCompile(`(?m)^\s*(?:var\s+)?version\s*=\s*"([^"]+)"`).FindSubmatch(raw)
 	if len(m) != 2 {
 		return "", fmt.Errorf("cannot read the version of the fetched source")
 	}
