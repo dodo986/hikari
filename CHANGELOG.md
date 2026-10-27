@@ -3,13 +3,7 @@
 ## 0.8.1
 
 - A mods setup that is interrupted no longer leaves a broken Python environment
-  behind: the new one is built beside the old and swapped in only when pip
-  finished, leftovers from a killed attempt are swept, and an environment whose
-  pip does not run is rebuilt instead of trusted.
-- The AppImage finds the file catalog extension inside its own mount, so the
-  Mods page works from the AppImage and not only from the tarball.
-- `mods.update` is registered, so the Update button and `hikari mods update`
-  reach the backend instead of an unknown method.
+  behind.
 
 ## 0.8.0
 
