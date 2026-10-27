@@ -217,7 +217,7 @@ PageBase {
                 }
                 Text {
                     text: page.readyGames.length + " " + I18n.tr("ready to mod") + "  ·  " +
-                          page.restGames.length + " " + I18n.tr("without a path in Amethyst")
+                          page.restGames.length + " " + I18n.tr("without a game folder")
                     color: Tokens.inkFaint
                     font.family: Tokens.ui
                     font.pixelSize: Tokens.fSmall
@@ -226,7 +226,7 @@ PageBase {
             Item { Layout.fillWidth: true }
             Badge {
                 visible: page.status !== null
-                text: page.ready ? I18n.tr("AMETHYST READY") : I18n.tr("BACKEND OFFLINE")
+                text: page.ready ? I18n.tr("MODS READY") : I18n.tr("BACKEND OFFLINE")
                 accent: page.ready
                 danger: page.status !== null && !page.ready
             }
@@ -239,14 +239,14 @@ PageBase {
         Panel {
             visible: page.status !== null && !page.ready
             Layout.fillWidth: true
-            title: I18n.tr("Amethyst backend unavailable")
+            title: I18n.tr("Modding backend unavailable")
             subtitle: page.status ? page.status.reason : ""
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Tokens.s3
                 Text {
                     Layout.fillWidth: true
-                    text: I18n.tr("Hikari drives Amethyst's own modding backend. Install Amethyst, then let Hikari fetch its Python packages into its own data directory.")
+                    text: I18n.tr("The modding backend ships inside Hikari and needs an interpreter with its Python packages. Set it up here, once.")
                     color: Tokens.inkDim
                     font.family: Tokens.ui
                     font.pixelSize: Tokens.fSmall
@@ -379,7 +379,7 @@ PageBase {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: I18n.tr("Amethyst has handlers for these too; set a game path there and it shows up here.")
+                            text: I18n.tr("Hikari knows these games too; point one at its folder and it becomes moddable here.")
                             color: Tokens.inkFaint
                             font.family: Tokens.ui
                             font.pixelSize: Tokens.fSmall
@@ -409,11 +409,13 @@ PageBase {
                                     font.pixelSize: Tokens.fSmall
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text {
-                                    text: I18n.tr("no path in Amethyst")
-                                    color: Tokens.inkFaint
-                                    font.family: Tokens.ui
-                                    font.pixelSize: Tokens.fTiny
+                                Btn {
+                                    compact: true
+                                    text: I18n.tr("Set folder")
+                                    onAct: {
+                                        page.pendingGame = modelData.id;
+                                        gameFolderPicker.open();
+                                    }
                                 }
                             }
                         }
@@ -424,8 +426,8 @@ PageBase {
             Empty {
                 anchors.centerIn: parent
                 visible: page.games.length === 0
-                caption: page.ready ? I18n.tr("Amethyst has no game handlers yet.")
-                                    : I18n.tr("The Amethyst backend is not available.")
+                caption: page.ready ? I18n.tr("The backend knows no games yet.")
+                                    : I18n.tr("The modding backend is not available.")
             }
         }
     }
@@ -875,7 +877,7 @@ PageBase {
                     visible: Daemon.modsAccount !== null && !Daemon.modsAccount.stored
                     Layout.fillWidth: true
                     title: I18n.tr("Sign in to Nexus")
-                    subtitle: I18n.tr("Your browser opens Nexus; approving there is the whole login. It is the same sign-in Amethyst uses, so one covers both.")
+                    subtitle: I18n.tr("Your browser opens Nexus; approving there is the whole login.")
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Tokens.s3
@@ -1128,6 +1130,19 @@ PageBase {
     }
 
     FileDialogHost {
+        id: gameFolderPicker
+        title: I18n.tr("Choose the game folder")
+        folders: true
+        currentFolder: "file://" + (Quickshell.env("HOME") || "/")
+        onAccepted: {
+            var path = decodeURIComponent(selectedFolder.toString().replace("file://", ""));
+            Daemon.call("mods.configure", { "game": page.pendingGame, "path": path }, function () {
+                Daemon.refreshMods();
+            });
+        }
+    }
+
+    FileDialogHost {
         id: archivePicker
         title: I18n.tr("Choose a mod archive")
         currentFolder: "file://" + (Quickshell.env("HOME") || "/")
@@ -1142,7 +1157,7 @@ PageBase {
     Sheet {
         id: filesSheet
         title: page.installingFile ? page.installingFile.name : I18n.tr("Files")
-        subtitle: I18n.tr("Pick the file to download and install; Amethyst unpacks it into this profile.")
+        subtitle: I18n.tr("Pick the file to download and install; it unpacks into this profile.")
         onCloseRequested: filesSheet.shown = false
 
         ColumnLayout {
@@ -1241,7 +1256,7 @@ PageBase {
     Sheet {
         id: keySheet
         title: I18n.tr("Nexus API key")
-        subtitle: I18n.tr("nexusmods.com ▸ Account ▸ API. It is stored where Amethyst keeps it, so both apps share one key.")
+        subtitle: I18n.tr("nexusmods.com ▸ Account ▸ API. Hikari keeps the key in its own data directory.")
         onCloseRequested: keySheet.shown = false
 
         ColumnLayout {

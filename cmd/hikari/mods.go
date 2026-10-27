@@ -21,7 +21,7 @@ const modsJobTimeout = 24 * time.Hour
 
 func modsCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: hikari mods status|games|setup|login|logout|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|browse <game> [query]|files <game> <mod-id>|installed <game>")
+		return errors.New("usage: hikari mods status|games|setup|configure <game> --path DIR|login|logout|account|deploy <game>|restore <game>|install <game> (--archive PATH | --url nxm://… | --mod-id N --file-id N)|browse <game> [query]|files <game> <mod-id>|installed <game>")
 	}
 	switch args[0] {
 	case "status":
@@ -81,6 +81,8 @@ func modsCmd(args []string) error {
 		return modsRemoveCmd(args[1:])
 	case "toggle":
 		return modsToggleCmd(args[1:])
+	case "configure":
+		return modsConfigureCmd(args[1:])
 	case "health":
 		return modsHealthCmd(args[1:])
 	case "repair":
@@ -99,8 +101,53 @@ func modsCmd(args []string) error {
 	return fmt.Errorf("unknown mods command %q", args[0])
 }
 
+// modsConfigureCmd points a game at its folder before anything is installed.
+func modsConfigureCmd(args []string) error {
+	fs := flag.NewFlagSet("mods configure", flag.ExitOnError)
+	c := addCommon(fs)
+	path := fs.String("path", "", "")
+	staging := fs.String("staging", "", "")
+	prefix := fs.String("prefix", "", "")
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		return err
+	}
+	pos := fs.Args()
+	if len(pos) < 1 || *path == "" {
+		return errors.New("usage: hikari mods configure <game> --path <game folder> [--staging DIR] [--prefix DIR]")
+	}
+	absolute, err := filepath.Abs(*path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(absolute)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("%s is not a folder", absolute)
+	}
+	params := map[string]any{"game": pos[0], "path": absolute}
+	if *staging != "" {
+		params["staging"] = *staging
+	}
+	if *prefix != "" {
+		params["prefix"] = *prefix
+	}
+	var done mods.Configured
+	client := dial(c)
+	if err := client.Call("mods.configure", params, &done); err != nil {
+		return err
+	}
+	if c.json {
+		return c.print(done)
+	}
+	fmt.Printf("%s is set up\n  game folder  %s\n  staging      %s\n  profile      %s\n",
+		done.Game, done.GamePath, done.Staging, done.ProfileDir)
+	for _, problem := range done.Problems {
+		fmt.Println("  problem     " + problem)
+	}
+	return nil
+}
+
 // modsNxmCmd is what a browser runs: nxm://<domain>/mods/<id>/files/<id>?key=…
-// The domain has to become one of Amethyst's game keys before anything else.
+// The domain has to become one of the backend's game keys before anything else.
 func modsNxmCmd(args []string) error {
 	fs := flag.NewFlagSet("mods nxm", flag.ExitOnError)
 	c := addCommon(fs)
@@ -133,7 +180,7 @@ func modsNxmCmd(args []string) error {
 		}
 	}
 	if game == "" {
-		return fmt.Errorf("Amethyst has no game handler for %q; set the game up in Amethyst first", domain)
+		return fmt.Errorf("no game handler for %q; run `hikari mods games` to see the keys", domain)
 	}
 	params := map[string]any{"game": game, "url": link}
 	if *profile != "" {
@@ -666,7 +713,7 @@ func modsNexusCmd(args []string) error {
 		return c.print(res)
 	}
 	if res.Stored {
-		fmt.Println("Nexus API key: stored, where Amethyst keeps it")
+		fmt.Println("Nexus API key: stored")
 	} else {
 		fmt.Println("Nexus API key: not set — add one at nexusmods.com (Account ▸ API) and run `hikari mods nexus set`")
 	}
@@ -706,11 +753,11 @@ func modsStatusCmd(args []string) error {
 		return c.print(status)
 	}
 	if status.Available {
-		fmt.Println("Amethyst backend: ready")
+		fmt.Println("Modding backend: ready")
 	} else if status.Reason != "" {
-		fmt.Println("Amethyst backend: unavailable —", status.Reason)
+		fmt.Println("Modding backend: unavailable —", status.Reason)
 	} else {
-		fmt.Println("Amethyst backend: unavailable")
+		fmt.Println("Modding backend: unavailable")
 	}
 	if status.Python != "" {
 		fmt.Println("python:", status.Python)

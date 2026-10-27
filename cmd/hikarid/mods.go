@@ -39,9 +39,7 @@ func (d *daemon) refreshModsSettings() {
 		d.log.Warn("mods: settings.toml could not be re-read", "err", err)
 		return
 	}
-	if bridge, ok := d.mods.(*mods.Bridge); ok {
-		bridge.Configure(settings.Mods.Python, settings.Mods.Filegraph)
-	}
+	d.mods.ApplySettings(settings.Mods.Python, settings.Mods.Filegraph)
 	d.modsMu.Lock()
 	d.modsSettingsAt = info.ModTime()
 	d.modsMu.Unlock()
@@ -194,6 +192,20 @@ func (d *daemon) registerMods(srv *api.Server) {
 			return "", d.mods.Remove(ctx, p.Game, p.Profile, p.Name, sink)
 		})
 	})
+	srv.Register("mods.configure", func(c context.Context, params json.RawMessage) (any, error) {
+		var p mods.ConfigureRequest
+		if err := json.Unmarshal(params, &p); err != nil || p.Game == "" || p.Path == "" {
+			return nil, api.Errorf(api.CodeInvalidParams, "params must be {game, path, staging?, prefix?}")
+		}
+		load()
+		done, err := d.mods.Configure(c, p)
+		if err != nil {
+			return nil, modsError(err)
+		}
+		d.log.Info("mods: game configured", "game", done.Game, "path", done.GamePath, "staging", done.Staging)
+		return done, nil
+	})
+
 	srv.Register("mods.health", func(c context.Context, params json.RawMessage) (any, error) {
 		var p struct {
 			Game    string `json:"game"`

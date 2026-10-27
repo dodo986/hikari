@@ -39,7 +39,7 @@ Panel {
         Text {
             Layout.fillWidth: true
             text: Daemon.modsLog.length > 0 ? Daemon.modsLog[Daemon.modsLog.length - 1]
-                                            : I18n.tr("Amethyst is working on it; the game must not be running.")
+                                            : I18n.tr("Working; the game must not be running.")
             color: Tokens.inkFaint
             font.family: Tokens.ui
             font.pixelSize: Tokens.fTiny

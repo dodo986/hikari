@@ -137,7 +137,7 @@ func (d *daemon) report(ctx context.Context) string {
 		modsStatus := d.mods.Status(probe)
 		cancel()
 		if modsStatus.Available {
-			fmt.Fprintf(&b, "\nMods backend: Amethyst ready (%s)\n", modsStatus.Source)
+			fmt.Fprintf(&b, "\nMods backend: ready (%s)\n", modsStatus.Source)
 		} else {
 			fmt.Fprintf(&b, "\nMods backend: unavailable — %s\n", modsStatus.Reason)
 		}

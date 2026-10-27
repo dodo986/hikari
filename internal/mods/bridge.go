@@ -38,6 +38,7 @@ const (
 
 type Options struct {
 	Root      string
+	Home      string
 	Python    string
 	Filegraph string
 	Log       *slog.Logger
@@ -50,6 +51,7 @@ type Bridge struct {
 	log    *slog.Logger
 	runner *engine.Runner
 	root   string
+	home   string
 
 	mu        sync.Mutex
 	python    string
@@ -64,11 +66,15 @@ func New(opts Options) *Bridge {
 		log:       opts.Log,
 		runner:    opts.Runner,
 		root:      opts.Root,
+		home:      opts.Home,
 		python:    opts.Python,
 		filegraph: opts.Filegraph,
 	}
 	if b.log == nil {
 		b.log = slog.Default()
+	}
+	if b.home == "" {
+		b.home, _ = os.UserHomeDir()
 	}
 	if b.runner == nil {
 		b.runner = engine.NewRunner(b.log)
@@ -111,13 +117,14 @@ func (b *Bridge) prepare() {
 				b.source = filepath.Join(backendRoot(b.root), backend.Src)
 			}
 			b.filegraph = firstFilegraph(b.root, b.filegraph)
+			migrateState(b.root, b.home, b.log)
 		}
 	}
 	b.status = nil
 }
 
-// Configure re-reads the mods settings; the daemon calls it when settings.toml changes.
-func (b *Bridge) Configure(python, filegraph string) {
+// ApplySettings re-reads the mods settings; the daemon calls it when settings.toml changes.
+func (b *Bridge) ApplySettings(python, filegraph string) {
 	b.mu.Lock()
 	b.python, b.filegraph, b.status = python, filegraph, nil
 	b.mu.Unlock()
@@ -291,6 +298,27 @@ func (b *Bridge) Games(ctx context.Context) ([]Game, error) {
 		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend sent an unreadable game list"}
 	}
 	return out.Games, nil
+}
+
+func (b *Bridge) Configure(ctx context.Context, req ConfigureRequest) (Configured, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	args := []string{"--game", req.Game, "--path", req.Path}
+	if req.Staging != "" {
+		args = append(args, "--staging", req.Staging)
+	}
+	if req.Prefix != "" {
+		args = append(args, "--prefix", req.Prefix)
+	}
+	raw, err := b.run(probeCtx, "configure", args, Sink{})
+	if err != nil {
+		return Configured{}, err
+	}
+	var out Configured
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return Configured{}, &Error{Kind: KindFailure, Message: "the modding backend sent an unreadable configuration"}
+	}
+	return out, nil
 }
 
 func (b *Bridge) Deploy(ctx context.Context, game, profile string, sink Sink) error {
@@ -679,6 +707,9 @@ func (b *Bridge) runWith(ctx context.Context, command string, args []string, sin
 	}
 	if os.Getenv("HIKARI_MODS_DOWNLOADS") == "" {
 		env["HIKARI_MODS_DOWNLOADS"] = filepath.Join(b.root, "downloads")
+	}
+	for name, value := range stateEnv(b.root) {
+		env[name] = value
 	}
 	for name, value := range extra {
 		env[name] = value

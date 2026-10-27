@@ -226,7 +226,7 @@ func TestMatchLibraryGame(t *testing.T) {
 
 func TestModsSettingsApplyWithoutARestart(t *testing.T) {
 	d, _ := startDaemon(t)
-	d.mods = mods.New(mods.Options{Root: t.TempDir()})
+	d.mods = mods.New(mods.Options{Root: t.TempDir(), Home: t.TempDir()})
 
 	before := d.mods.Status(context.Background())
 	if !strings.HasSuffix(filepath.ToSlash(before.Source), "backend/src") {

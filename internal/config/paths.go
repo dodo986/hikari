@@ -6,6 +6,7 @@ import (
 )
 
 type Paths struct {
+	Home         string
 	ConfigDir    string
 	DataDir      string
 	Settings     string
@@ -31,10 +32,12 @@ func Resolve() Paths {
 }
 
 func ResolveFrom(configRoot, dataRoot string) Paths {
+	home, _ := os.UserHomeDir()
 	cfgDir := filepath.Join(configRoot, "hikari")
 	dataDir := filepath.Join(dataRoot, "hikari")
 	engines := filepath.Join(cfgDir, "engines")
 	return Paths{
+		Home:         home,
 		ConfigDir:    cfgDir,
 		DataDir:      dataDir,
 		Settings:     filepath.Join(cfgDir, "settings.toml"),

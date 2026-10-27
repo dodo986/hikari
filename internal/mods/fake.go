@@ -40,8 +40,32 @@ func NewFake() *Fake {
 	}
 }
 
+func (f *Fake) ApplySettings(string, string) {}
+
 func (f *Fake) Status(context.Context) Status {
 	return Status{Available: true, Python: "demo", Source: "demo", Reason: ""}
+}
+
+func (f *Fake) Configure(_ context.Context, req ConfigureRequest) (Configured, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	index := -1
+	for i, game := range f.games {
+		if game.ID == req.Game || game.Name == req.Game {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return Configured{}, &Error{Kind: KindNotFound, Message: "no handler for " + req.Game}
+	}
+	game := f.games[index]
+	game.Configured = true
+	game.Path = req.Path
+	f.games[index] = game
+	staging := "/games/Amethyst/" + game.Name
+	return Configured{Game: game.Name, Profile: "default", GamePath: req.Path,
+		Staging: staging, ProfileDir: staging + "/profiles/default", Configured: true}, nil
 }
 
 func (f *Fake) Games(context.Context) ([]Game, error) {

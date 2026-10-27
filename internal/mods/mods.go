@@ -117,6 +117,25 @@ type Status struct {
 	Reason    string `json:"reason"`
 }
 
+// ConfigureRequest points a game at its folder; Staging and Prefix may be empty.
+type ConfigureRequest struct {
+	Game    string `json:"game"`
+	Path    string `json:"path"`
+	Staging string `json:"staging,omitempty"`
+	Prefix  string `json:"prefix,omitempty"`
+}
+
+// Configured is where a game's mods landed once it was pointed at a folder.
+type Configured struct {
+	Game       string   `json:"game"`
+	Profile    string   `json:"profile"`
+	GamePath   string   `json:"game_path"`
+	Staging    string   `json:"staging"`
+	ProfileDir string   `json:"profile_dir"`
+	Configured bool     `json:"configured"`
+	Problems   []string `json:"problems,omitempty"`
+}
+
 type Progress struct {
 	Current int
 	Total   int
@@ -211,6 +230,7 @@ type Service interface {
 	Deploy(ctx context.Context, game, profile string, sink Sink) error
 	Restore(ctx context.Context, game string, sink Sink) error
 	Install(ctx context.Context, req InstallRequest, sink Sink) (string, error)
+	Configure(ctx context.Context, req ConfigureRequest) (Configured, error)
 	Nexus(ctx context.Context, action, key string) (bool, error)
 	Account(ctx context.Context) (Account, error)
 	Login(ctx context.Context, sink Sink) (Account, error)
@@ -224,5 +244,6 @@ type Service interface {
 	Overrides(ctx context.Context, game string) (map[string]string, error)
 	Health(ctx context.Context, game, profile string, network bool) ([]Finding, error)
 	StopNote(ctx context.Context, root string, from, to time.Time) (*StopNote, error)
+	ApplySettings(python, filegraph string)
 	Installed(ctx context.Context, game, profile string) (Installed, error)
 }

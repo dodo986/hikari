@@ -31,7 +31,7 @@ LOGIN_TIMEOUT = 300
 
 FLAGS = {"--game", "--profile", "--archive", "--url", "--name", "--action",
          "--query", "--sort", "--page", "--mod-id", "--file-id", "--root",
-         "--after", "--until"}
+         "--after", "--until", "--path", "--staging", "--prefix"}
 
 
 class BridgeError(Exception):
@@ -69,8 +69,8 @@ def _one_line(exc: BaseException) -> str:
 
 def _parse(argv: list) -> tuple:
     if not argv:
-        raise BridgeError("usage", "usage: modbridge.py <doctor|games|deploy|"
-                                   "restore|install|nexus|search|files|"
+        raise BridgeError("usage", "usage: modbridge.py <doctor|games|configure|"
+                                   "deploy|restore|install|nexus|search|files|"
                                    "account|installed|health|lastlog>"
                                    " [--flag value]")
     command, rest = argv[0], argv[1:]
@@ -101,7 +101,7 @@ def _setup() -> None:
     if missing:
         raise BridgeError(
             "unavailable",
-            "Amethyst's Python dependencies are incomplete (" +
+            "the modding backend's Python packages are incomplete (" +
             ", ".join(missing) + "); run `hikari mods setup`")
     import app_bootstrap
     app_bootstrap.setup_environment(capture_diagnostics=False)
@@ -137,18 +137,23 @@ def _find(games: dict, key: str):
 def _require(games: dict, key: str):
     game = _find(games, key or "")
     if game is None:
-        raise BridgeError("notfound", f"Amethyst has no handler for '{key}'")
+        raise BridgeError("notfound", f"no handler for '{key}'; `hikari mods games` lists the keys")
     if not game.is_configured():
         raise BridgeError(
             "unconfigured",
-            f"{game.name} has no game path in Amethyst yet; set it in "
-            "Amethyst ▸ Game ▸ Settings")
+            f"{game.name} has no game folder yet; set it in Mods before installing anything")
     return game
 
 
 def _profile(game, requested: str) -> tuple:
+    """The profile to act on, creating the standard layout on first use."""
     name = requested or game.get_last_deployed_profile() or "default"
     path = game.get_profile_root() / "profiles" / name
+    if not path.is_dir() and not requested:
+        from Utils.profiles.structure import create_profile_structure
+        create_profile_structure(game)
+        name = game.get_last_deployed_profile() or "default"
+        path = game.get_profile_root() / "profiles" / name
     if not path.is_dir():
         raise BridgeError("notfound", f"{game.name} has no profile '{name}'")
     return name, path
@@ -486,7 +491,7 @@ def cmd_toggle(opts: dict) -> dict:
         raise BridgeError("notfound", f"the profile has no mod called '{wanted}'")
     if entry.locked:
         raise BridgeError("unsupported",
-                          f"'{wanted}' is locked in Amethyst and cannot be toggled")
+                          f"'{wanted}' is locked by its own manager and cannot be toggled")
     entry.enabled = not entry.enabled
     write_modlist(path, entries)
     state = "enabled" if entry.enabled else "disabled"
@@ -534,6 +539,17 @@ def cmd_overrides(opts: dict) -> dict:
 
 _LOADER_SUFFIXES = {".dll", ".asi", ".exe", ".so", ".dylib", ".esp", ".esm",
                     ".esl", ".bsa", ".ba2", ".pak", ".vpk", ".jar", ".lua"}
+
+
+def _deployed_anywhere(root, data_root, rel):
+    """Whether a staged file reached the game folder, wherever its handler puts it."""
+    for base in (data_root, root):
+        try:
+            if (base / rel).is_file():
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _loader_files(mod_dir, staging):
@@ -633,15 +649,85 @@ def cmd_lastlog(opts: dict) -> dict:
                      for stamp, path in found[:8]]}
 
 
+def cmd_configure(opts: dict) -> dict:
+    """Point a game at its folder and staging root, and lay out its profile."""
+    games = _bootstrap()
+    game = _find(games, opts.get("game", ""))
+    if game is None:
+        raise BridgeError("notfound", f"no handler for '{opts.get('game', '')}'")
+    path = pathlib.Path(os.path.expanduser(opts.get("path", "")))
+    if not opts.get("path") or not path.is_dir():
+        raise BridgeError("usage", f"{path or 'that'} is not a folder; pass --path <game folder>")
+    staging = opts.get("staging") or ""
+    if not staging:
+        base = os.environ.get("MOD_MANAGER_PROFILES_DIR") or str(pathlib.Path.home() / "Games" / "Amethyst")
+        staging = str(pathlib.Path(base) / game.name)
+    paths_file = game._paths_file
+    data = {}
+    if paths_file.is_file():
+        try:
+            data = json.loads(paths_file.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data.update({
+        "game_path": str(path),
+        "staging_path": str(pathlib.Path(os.path.expanduser(staging))),
+        "deploy_mode": data.get("deploy_mode") or "hardlink",
+    })
+    for key, value in (("prefix_path_cleared", False), ("save_path_override", ""),
+                       ("shortcut_appid", "")):
+        data.setdefault(key, value)
+    if opts.get("prefix"):
+        data["prefix_path"] = str(pathlib.Path(os.path.expanduser(opts["prefix"])))
+        data["prefix_path_cleared"] = False
+    data.setdefault("prefix_path", "")
+    paths_file.parent.mkdir(parents=True, exist_ok=True)
+    paths_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    game.load_paths()
+    if not game.is_configured():
+        from Utils.profiles.structure import create_profile_structure
+        create_profile_structure(game)
+    name, profile_dir = _profile(game, "")
+    return {
+        "game": game.name, "profile": name,
+        "game_path": str(game.get_game_path() or ""),
+        "staging": str(game.get_effective_mod_staging_path()),
+        "profile_dir": str(profile_dir),
+        "configured": bool(game.is_configured()),
+        "problems": game.validate_install(),
+    }
+
+
 def cmd_health(opts: dict) -> dict:
     """What silently stops mods from loading, and whether a redeploy heals it."""
     game = _require(_bootstrap(), opts.get("game", ""))
     _name, profile_dir = _profile(game, opts.get("profile", ""))
     staging = pathlib.Path(game.get_effective_mod_staging_path())
     root = pathlib.Path(game.get_game_path() or "")
+    data_root = pathlib.Path(game.get_mod_data_path() or root)
     path, entries, _write = _modlist(profile_dir)
     findings = []
     enabled = [e for e in entries if e.enabled and not e.is_separator]
+    deploy_active = bool(game.get_deploy_active())
+    if not deploy_active:
+        findings.append({
+            "id": "not-deployed", "severity": "info", "mod": "", "file": "",
+            "fixable": True,
+            "detail": "the game folder holds none of this profile yet; Deploy "
+                      "writes the enabled mods into it",
+        })
+    try:
+        if root.is_dir() and staging.is_dir() and \
+                root.stat().st_dev != staging.stat().st_dev:
+            findings.append({
+                "id": "staging-other-filesystem", "severity": "warning",
+                "mod": "", "file": str(staging), "fixable": False,
+                "detail": "the staging folder and the game folder are on "
+                          "different filesystems, so every deploy copies files "
+                          "instead of linking them; move staging beside the game",
+            })
+    except OSError:
+        pass
 
     for entry in entries:
         if entry.is_separator:
@@ -660,8 +746,10 @@ def cmd_health(opts: dict) -> dict:
         if not mod_dir.is_dir():
             continue
         for rel in _loader_files(mod_dir, staging):
+            if not deploy_active:
+                break
             deployed += 1
-            if not (root / rel).is_file():
+            if not _deployed_anywhere(root, data_root, rel):
                 findings.append({
                     "id": "loader-not-deployed", "severity": "error",
                     "mod": entry.name, "file": rel, "fixable": True,
@@ -700,12 +788,12 @@ def cmd_health(opts: dict) -> dict:
                           + "; Hikari still sets them at launch",
             })
 
-    if deployed == 0 and enabled:
+    if deploy_active and deployed == 0 and enabled:
         findings.append({
             "id": "nothing-deployed", "severity": "error", "mod": "",
             "file": "", "fixable": True,
             "detail": "not one loader file from this profile is in the game "
-                      "folder — the profile was never deployed",
+                      "folder, so the profile was never really deployed",
         })
 
     if opts.get("network"):
@@ -837,7 +925,7 @@ def cmd_install(opts: dict) -> dict:
                           preferred_name=opts.get("name", ""))
     if not mod:
         raise BridgeError("failure",
-                          f"Amethyst could not install "
+                          f"the backend could not install "
                           f"{os.path.basename(archive)}")
     return {"game": game.name, "profile": name, "mod": mod, "archive": archive}
 
@@ -852,7 +940,7 @@ def cmd_nexus(opts: dict) -> dict:
         if not key:
             raise BridgeError("usage", "nexus set needs an API key")
         save_api_key(key)
-        log("Nexus API key stored where Amethyst keeps it.")
+        log("Nexus API key stored.")
     elif action == "clear":
         clear_api_key()
         log("Nexus API key removed.")
@@ -863,6 +951,7 @@ def cmd_nexus(opts: dict) -> dict:
 
 COMMANDS = {
     "doctor": cmd_doctor,
+    "configure": cmd_configure,
     "games": cmd_games,
     "deploy": cmd_deploy,
     "restore": cmd_restore,
