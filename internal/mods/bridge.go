@@ -144,7 +144,7 @@ func asSourceDir(dir string) string {
 
 // filegraphDirs are the places a packaged or locally built module can sit.
 func filegraphDirs(root, source string) []string {
-	dirs := []string{root}
+	dirs := []string{root, filepath.Dir(root)}
 	if source != "" {
 		dirs = append(dirs, filepath.Join(source, "..", "native", "amethyst_filegraph", "target", "release"))
 	}
