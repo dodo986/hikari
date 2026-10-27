@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"hikari/internal/engine"
+	"hikari/internal/mods/backend"
 )
 
 //go:embed bridge/modbridge.py
@@ -23,19 +24,6 @@ var bridgeScript []byte
 
 //go:embed bridge/requirements.txt
 var bridgeRequirements []byte
-
-// Amethyst packaged by the distro keeps its Python tree in one of these.
-var sourceCandidates = []string{
-	"/usr/share/amethyst-mod-manager/src",
-	"/usr/lib/amethyst-mod-manager/src",
-	"/opt/amethyst-mod-manager/src",
-}
-
-// A source checkout is usually somewhere under $HOME, at any depth.
-var sourcePatterns = []string{
-	"Amethyst-Mod-Manager", "*/Amethyst-Mod-Manager", "*/*/Amethyst-Mod-Manager",
-	"amethyst-mod-manager", "*/amethyst-mod-manager", "*/*/amethyst-mod-manager",
-}
 
 var filegraphNames = []string{"amethyst_filegraph.abi3.so", "amethyst_filegraph.so"}
 
@@ -50,7 +38,6 @@ const (
 
 type Options struct {
 	Root      string
-	Source    string
 	Python    string
 	Filegraph string
 	Log       *slog.Logger
@@ -78,7 +65,6 @@ func New(opts Options) *Bridge {
 		runner:    opts.Runner,
 		root:      opts.Root,
 		python:    opts.Python,
-		source:    opts.Source,
 		filegraph: opts.Filegraph,
 	}
 	if b.log == nil {
@@ -108,50 +94,32 @@ func (b *Bridge) prepare() {
 			b.python = path
 		}
 	}
-	if b.source == "" {
-		b.source = os.Getenv("HIKARI_MODS_SOURCE")
+	// A checkout named here is a development override: the shipped tree is
+	// the embedded one, materialized below.
+	if override := os.Getenv("HIKARI_MODS_SOURCE"); override != "" {
+		b.source = asSourceDir(override)
 	}
-	if b.source == "" {
-		b.source = discoverSource()
-	} else {
-		b.source = asSourceDir(b.source)
-	}
-	if b.filegraph == "" {
-		for _, dir := range append([]string{b.root, b.source}, filegraphDirs(b.source)...) {
-			if dir == "" {
-				continue
-			}
-			for _, name := range filegraphNames {
-				if path := filepath.Join(dir, name); isFile(path) {
-					b.filegraph = path
-					break
-				}
-			}
-			if b.filegraph != "" {
-				break
-			}
-		}
-	}
-
 	switch {
 	case b.python == "":
-		b.blocked = "python3 was not found; install Python 3.11 or newer and run `hikari mods setup`"
-	case b.source == "":
-		b.blocked = "Amethyst was not found; set [mods] source_dir in ~/.config/hikari/settings.toml to its src directory"
+		b.blocked = "python3 was not found; install Python 3.12 or newer and run `hikari mods setup`"
 	default:
 		if err := b.materialize(); err != nil {
-			b.blocked = fmt.Sprintf("cannot write the mods bridge into %s: %v", b.root, err)
+			b.blocked = fmt.Sprintf("cannot write the mods backend into %s: %v", b.root, err)
 		} else {
 			b.blocked = ""
+			if b.source == "" {
+				b.source = filepath.Join(backendRoot(b.root), backend.Src)
+			}
+			b.filegraph = firstFilegraph(b.root, b.filegraph)
 		}
 	}
 	b.status = nil
 }
 
 // Configure re-reads the mods settings; the daemon calls it when settings.toml changes.
-func (b *Bridge) Configure(source, python, filegraph string) {
+func (b *Bridge) Configure(python, filegraph string) {
 	b.mu.Lock()
-	b.source, b.python, b.filegraph, b.status = source, python, filegraph, nil
+	b.python, b.filegraph, b.status = python, filegraph, nil
 	b.mu.Unlock()
 	b.prepare()
 }
@@ -167,59 +135,52 @@ func asSourceDir(dir string) string {
 	return dir
 }
 
-func discoverSource() string {
-	for _, candidate := range sourceCandidates {
-		if isFile(filepath.Join(candidate, "cli.py")) {
-			return candidate
-		}
+// filegraphDirs are the places a packaged or locally built module can sit.
+func filegraphDirs(root, source string) []string {
+	dirs := []string{root}
+	if source != "" {
+		dirs = append(dirs, filepath.Join(source, "..", "native", "amethyst_filegraph", "target", "release"))
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	return append(dirs, "/usr/lib/hikari", "/usr/share/hikari")
+}
+
+// firstFilegraph picks the first native module on hand, keeping a configured one.
+func firstFilegraph(root, configured string) string {
+	if configured != "" && isFile(configured) {
+		return configured
 	}
-	for _, pattern := range sourcePatterns {
-		matches, err := filepath.Glob(filepath.Join(home, pattern))
-		if err != nil {
-			continue
-		}
-		for _, match := range matches {
-			if src := asSourceDir(match); isFile(filepath.Join(src, "cli.py")) {
-				return src
+	for _, dir := range filegraphDirs(root, "") {
+		for _, name := range filegraphNames {
+			if path := filepath.Join(dir, name); isFile(path) {
+				return path
 			}
 		}
 	}
 	return ""
 }
 
-func filegraphDirs(source string) []string {
-	home, _ := os.UserHomeDir()
-	return []string{
-		filepath.Join(home, ".local", "lib", "amethyst", "release"),
-		filepath.Join(filepath.Dir(source), "native", "amethyst_filegraph", "target", "release"),
-	}
-}
-
-// adoptFilegraph copies Amethyst's native filegraph next to the bridge. It is a
-// hard requirement of Amethyst's deploy path, so a setup that cannot find it has
-// to say so before the first deploy fails inside Amethyst.
+// adoptFilegraph copies the native module next to the bridge when one is found
+// elsewhere, so the daemon keeps working after the source tree moves away.
 func (b *Bridge) adoptFilegraph() error {
-	if b.filegraph != "" {
+	cfg := b.snapshot()
+	if cfg.filegraph != "" && isFile(cfg.filegraph) {
 		return nil
 	}
-	cfg := b.snapshot()
-	for _, dir := range append([]string{cfg.source}, filegraphDirs(cfg.source)...) {
+	for _, dir := range append([]string{cfg.source}, filegraphDirs(b.root, cfg.source)...) {
 		for _, name := range filegraphNames {
 			src := filepath.Join(dir, name)
 			if !isFile(src) {
 				continue
 			}
 			dst := filepath.Join(b.root, name)
-			content, err := os.ReadFile(src)
-			if err != nil {
-				return fmt.Errorf("cannot read Amethyst's filegraph from %s: %v", src, err)
-			}
-			if err := writeIfChanged(dst, content); err != nil {
-				return fmt.Errorf("cannot copy Amethyst's filegraph into %s: %v", b.root, err)
+			if src != dst {
+				content, err := os.ReadFile(src)
+				if err != nil {
+					return fmt.Errorf("cannot read the filegraph module from %s: %v", src, err)
+				}
+				if err := writeIfChanged(dst, content); err != nil {
+					return fmt.Errorf("cannot install the filegraph module into %s: %v", b.root, err)
+				}
 			}
 			b.mu.Lock()
 			b.filegraph = dst
@@ -227,17 +188,16 @@ func (b *Bridge) adoptFilegraph() error {
 			return nil
 		}
 	}
-	return fmt.Errorf("Amethyst's filegraph component was not found; install Amethyst " +
-		"from its package, or build it with `python native/amethyst_filegraph/build_extension.py` " +
-		"in the Amethyst checkout")
+	return fmt.Errorf("the native filegraph module is missing; run `scripts/build-backend.sh` " +
+		"to build it from internal/mods/backend/native/amethyst_filegraph")
 }
 
 func (b *Bridge) materialize() error {
-	if !isFile(filepath.Join(b.source, "cli.py")) {
-		return fmt.Errorf("%q is not Amethyst's src directory (cli.py is missing)", b.source)
-	}
 	dir := filepath.Join(b.root, bridgeDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := materializeBackend(b.root); err != nil {
 		return err
 	}
 	for path, content := range map[string][]byte{
@@ -710,12 +670,12 @@ func (b *Bridge) runWith(ctx context.Context, command string, args []string, sin
 		return nil, &Error{Kind: KindUnavailable, Message: cfg.blocked}
 	}
 	env := map[string]string{
-		"HIKARI_AMETHYST_SRC":     cfg.source,
+		"HIKARI_BACKEND_SRC":      cfg.source,
 		"PYTHONDONTWRITEBYTECODE": "1",
 		"PYTHONUNBUFFERED":        "1",
 	}
 	if cfg.filegraph != "" {
-		env["HIKARI_AMETHYST_EXT"] = cfg.filegraph
+		env["HIKARI_BACKEND_EXT"] = cfg.filegraph
 	}
 	if os.Getenv("HIKARI_MODS_DOWNLOADS") == "" {
 		env["HIKARI_MODS_DOWNLOADS"] = filepath.Join(b.root, "downloads")
@@ -767,7 +727,12 @@ func (b *Bridge) runWith(ctx context.Context, command string, args []string, sin
 		return nil, reported
 	}
 	if res.Err != nil {
-		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend stopped: " + lastLine(res.Stderr)}
+		if strings.HasPrefix(res.Err.Error(), "cannot start ") {
+			return nil, &Error{Kind: KindConfig, Message: fmt.Sprintf(
+				"the modding backend could not start %s; set [mods] python in settings.toml to a Python 3.12 or newer",
+				cfg.python)}
+		}
+		return nil, &Error{Kind: KindFailure, Message: "the modding backend stopped: " + lastLine(res.Stderr)}
 	}
 	if len(payload) == 0 {
 		return nil, &Error{Kind: KindFailure, Message: "the Amethyst backend produced no result: " + lastLine(res.Stderr)}

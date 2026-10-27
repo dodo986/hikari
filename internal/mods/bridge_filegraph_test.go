@@ -17,7 +17,7 @@ func TestSetupAdoptsTheFilegraphExtension(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(native, "amethyst_filegraph.so"), []byte("native"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	b := New(Options{Root: root})
+	b := New(Options{Root: root, Python: "/bin/sh"})
 	b.source = filepath.Join(checkout, "src")
 
 	if err := b.adoptFilegraph(); err != nil {
@@ -33,10 +33,10 @@ func TestSetupAdoptsTheFilegraphExtension(t *testing.T) {
 }
 
 func TestSetupSaysWhenTheFilegraphIsMissing(t *testing.T) {
-	b := New(Options{Root: t.TempDir()})
+	b := New(Options{Root: t.TempDir(), Python: "/bin/sh"})
 	b.source = filepath.Join(t.TempDir(), "src")
 	err := b.adoptFilegraph()
-	if err == nil || !strings.Contains(err.Error(), "filegraph component was not found") {
+	if err == nil || !strings.Contains(err.Error(), "build-backend.sh") {
 		t.Fatalf("want an actionable sentence about the filegraph, got %v", err)
 	}
 }

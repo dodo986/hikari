@@ -160,7 +160,6 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 	if !demoMode {
 		modsService = mods.New(mods.Options{
 			Root:      filepath.Join(paths.DataDir, "mods"),
-			Source:    settings.Mods.SourceDir,
 			Python:    settings.Mods.Python,
 			Filegraph: settings.Mods.Filegraph,
 			Log:       log,

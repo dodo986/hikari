@@ -1,0 +1,26 @@
+"""Street Fighter 6 game handler."""
+
+from Games.RE_Engine_Invalidation.re_engine_invalidation_base import REEngineInvalidationBase
+
+
+class StreetFighter6(REEngineInvalidationBase):
+
+    @property
+    def name(self) -> str:
+        return "Street Fighter 6"
+
+    @property
+    def game_id(self) -> str:
+        return "street_fighter_6"
+
+    @property
+    def exe_name(self) -> str:
+        return "StreetFighter6.exe"
+
+    @property
+    def steam_id(self) -> str:
+        return "1364780"
+
+    @property
+    def nexus_game_domain(self) -> str:
+        return "streetfighter6"

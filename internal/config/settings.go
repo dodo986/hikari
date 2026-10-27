@@ -19,7 +19,6 @@ type Settings struct {
 }
 
 type ModsSettings struct {
-	SourceDir string `toml:"source_dir"`
 	Python    string `toml:"python"`
 	Filegraph string `toml:"filegraph_extension"`
 }

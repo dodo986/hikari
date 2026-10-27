@@ -1,0 +1,3950 @@
+"""
+nexus_api.py
+Nexus Mods REST API v1 client.
+
+Wraps the public API at https://api.nexusmods.com/v1.
+Requires a personal API key generated at https://www.nexusmods.com/settings/api-keys
+
+Rate limits
+-----------
+  Free  users: 300 requests burst, recovers 1 req/s
+  Premium    : 600 requests burst, recovers 1 req/s
+
+The server returns remaining quota in response headers:
+  x-rl-hourly-remaining, x-rl-daily-remaining
+
+HTTP 429 → rate-limited; back off and retry.
+
+Usage
+-----
+    from Nexus.nexus_api import NexusAPI
+
+    api = NexusAPI(api_key="...")
+    user = api.validate()
+    mod  = api.get_mod("skyrimspecialedition", 2014)
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+import keyring
+import requests
+
+from Utils.config_paths import get_config_dir
+from Utils.app_log import app_log, dev_log
+from Utils.ca_bundle import resolve_ca_bundle
+from Utils.diagnostics import performance as perftrace
+from version import __version__
+
+API_BASE = "https://api.nexusmods.com/v1"
+GRAPHQL_BASE = "https://api.nexusmods.com/v2/graphql"
+# The website's own mod-browser talks to this host, not GRAPHQL_BASE. Same
+# ModsFilter schema, but GRAPHQL_BASE silently no-ops the `tag` filter (parses
+# fine, matches nothing - confirmed by testing a tag id attached to a mod that
+# GRAPHQL_BASE still refused to return). Used only for the public mods-listing
+# queries (get_top_mods/search_mods*/get_trending_mods_graphql), and always via
+# _post_search_graphql, which falls back to GRAPHQL_BASE if this host fails;
+# Authenticated GraphQL requests stay on GRAPHQL_BASE.
+GRAPHQL_SEARCH_BASE = "https://api-router.nexusmods.com/graphql"
+# Credential headers are stripped for GRAPHQL_SEARCH_BASE: it is an
+# undocumented host the app has no auth contract with, and the mods-listing
+# queries sent there are public (the site serves them logged-out). No reason to
+# hand a user's APIKEY / OAuth token to an endpoint that doesn't need it.
+_CREDENTIAL_HEADERS = ("APIKEY", "Authorization")
+V3_BASE = "https://api.nexusmods.com/v3"
+APP_NAME = "amethyst"
+APP_VERSION = __version__
+_SUPPORTED_COLLECTION_SCHEMA_ID = 1
+
+# How long to wait after a 429 before retrying (seconds)
+_RATE_LIMIT_BACKOFF = 2.0
+_MAX_RETRIES = 3
+# Upper bound for a server-supplied numeric Retry-After header (seconds)
+_RETRY_AFTER_CAP = 30.0
+
+# Keys to redact when logging API responses (values replaced with [REDACTED])
+_SENSITIVE_KEYS = frozenset({"key", "email", "api_key", "token", "authorization", "password"})
+
+
+def _redact_sensitive_response(text: str) -> str:
+    """Return response text with sensitive fields redacted for safe logging."""
+    if not text or not text.strip():
+        return text
+    try:
+        data = json.loads(text)
+        redacted = _redact_sensitive_dict(data)
+        return json.dumps(redacted, indent=None, default=str)
+    except Exception:
+        return text
+
+
+def _redact_sensitive_dict(obj: Any) -> Any:
+    """Recursively copy obj, replacing values for sensitive keys with [REDACTED]."""
+    if isinstance(obj, dict):
+        return {
+            k: "[REDACTED]" if k.lower() in _SENSITIVE_KEYS else _redact_sensitive_dict(v)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact_sensitive_dict(item) for item in obj]
+    return obj
+
+
+def _uploader_fields(n: dict) -> dict:
+    """uploaded_by / uploader_id kwargs from a GraphQL mod node's uploader -
+    unpack with ** into a NexusModInfo(...) call."""
+    up = n.get("uploader") or {}
+    return {"uploaded_by": up.get("name", "") or "",
+            "uploader_id": int(up.get("memberId", 0) or 0)}
+
+
+# ---------------------------------------------------------------------------
+# Data classes for typed responses
+# ---------------------------------------------------------------------------
+
+@dataclass
+class NexusUser:
+    """Validated user info returned by /users/validate."""
+    user_id: int
+    name: str
+    email: str
+    is_premium: bool
+    is_supporter: bool
+    profile_url: str
+
+
+@dataclass
+class NexusGameInfo:
+    """Basic game info from the Nexus API."""
+    id: int
+    name: str
+    domain_name: str
+    nexusmods_url: str
+    genre: str = ""
+    file_count: int = 0
+    downloads: int = 0
+    mods_count: int = 0
+
+
+@dataclass
+class NexusCategory:
+    """A mod category for a game."""
+    category_id: int
+    name: str
+    parent_category: int | None = None  # None = top-level
+
+
+@dataclass
+class NexusTag:
+    """A mod tag (as offered by the site's Tags include/exclude picker)."""
+    # ModsFilter matches tags by name, not id - tag_id is carried because
+    # legacyTags returns it and it's the stable handle if a name-keyed filter
+    # ever proves ambiguous.
+    tag_id: int
+    name: str
+
+
+@dataclass
+class NexusSearchFilters:
+    """Advanced ModsFilter fields layered on top of category/domain/query."""
+    # tag_includes/tag_excludes are ANDed together (a mod must carry every
+    # included tag and none of the excluded ones) - each tag name becomes its
+    # own ModsFilter clause since the schema has no native "one of" list op for
+    # mixed EQUALS/NOT_EQUALS conditions on the same field.
+    tag_includes: tuple[str, ...] = ()
+    tag_excludes: tuple[str, ...] = ()
+    languages: tuple[str, ...] = ()   # OR'd together - a mod matching ANY selected language
+    hide_translations: bool = False   # site's "Hide translations" = exclude the Translation tag
+    min_file_size_kb: int | None = None
+    max_file_size_kb: int | None = None
+    min_downloads: int | None = None
+    max_downloads: int | None = None
+    min_endorsements: int | None = None
+    max_endorsements: int | None = None
+    adult: bool | None = None  # None = no filter, True = adult only, False = exclude adult
+    # Site's "Content Options" box, beyond adult.
+    supports_vortex: bool | None = None
+    has_updated: bool = False
+    # Site's "Search Parameters" box. title_contains overlaps with the browse
+    # bar's Name-mode search (both end up as `name` WILDCARD clauses, ANDed -
+    # narrows further rather than conflicting); description/author/uploader
+    # have no other UI path in today - not exact-match (unlike the Author-mode
+    # browse search, which is EQUALS on `uploader`).
+    title_contains: str | None = None
+    description_contains: str | None = None
+    author_contains: str | None = None
+    uploader_contains: str | None = None
+
+
+@dataclass
+class NexusModInfo:
+    """Mod metadata from /games/{domain}/mods/{id}."""
+    mod_id: int
+    name: str
+    summary: str
+    description: str
+    version: str
+    author: str
+    category_id: int
+    game_id: int
+    domain_name: str
+    picture_url: str = ""
+    endorsement_count: int = 0
+    downloads_total: int = 0
+    created_timestamp: int = 0
+    updated_timestamp: int = 0
+    available: bool = True
+    contains_adult_content: bool = False
+    status: str = ""
+    uploaded_by: str = ""       # uploader's display name (GraphQL uploader.name)
+    uploader_id: int = 0        # uploader's stable account id (GraphQL uploader.memberId)
+    category_name: str = ""
+    created_at: str = ""        # ISO-8601 string (GraphQL createdAt), "" if absent
+    updated_at: str = ""        # ISO-8601 string (GraphQL updatedAt), "" if absent
+    file_size_kb: int = 0       # primary file size in KB (GraphQL fileSize), 0 if absent
+
+
+@dataclass
+class NexusModFile:
+    """A single file entry for a mod."""
+    file_id: int
+    name: str
+    version: str
+    category_name: str       # "MAIN", "UPDATE", "OPTIONAL", "OLD_VERSION", "MISCELLANEOUS"
+    file_name: str            # actual archive filename
+    category_id: int = 0
+    size_in_bytes: int | None = None
+    size_kb: int = 0
+    mod_version: str = ""
+    description: str = ""
+    uploaded_timestamp: int = 0
+    is_primary: bool = False
+    changelog_html: str = ""
+    external_virus_scan_url: str = ""
+
+
+@dataclass
+class NexusModFiles:
+    """File listing for a mod."""
+    files: list[NexusModFile] = field(default_factory=list)
+    file_updates: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class NexusDownloadLink:
+    """A CDN download link returned by the API."""
+    name: str        # mirror name, e.g. "Nexus CDN"
+    short_name: str
+    URI: str         # the actual download URL
+
+
+@dataclass
+class NexusRateLimits:
+    """Current rate limit state."""
+    hourly_remaining: int = -1
+    daily_remaining: int = -1
+    hourly_limit: int = -1
+    daily_limit: int = -1
+    last_updated: Optional[datetime] = None
+
+
+@dataclass
+class NexusModRequirement:
+    """A single mod requirement (dependency)."""
+    mod_id: int
+    mod_name: str
+    game_domain: str = ""
+    url: str = ""
+    is_external: bool = False  # True if it's an external (non-Nexus) requirement
+    notes: str = ""  # Notes about the mod requirement (from GraphQL ModRequirement)
+
+
+@dataclass
+class FileDependencyCandidate:
+    """One materialized file-level dependency candidate row from the v3 API.
+
+    Rows sharing (source_version_id, definition_id) are OR-alternatives for a
+    single requirement of the source file; distinct definition_ids are
+    independent (AND) requirements. IDs are composite UIDs:
+    (numeric_game_id << 32) | game_scoped_id.
+    """
+    source_version_id: int   # version UID of the requiring (installed) file
+    definition_id: int       # groups OR-alternatives
+    mod_uid: int             # composite mod UID (row "mod_id")
+    mod_file_id: int         # update group/chain the candidate belongs to
+    version_id: int          # candidate version UID
+    position: float          # higher = newer within the chain
+    category: str            # "main", "update", "optional", "old_version", ...
+    mod_status: str          # "published", ...
+
+    @property
+    def game_scoped_mod_id(self) -> int:
+        return self.mod_uid & 0xFFFFFFFF
+
+
+@dataclass
+class NexusModUpdateInfo:
+    """Lightweight update status for a mod, returned by the GraphQL batch checker."""
+    mod_id: int
+    name: str
+    version: str
+    summary: str = ""                       # short tagline shown on the mod page
+    updated_at: Optional[datetime] = None   # when any file was last uploaded
+    viewer_update_available: Optional[bool] = None  # Nexus-native flag (requires tracking)
+    viewer_endorsed: Optional[bool] = None  # True/False if the viewer has endorsed; None if unauthenticated/unknown
+    requirements: list["NexusModRequirement"] = field(default_factory=list)  # mod dependencies
+    category_id: int = 0                    # Nexus mod category (e.g. Armor, Weapons)
+    category_name: str = ""                 # Category display name
+    uploaded_by: str = ""                   # Nexus username that uploaded the mod
+    files: list["NexusModFile"] = field(default_factory=list)  # from batch; avoids REST get_mod_files
+
+
+@dataclass
+class NexusCollection:
+    """A Nexus Mods collection, returned by the GraphQL collections query."""
+    id: int = 0
+    slug: str = ""
+    name: str = ""
+    summary: str = ""
+    user_name: str = ""
+    total_downloads: int = 0
+    endorsements: int = 0
+    mod_count: int = 0
+    tile_image_url: str = ""
+    game_domain: str = ""
+    contains_adult_content: bool = False
+
+
+_ERROR_MOD_ID_RE = re.compile(r"\bmod\s+(\d+)", re.IGNORECASE)
+_ERROR_FILE_ID_RE = re.compile(r"\bfile\s+(\d+)", re.IGNORECASE)
+
+
+def _collect_error_ids(errors) -> "tuple[set, set]":
+    """(mod ids, file ids) referenced by a GraphQL error list."""
+    mod_ids: set = set()
+    file_ids: set = set()
+
+    def _walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                lowered = str(key).lower()
+                if isinstance(value, (int, str)) and str(value).isdigit():
+                    if lowered == "modid":
+                        mod_ids.add(int(value))
+                    elif lowered == "fileid":
+                        file_ids.add(int(value))
+                else:
+                    _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    for err in errors or []:
+        _walk(err.get("extensions") or {})
+        message = str(err.get("message") or "")
+        mod_ids.update(int(m) for m in _ERROR_MOD_ID_RE.findall(message))
+        file_ids.update(int(m) for m in _ERROR_FILE_ID_RE.findall(message))
+    return mod_ids, file_ids
+
+
+def describe_collection_error(errors, manifest: "dict | None" = None) -> str:
+    """Turn Nexus's terse mutation errors into something actionable.
+
+    Nexus answers with things like *"Mod 184013, skyrimspecialedition not
+    available."* - a bare id the author has no way to place. Map it back to the
+    mod's name in the manifest we just sent and say what to do about it.
+    """
+    raw = "; ".join(str(e.get("message") or "?") for e in errors or [])
+    mod_ids, file_ids = _collect_error_ids(errors)
+    named: list = []
+    if manifest and (mod_ids or file_ids):
+        for mod in manifest.get("mods") or []:
+            src = mod.get("source") or {}
+            mid = int(src.get("modId") or 0)
+            fid = int(src.get("fileId") or 0)
+            if (mid and mid in mod_ids) or (fid and fid in file_ids):
+                label = mod.get("name") or src.get("logicalFilename") or "?"
+                named.append(f"'{label}' (Nexus mod {mid or '?'})")
+    if not named:
+        return f"Nexus rejected the request: {raw}"
+    if "not available" in raw.lower() or "not found" in raw.lower():
+        return (f"Nexus rejected {', '.join(named)}: that mod page is no longer "
+                "available (hidden, removed, or restricted), so it can't be "
+                "part of a collection. Remove the mod, or change its source to "
+                "Browse/Manual so users fetch it themselves.")
+    return f"Nexus rejected {', '.join(named)}: {raw}"
+
+
+@dataclass
+class MyCollectionRevision:
+    """One revision of a collection the signed-in user owns."""
+    id: int = 0
+    revision_number: int = 0
+    status: str = ""            # "draft" | "published" (server wording)
+    mod_count: int = 0
+    created_at: str = ""
+    published: bool = False
+    changelog_id: int = 0
+    changelog: str = ""
+
+
+@dataclass
+class MyCollection:
+    """A collection owned by the signed-in user (myCollections query)."""
+    id: int = 0
+    slug: str = ""
+    name: str = ""
+    summary: str = ""
+    description: str = ""
+    status: str = ""            # listed | unlisted | under_moderation | discarded
+    tile_image_url: str = ""    # collection tile image (empty when unset)
+    game_domain: str = ""
+    game_name: str = ""
+    category_id: int = 0
+    category_name: str = ""
+    endorsements: int = 0
+    total_downloads: int = 0
+    draft_revision_number: int = 0
+    latest_published_revision: int = 0
+    updated_at: str = ""
+    revisions: list = field(default_factory=list)   # [MyCollectionRevision]
+
+    @property
+    def draft_revision(self) -> "MyCollectionRevision | None":
+        """The newest unpublished revision, or None when everything is live."""
+        drafts = [r for r in self.revisions if not r.published]
+        if not drafts:
+            return None
+        return max(drafts, key=lambda r: r.revision_number)
+
+    def url(self) -> str:
+        if not (self.slug and self.game_domain):
+            return ""
+        return (f"https://next.nexusmods.com/{self.game_domain}"
+                f"/collections/{self.slug}")
+
+
+@dataclass
+class NexusCollectionMod:
+    """A single mod entry inside a collection revision."""
+    mod_id: int = 0
+    file_id: int = 0
+    mod_name: str = ""
+    mod_author: str = ""
+    file_name: str = ""
+    version: str = ""
+    size_bytes: int = 0
+    optional: bool = False
+    source_type: str = "nexus"  # "nexus", "bundle", "browse", "direct"
+    category_id: int = 0
+    category_name: str = ""
+    install_type: str = ""  # collection.json mods[].details.type - e.g. "dinput" → root install
+    md5: str = ""           # collection.json mods[].source.md5 - used to verify cached archives
+    domain_name: str = ""   # collection.json mods[].domainName - overrides collection-level domain
+                            # (e.g. Skyrim mods inside an Enderal collection)
+    update_policy: str = "exact"
+    resolved_file_id: int = 0
+    resolved_nexus_file_name: str = ""
+    resolved_file_category: str = ""
+
+
+# ---------------------------------------------------------------------------
+# API key persistence (system keyring, with file fallback)
+# ---------------------------------------------------------------------------
+
+_KEYRING_SERVICE = "AmethystModManager"
+_KEYRING_USER = "nexus_api_key"
+_API_KEY_FILE = "nexus_api_key.bin"
+
+
+def _api_key_path() -> Path:
+    """Path of legacy plaintext key file (used only for migration)."""
+    return get_config_dir() / "nexus_api_key"
+
+
+def _api_key_file_path() -> Path:
+    """Path for file-based API key fallback."""
+    return get_config_dir() / _API_KEY_FILE
+
+
+def _keyring_ok() -> bool:
+    """Check if keyring is available (reuses probe from nexus_oauth)."""
+    try:
+        from Nexus.nexus_oauth import _keyring_available
+        return _keyring_available
+    except Exception:
+        return True  # Assume available if we can't check
+
+
+def _derive_key() -> bytes:
+    """Derive a Fernet key from the machine ID so keys are only usable on this device."""
+    import base64, hashlib
+    machine_id = ""
+    for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            with open(p) as f:
+                machine_id = f.read().strip()
+            if machine_id:
+                break
+        except OSError:
+            continue
+    if not machine_id:
+        machine_id = "fallback-no-machine-id"
+    dk = hashlib.pbkdf2_hmac("sha256", machine_id.encode(), b"AmethystModManager", 100_000)
+    return base64.urlsafe_b64encode(dk)
+
+
+def _load_key_file() -> str:
+    """Load API key from encrypted file fallback."""
+    p = _api_key_file_path()
+    try:
+        if not p.is_file():
+            return ""
+        from cryptography.fernet import Fernet
+        import json as _json
+        cipher = Fernet(_derive_key())
+        data = _json.loads(cipher.decrypt(p.read_bytes()))
+        return data.get("api_key", "").strip()
+    except Exception:
+        return ""
+
+
+def _save_key_file(key: str) -> None:
+    """Save API key to encrypted file fallback."""
+    from cryptography.fernet import Fernet
+    import json as _json, os as _os
+    p = _api_key_file_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    cipher = Fernet(_derive_key())
+    # Create owner-only from the start - no chmod window with looser perms.
+    fd = _os.open(p, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+    try:
+        _os.fchmod(fd, 0o600)  # tighten a pre-existing file too
+        with _os.fdopen(fd, "wb") as fh:
+            fd = -1
+            fh.write(cipher.encrypt(_json.dumps({"api_key": key}).encode()))
+    finally:
+        if fd != -1:
+            _os.close(fd)
+
+
+def _clear_key_file() -> None:
+    """Remove file-based API key."""
+    p = _api_key_file_path()
+    try:
+        if p.is_file():
+            p.unlink()
+    except OSError:
+        pass
+
+
+def _migrate_legacy_key() -> str:
+    """If legacy plaintext file exists, move it to keyring/file and return the key."""
+    p = _api_key_path()
+    if not p.is_file():
+        return ""
+    try:
+        key = p.read_text(encoding="utf-8").strip()
+        if key:
+            if _keyring_ok():
+                try:
+                    keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, key)
+                except Exception:
+                    _save_key_file(key)
+            else:
+                _save_key_file(key)
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return key
+    except OSError as e:
+        app_log(f"Nexus API key migration from file failed: {e}")
+        return ""
+
+
+def load_api_key() -> str:
+    """Load saved API key from system keyring or file fallback."""
+    if not _keyring_ok():
+        return _load_key_file() or _migrate_legacy_key()
+    try:
+        key = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
+        if key:
+            return key.strip()
+        return _migrate_legacy_key()
+    except UnicodeDecodeError as e:
+        app_log(f"Nexus API key in keyring is invalid/corrupted ({e}). Clear and re-enter in Nexus settings.")
+        try:
+            keyring.delete_password(_KEYRING_SERVICE, _KEYRING_USER)
+        except Exception:
+            pass
+        return _migrate_legacy_key()
+    except keyring.errors.KeyringError as e:
+        app_log(f"Keyring unavailable for Nexus API key: {e} - using file fallback")
+        return _load_key_file() or _migrate_legacy_key()
+
+
+def save_api_key(key: str) -> None:
+    """Persist the API key to the system keyring or file fallback."""
+    key = key.strip()
+    if not _keyring_ok():
+        _save_key_file(key)
+        return
+    try:
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, key)
+    except keyring.errors.KeyringError as e:
+        app_log(f"Keyring unavailable for saving Nexus API key: {e} - using file fallback")
+        _save_key_file(key)
+        return
+    # Remove legacy file if it exists
+    try:
+        _api_key_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def clear_api_key() -> None:
+    """Delete the stored API key from keyring and file."""
+    _clear_key_file()
+    if _keyring_ok():
+        try:
+            keyring.delete_password(_KEYRING_SERVICE, _KEYRING_USER)
+        except keyring.errors.PasswordDeleteError:
+            pass
+        except keyring.errors.KeyringError as e:
+            app_log(f"Keyring unavailable when clearing Nexus API key: {e}")
+    try:
+        _api_key_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Main API client
+# ---------------------------------------------------------------------------
+
+class NexusAPIError(Exception):
+    """Raised for non-recoverable API errors."""
+    def __init__(self, message: str, status_code: int = 0, url: str = ""):
+        super().__init__(message)
+        self.status_code = status_code
+        self.url = url
+
+
+class RateLimitError(NexusAPIError):
+    """Raised when the server returns HTTP 429."""
+    def __init__(self, url: str = ""):
+        super().__init__("Rate limit exceeded - slow down", 429, url)
+
+
+class NexusAPI:
+    """
+    Synchronous Nexus Mods v1 REST client.
+
+    Supports two auth modes:
+      - API key  (legacy):  NexusAPI(api_key="...")
+      - OAuth Bearer token: NexusAPI.from_oauth(tokens)
+
+    Parameters
+    ----------
+    api_key : str
+        Personal API key from nexusmods.com/settings/api-keys.
+    timeout : float
+        Request timeout in seconds.
+    """
+
+    def __init__(self, api_key: str, timeout: float = 30.0):
+        self._key = api_key.strip()
+        self._timeout = timeout
+        self._rate = NexusRateLimits()
+        self._cached_user: "NexusUser | None" = None
+        self._cached_user_ts: float = 0.0
+        self._oauth_tokens = None
+        self._oauth_lock = threading.RLock()
+        self._graphql_slots = threading.BoundedSemaphore(4)
+        self._game_id_cache: dict[str, int] = {}
+        self._session = requests.Session()
+        self._session.verify = resolve_ca_bundle() or True
+        self._session.headers.update({
+            "APIKEY": self._key,
+            "Content-Type": "application/json",
+            "Application-Name": APP_NAME,
+            "Application-Version": APP_VERSION,
+            "Accept": "application/json",
+        })
+
+    @classmethod
+    def from_oauth(cls, tokens: "Any", timeout: float = 30.0) -> "NexusAPI":
+        """
+        Create a NexusAPI instance authenticated via an OAuth Bearer token.
+
+        Parameters
+        ----------
+        tokens : OAuthTokens
+            Tokens obtained from nexus_oauth.load_oauth_tokens() or the login flow.
+            The access_token is used as a Bearer token; the APIKEY header is omitted.
+        timeout : float
+            Request timeout in seconds.
+        """
+        # Import here to avoid a circular dependency at module load time
+        from Nexus.nexus_oauth import refresh_if_needed
+        tokens = refresh_if_needed(tokens)
+
+        instance = cls.__new__(cls)
+        instance._key = ""
+        instance._timeout = timeout
+        instance._rate = NexusRateLimits()
+        instance._cached_user = None
+        instance._cached_user_ts = 0.0
+        instance._oauth_tokens = tokens
+        instance._oauth_lock = threading.RLock()
+        instance._graphql_slots = threading.BoundedSemaphore(4)
+        instance._game_id_cache = {}
+        instance._session = requests.Session()
+        instance._session.verify = resolve_ca_bundle() or True
+        instance._session.headers.update({
+            "Authorization": f"Bearer {tokens.access_token}",
+            "Content-Type": "application/json",
+            "Application-Name": APP_NAME,
+            "Application-Version": APP_VERSION,
+            "Accept": "application/json",
+        })
+        return instance
+
+    def _refresh_oauth_if_needed(self) -> None:
+        """If this instance uses OAuth, refresh the access token if it is expiring soon and update the session header."""
+        with self._oauth_lock:
+            tokens = self._oauth_tokens
+            if tokens is None:
+                return
+            from Nexus.nexus_oauth import refresh_if_needed
+            new_tokens = refresh_if_needed(tokens)
+            if new_tokens.access_token != tokens.access_token:
+                self._oauth_tokens = new_tokens
+                self._session.headers["Authorization"] = f"Bearer {new_tokens.access_token}"
+
+    # -- low-level ----------------------------------------------------------
+
+    def _update_rate_limits(self, resp: requests.Response) -> None:
+        """Parse rate-limit headers from the response."""
+        h = resp.headers
+        updated = False
+        for header, attr in (
+            ("x-rl-hourly-remaining", "hourly_remaining"),
+            ("x-rl-daily-remaining", "daily_remaining"),
+            ("x-rl-hourly-limit", "hourly_limit"),
+            ("x-rl-daily-limit", "daily_limit"),
+        ):
+            if header not in h:
+                continue
+            try:
+                value = int(h[header])
+            except (TypeError, ValueError):
+                continue
+            setattr(self._rate, attr, value)
+            updated = True
+        if updated:
+            self._rate.last_updated = datetime.now(timezone.utc)
+
+    def _log_response(self, method: str, path: str, resp: requests.Response) -> None:
+        """Log failures with redacted bodies; successful requests are dev-only."""
+        try:
+            log = dev_log if resp.ok else app_log
+            log(f"Nexus API {method} {path} → {resp.status_code}")
+            if resp.ok:
+                return
+            body_str = resp.text if resp.text is not None else "(empty)"
+            body_str = _redact_sensitive_response(body_str)
+            if len(body_str) > 1200:
+                body_str = body_str[:1200] + "..."
+            app_log(f"  Response: {body_str}")
+        except Exception:
+            try:
+                app_log(f"Nexus API {method} {path} → {resp.status_code}")
+            except Exception:
+                pass
+
+    @staticmethod
+    def _retry_wait(resp: requests.Response, attempt: int) -> float:
+        """Seconds to back off before retrying a 429, honoring a numeric Retry-After header."""
+        wait = _RATE_LIMIT_BACKOFF * (attempt + 1)
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after:
+            try:
+                wait = min(max(float(retry_after), 0.0), _RETRY_AFTER_CAP)
+            except ValueError:
+                pass
+        return wait
+
+    def _get(self, path: str, params: dict | None = None,
+             retries: int = _MAX_RETRIES) -> Any:
+        """Issue a GET request against the v1 API, with retry on 429."""
+        self._refresh_oauth_if_needed()
+        url = API_BASE + path
+        for attempt in range(retries):
+            try:
+                resp = self._session.get(url, params=params,
+                                         timeout=self._timeout)
+            except requests.ConnectionError as exc:
+                raise NexusAPIError(
+                    f"Connection failed: {exc}", url=url) from exc
+            except requests.Timeout as exc:
+                raise NexusAPIError(
+                    f"Request timed out after {self._timeout}s",
+                    url=url) from exc
+
+            self._update_rate_limits(resp)
+            self._log_response("GET", path, resp)
+
+            if resp.status_code == 429:
+                if attempt + 1 < retries:
+                    wait = self._retry_wait(resp, attempt)
+                    app_log(f"Nexus 429 rate-limited, backing off {wait:.1f}s "
+                            f"(attempt {attempt + 1}/{retries})")
+                    time.sleep(wait)
+                continue
+
+            if resp.status_code == 401:
+                raise NexusAPIError(
+                    "Invalid or expired API key", 401, url)
+
+            if not resp.ok:
+                try:
+                    body = resp.json()
+                    msg = body.get("message", resp.reason)
+                except Exception:
+                    msg = resp.text[:300] or resp.reason
+                raise NexusAPIError(msg, resp.status_code, url)
+
+            return resp.json()
+
+        raise RateLimitError(url)
+
+    def _post_v3(self, path: str, body: dict,
+                 retries: int = _MAX_RETRIES) -> Any:
+        """Issue a POST request against the v3 REST API, with retry on 429."""
+        return self._post_json(V3_BASE + path, path, body, retries)
+
+    def _post_v1(self, path: str, body: dict,
+                 retries: int = _MAX_RETRIES) -> Any:
+        """Issue a POST request against the v1 REST API, with retry on 429."""
+        return self._post_json(API_BASE + path, path, body, retries)
+
+    def _post_json(self, url: str, path: str, body: dict,
+                   retries: int = _MAX_RETRIES) -> Any:
+        return self._request_json("POST", url, path, body, retries)
+
+    def _request_json(self, method: str, url: str, path: str,
+                      body: dict | None = None,
+                      retries: int = _MAX_RETRIES) -> Any:
+        self._refresh_oauth_if_needed()
+        for attempt in range(retries):
+            try:
+                resp = self._session.request(method, url, json=body,
+                                             timeout=self._timeout)
+            except requests.ConnectionError as exc:
+                raise NexusAPIError(
+                    f"Connection failed: {exc}", url=url) from exc
+            except requests.Timeout as exc:
+                raise NexusAPIError(
+                    f"Request timed out after {self._timeout}s",
+                    url=url) from exc
+
+            self._update_rate_limits(resp)
+            self._log_response(method, path, resp)
+
+            if resp.status_code == 429:
+                if attempt + 1 < retries:
+                    wait = self._retry_wait(resp, attempt)
+                    app_log(f"Nexus 429 rate-limited, backing off {wait:.1f}s "
+                            f"(attempt {attempt + 1}/{retries})")
+                    time.sleep(wait)
+                continue
+
+            if resp.status_code == 401:
+                raise NexusAPIError(
+                    "Invalid or expired API key", 401, url)
+
+            if not resp.ok:
+                try:
+                    body_json = resp.json()
+                    msg = (body_json.get("detail") or body_json.get("message")
+                           or body_json.get("title") or resp.reason)
+                    details = [f"{e.get('pointer', '')}: {e['detail']}"
+                               for e in body_json.get("errors") or []
+                               if isinstance(e, dict) and e.get("detail")]
+                    if details:
+                        msg += "\n" + "\n".join(details[:10])
+                except Exception:
+                    msg = resp.text[:300] or resp.reason
+                raise NexusAPIError(msg, resp.status_code, url)
+
+            return resp.json() if resp.status_code != 204 else {}
+
+        raise RateLimitError(url)
+
+    def _request_v3(self, method: str, path: str,
+                    body: dict | None = None) -> dict:
+        result = self._request_json(method, V3_BASE + path, path, body)
+        if method == "PATCH":
+            return result
+        data = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(data, dict):
+            raise NexusAPIError("Nexus returned an invalid response.", url=V3_BASE + path)
+        return data
+
+    def _post_graphql(self, query: str, variables: dict | None = None,
+                      op: str = "GraphQL",
+                      retries: int = _MAX_RETRIES,
+                      base_url: str = GRAPHQL_BASE,
+                      session: requests.Session | None = None) -> requests.Response:
+        """POST to a Nexus GraphQL endpoint (OAuth refresh + 429 retry)."""
+        # Returns the raw response. Pass base_url=GRAPHQL_SEARCH_BASE for the
+        # public mods-listing queries (see the constant's comment for why).
+        with self._oauth_lock:
+            self._refresh_oauth_if_needed()
+            if session is None:
+                session = self._session
+            elif session is not self._session:
+                session.headers.update(self._session.headers)
+        payload: dict[str, Any] = {"query": query}
+        if variables is not None:
+            payload["variables"] = variables
+        # The public search host gets no credentials - see _CREDENTIAL_HEADERS.
+        # requests merges None-valued per-request headers as "remove this one",
+        # so this strips them for the single call without touching the session.
+        headers = ({h: None for h in _CREDENTIAL_HEADERS}
+                   if base_url == GRAPHQL_SEARCH_BASE else None)
+        for attempt in range(retries):
+            try:
+                wait_started = time.perf_counter() if perftrace.is_enabled() else 0.0
+                with self._graphql_slots:
+                    if wait_started:
+                        perftrace.record("nexus.graphql.slot_wait",
+                                         time.perf_counter() - wait_started)
+                    request_started = time.perf_counter() if wait_started else 0.0
+                    try:
+                        resp = session.post(base_url, json=payload,
+                                            headers=headers,
+                                            timeout=self._timeout)
+                    finally:
+                        if request_started:
+                            perftrace.mark("nexus.graphql.http",
+                                           time.perf_counter() - request_started)
+            except requests.ConnectionError as exc:
+                raise NexusAPIError(
+                    f"Connection failed: {exc}", url=base_url) from exc
+            except requests.Timeout as exc:
+                raise NexusAPIError(
+                    f"Request timed out after {self._timeout}s",
+                    url=base_url) from exc
+
+            self._update_rate_limits(resp)
+            self._log_response("POST", op, resp)
+
+            if resp.status_code == 429:
+                if attempt + 1 < retries:
+                    wait = self._retry_wait(resp, attempt)
+                    app_log(f"Nexus 429 rate-limited, backing off {wait:.1f}s "
+                            f"(attempt {attempt + 1}/{retries})")
+                    time.sleep(wait)
+                continue
+
+            return resp
+
+        raise RateLimitError(base_url)
+
+    def _post_search_graphql(self, query: str, variables: dict | None = None,
+                             op: str = "GraphQL") -> requests.Response:
+        """POST a public mods-listing query, falling back to GRAPHQL_BASE."""
+        # GRAPHQL_SEARCH_BASE is the site's own undocumented router. It is the
+        # only host where the tag/language/size/downloads/endorsements filters
+        # actually work, so it is tried first - but if it ever changes shape or
+        # starts refusing non-browser clients, falling back keeps Browse/Search
+        # /Trending alive (degraded: the advanced filters silently widen, the
+        # results still arrive) instead of blacking out the whole browser.
+        try:
+            resp = self._post_graphql(query, variables, op=op,
+                                      base_url=GRAPHQL_SEARCH_BASE)
+            if resp.ok:
+                return resp
+            reason = f"HTTP {resp.status_code}"
+        except RateLimitError:
+            raise                       # a real 429 - retrying elsewhere won't help
+        except NexusAPIError as exc:
+            reason = str(exc)
+        app_log(f"Nexus {op}: search host failed ({reason}) - retrying on "
+                f"{GRAPHQL_BASE} without advanced filters")
+        return self._post_graphql(query, variables, op=op,
+                                  base_url=GRAPHQL_BASE)
+
+    @property
+    def rate_limits(self) -> NexusRateLimits:
+        """Return the most recently observed rate limits."""
+        return self._rate
+
+    def refresh_rate_limits(self) -> None:
+        """Make a GET request to update rate limit state from response headers.
+        Uses the same endpoint as Vortex's API Limit Checker (/games.json) so the
+        returned remaining counts reflect all usage (this app + Swagger + others).
+        Does not log the response body to avoid log spam.
+        """
+        url = API_BASE + "/games.json"
+        try:
+            resp = self._session.get(url, timeout=self._timeout)
+        except requests.ConnectionError as exc:
+            raise NexusAPIError(f"Connection failed: {exc}", url=url) from exc
+        except requests.Timeout as exc:
+            raise NexusAPIError(
+                f"Request timed out after {self._timeout}s", url=url
+            ) from exc
+        self._update_rate_limits(resp)
+        rl_headers = {k: v for k, v in resp.headers.items() if "rl" in k.lower()}
+        dev_log(f"Nexus API: rate limit headers received: {rl_headers}")
+        r = self._rate
+        dev_log(
+            f"Nexus API: rate limits refreshed - "
+            f"hourly {r.hourly_remaining}/{r.hourly_limit}, daily {r.daily_remaining}/{r.daily_limit}"
+        )
+        if resp.status_code == 429:
+            raise RateLimitError(url)
+        if resp.status_code == 401:
+            raise NexusAPIError("Invalid or expired API key", 401, url)
+        if not resp.ok:
+            try:
+                body = resp.json()
+                msg = body.get("message", resp.reason)
+            except Exception:
+                msg = resp.text[:300] if resp.text else resp.reason
+            raise NexusAPIError(msg, resp.status_code, url)
+
+    # -- Account ------------------------------------------------------------
+
+    _VALIDATE_CACHE_TTL = 300.0  # seconds
+
+    def validate(self, bypass_cache: bool = False) -> "NexusUser":
+        """Validate the current API key (or OAuth token) and return user info.
+
+        Result is cached for 5 minutes so repeated calls (e.g. one per mod
+        install) consume only a single rate-limited request per session.
+        Pass ``bypass_cache=True`` to force a fresh request.
+        """
+        if not bypass_cache and self._cached_user is not None:
+            if time.monotonic() - self._cached_user_ts < self._VALIDATE_CACHE_TTL:
+                return self._cached_user
+
+        # OAuth mode: v1 /users/validate doesn't accept Bearer tokens - use userinfo instead
+        if not self._key and "Authorization" in self._session.headers:
+            user = self._validate_via_oauth_userinfo()
+        else:
+            data = self._get("/users/validate")
+            user = NexusUser(
+                user_id=data["user_id"],
+                name=data["name"],
+                email=data.get("email", ""),
+                is_premium=data.get("is_premium", False),
+                is_supporter=data.get("is_supporter", False),
+                profile_url=data.get("profile_url", ""),
+            )
+
+        self._cached_user = user
+        self._cached_user_ts = time.monotonic()
+        return user
+
+    def _validate_via_oauth_userinfo(self) -> "NexusUser":
+        """Fetch user info via OpenID userinfo endpoint (OAuth Bearer auth)."""
+        resp = self._session.get(
+            "https://users.nexusmods.com/oauth/userinfo",
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # Determine premium/supporter from userinfo membership_roles / premium_expiry.
+        # premium_expiry is also returned for EX-premium users (as the past
+        # timestamp when it lapsed), so it only counts when still in the future.
+        membership_roles = data.get("membership_roles") or []
+        premium_expiry = data.get("premium_expiry")
+        is_premium = (
+            "premium" in [str(r).lower() for r in membership_roles]
+            or (isinstance(premium_expiry, (int, float)) and premium_expiry > time.time())
+        )
+        is_supporter = "supporter" in [str(r).lower() for r in membership_roles]
+        return NexusUser(
+            user_id=int(data.get("sub", 0) or 0),
+            name=data.get("name", "") or data.get("preferred_username", "") or data.get("sub", ""),
+            email=data.get("email", ""),
+            is_premium=is_premium,
+            is_supporter=is_supporter,
+            profile_url=data.get("picture", "") or data.get("avatar", ""),
+        )
+
+    # -- Games --------------------------------------------------------------
+
+    def get_games(self) -> list[NexusGameInfo]:
+        """Return a list of all games supported by Nexus Mods."""
+        items = self._get("/games")
+        return [
+            NexusGameInfo(
+                id=g["id"],
+                name=g["name"],
+                domain_name=g["domain_name"],
+                nexusmods_url=g.get("nexusmods_url", ""),
+                genre=g.get("genre", ""),
+                file_count=g.get("file_count", 0),
+                downloads=g.get("downloads", 0),
+                mods_count=g.get("mods_count", 0),
+            )
+            for g in items
+        ]
+
+    def get_game(self, game_domain: str) -> NexusGameInfo:
+        """Get info for a specific game by its Nexus domain name."""
+        g = self._get(f"/games/{game_domain}")
+        return NexusGameInfo(
+            id=g["id"],
+            name=g["name"],
+            domain_name=g["domain_name"],
+            nexusmods_url=g.get("nexusmods_url", ""),
+            genre=g.get("genre", ""),
+            file_count=g.get("file_count", 0),
+            downloads=g.get("downloads", 0),
+            mods_count=g.get("mods_count", 0),
+        )
+
+    def get_game_categories(self, game_domain: str) -> list[NexusCategory]:
+        """Return the mod categories for a game via the v1 REST API."""
+        data = self._get(f"/games/{game_domain}")
+        result: list[NexusCategory] = []
+        for c in data.get("categories", []):
+            # parent_category is either False or {"category_id": N, "name": "..."}
+            pc = c.get("parent_category")
+            parent = pc.get("category_id") if isinstance(pc, dict) else None
+            result.append(NexusCategory(
+                category_id=c.get("category_id", 0),
+                name=c.get("name", ""),
+                parent_category=parent,
+            ))
+        return result
+
+    def get_game_tags(self, game_domain: str) -> list[NexusTag]:
+        """Return the tags offered for a game's mods."""
+        # Backs the Tags include/exclude picker. Uses GRAPHQL_BASE, and
+        # specifically the `legacyTags` query - NOT `tags`, which despite the
+        # more obvious name only returns a couple dozen high-level meta tags
+        # (ids in the low double digits). `legacyTags` returns the real, full
+        # vocabulary mods are actually tagged with (confirmed against live
+        # per-mod `tags{}` data: e.g. id 4532 "Version 1.6 Compatible" appears
+        # in both; ~140 entries for Stardew Valley vs. 23 from `tags`).
+        game_id = self._resolve_game_id(game_domain)
+        if not game_id:
+            app_log(f"Nexus tags: no game id for domain '{game_domain}'")
+            return []
+        query = """
+        query GameLegacyTags($gameId: ID) {
+            legacyTags(gameId: $gameId) {
+                id
+                name
+            }
+        }
+        """
+        # legacyTags' gameId arg is ID, not Int (unlike tags()/modFiles()) -
+        # the server 400s on a bare int variable, so stringify it.
+        variables = {"gameId": str(game_id)}
+        # An empty list is indistinguishable from "this game has no tags" in
+        # the UI, so log why it was empty - otherwise a broken query just looks
+        # like dead autocomplete.
+        try:
+            resp = self._post_graphql(query, variables, op="GraphQL gameTags")
+            if not resp.ok:
+                app_log(f"Nexus tags: query failed for '{game_domain}' "
+                        f"→ {resp.status_code}")
+                return []
+            data = resp.json()
+            if "errors" in data:
+                app_log(f"Nexus tags: GraphQL errors for '{game_domain}': "
+                        f"{data['errors']}")
+                return []
+            nodes = data.get("data", {}).get("legacyTags", []) or []
+        except Exception as exc:
+            app_log(f"Nexus tags: query for '{game_domain}' raised: {exc}")
+            return []
+        result: list[NexusTag] = []
+        for n in nodes:
+            try:
+                tag_id = int(n.get("id") or 0)
+            except (TypeError, ValueError):
+                tag_id = 0
+            name = (n.get("name") or "").strip()
+            if not name:
+                continue
+            result.append(NexusTag(tag_id=tag_id, name=name))
+        return result
+
+    @staticmethod
+    def _advanced_filter_clauses(extra: "NexusSearchFilters | None") -> list[dict]:
+        """One ModsFilter clause dict per NexusSearchFilters condition."""
+        # Each tag name is its own clause (see NexusSearchFilters for why);
+        # size/downloads/endorsements are GTE/LTE on the numeric fields.
+        # Multiple languages are OR'd (any match) inside one sub-clause -
+        # unlike tags, a flat multi-entry `languageName` list is ANDed by the
+        # server (confirmed live: two languages in one list clause matches
+        # nothing), so "any of" needs an explicit op:OR the way multi-category
+        # does.
+        if not extra:
+            return []
+        clauses: list[dict] = []
+        for name in extra.tag_includes:
+            clauses.append({"tag": [{"value": name, "op": "EQUALS"}]})
+        for name in extra.tag_excludes:
+            clauses.append({"tag": [{"value": name, "op": "NOT_EQUALS"}]})
+        if extra.hide_translations:
+            clauses.append({"tag": [{"value": "Translation", "op": "NOT_EQUALS"}]})
+        if len(extra.languages) == 1:
+            clauses.append({"languageName": [{"value": extra.languages[0], "op": "EQUALS"}]})
+        elif len(extra.languages) > 1:
+            clauses.append({
+                "op": "OR",
+                "filter": [{"languageName": [{"value": lang, "op": "EQUALS"}]}
+                          for lang in extra.languages],
+            })
+        if extra.min_file_size_kb:
+            clauses.append({"fileSize": [{"value": extra.min_file_size_kb, "op": "GTE"}]})
+        if extra.max_file_size_kb:
+            clauses.append({"fileSize": [{"value": extra.max_file_size_kb, "op": "LTE"}]})
+        if extra.min_downloads:
+            clauses.append({"downloads": [{"value": extra.min_downloads, "op": "GTE"}]})
+        if extra.max_downloads:
+            clauses.append({"downloads": [{"value": extra.max_downloads, "op": "LTE"}]})
+        if extra.min_endorsements:
+            clauses.append({"endorsements": [{"value": extra.min_endorsements, "op": "GTE"}]})
+        if extra.max_endorsements:
+            clauses.append({"endorsements": [{"value": extra.max_endorsements, "op": "LTE"}]})
+        if extra.adult is not None:
+            clauses.append({"adultContent": [{"value": extra.adult}]})
+        if extra.supports_vortex is not None:
+            clauses.append({"supportsVortex": [{"value": extra.supports_vortex}]})
+        if extra.has_updated:
+            clauses.append({"hasUpdated": [{"value": True}]})
+        # WILDCARD (substring on the raw value) needs >=2 chars, same guard
+        # _search_mods_by_field uses for the browse bar's name search.
+        for field_name, value, op in (
+            ("name", extra.title_contains, "WILDCARD"),
+            ("author", extra.author_contains, "WILDCARD"),
+            ("uploader", extra.uploader_contains, "WILDCARD"),
+        ):
+            value = (value or "").strip()
+            if len(value) >= 2:
+                clauses.append({field_name: [{"value": value, "op": op}]})
+        # description has no WILDCARD op (server rejects it - MATCHES only,
+        # confirmed live); MATCHES still does substring-ish text matching.
+        desc = (extra.description_contains or "").strip()
+        if len(desc) >= 2:
+            clauses.append({"description": [{"value": desc, "op": "MATCHES"}]})
+        return clauses
+
+    @classmethod
+    def _build_mods_filter(
+        cls, game_domain: str, category_names: list[str] | None = None,
+        extra: "NexusSearchFilters | None" = None,
+    ) -> dict:
+        """Build a ModsFilter: domain AND category(ies) AND advanced *extra*."""
+        # Always returns the {op: AND, filter: […]} shape (even for a single
+        # clause) so every caller can unconditionally append more clauses to
+        # base_filter["filter"].
+        clauses: list[dict] = [{"gameDomainName": {"value": game_domain}}]
+        if category_names:
+            if len(category_names) == 1:
+                clauses.append({"categoryName": {"value": category_names[0]}})
+            else:
+                clauses.append({
+                    "op": "OR",
+                    "filter": [{"categoryName": {"value": n}} for n in category_names],
+                })
+        clauses.extend(cls._advanced_filter_clauses(extra))
+        return {"op": "AND", "filter": clauses}
+
+    # -- Mods ---------------------------------------------------------------
+
+    def get_mod(self, game_domain: str, mod_id: int) -> NexusModInfo:
+        """Retrieve details about a specific mod."""
+        d = self._get(f"/games/{game_domain}/mods/{mod_id}")
+        try:
+            cat_id = int(d.get("category_id", 0) or 0)
+        except (TypeError, ValueError):
+            cat_id = 0
+        cat_name = d.get("category_name", "") or ""
+        if not cat_name:
+            cat = d.get("category")
+            if isinstance(cat, dict):
+                cat_name = (cat.get("name") or "").strip()
+            elif isinstance(cat, str):
+                cat_name = cat.strip()
+        if not cat_name and cat_id:
+            # REST API often returns only category_id; look up name from game categories
+            try:
+                for c in self.get_game_categories(game_domain):
+                    if c.category_id == cat_id:
+                        cat_name = c.name or ""
+                        break
+            except Exception:
+                pass
+        return NexusModInfo(
+            mod_id=d["mod_id"],
+            name=d["name"],
+            summary=d.get("summary", ""),
+            description=d.get("description", ""),
+            version=d.get("version", ""),
+            author=d.get("author", ""),
+            category_id=cat_id,
+            category_name=cat_name,
+            game_id=d.get("game_id", 0),
+            domain_name=d.get("domain_name", game_domain),
+            picture_url=d.get("picture_url", ""),
+            endorsement_count=d.get("endorsement_count", 0),
+            created_timestamp=d.get("created_timestamp", 0),
+            updated_timestamp=d.get("updated_timestamp", 0),
+            available=d.get("available", True),
+            contains_adult_content=d.get("contains_adult_content", False),
+            status=d.get("status", ""),
+            uploaded_by=d.get("uploaded_by", ""),
+        )
+
+    def get_latest_added(self, game_domain: str) -> list[NexusModInfo]:
+        """Return the most recently added mods for a game."""
+        items = self._get(f"/games/{game_domain}/mods/latest_added")
+        return [self._parse_mod_info(m, game_domain) for m in items]
+
+    def get_latest_updated(self, game_domain: str) -> list[NexusModInfo]:
+        """Return the most recently updated mods for a game."""
+        items = self._get(f"/games/{game_domain}/mods/latest_updated")
+        return [self._parse_mod_info(m, game_domain) for m in items]
+
+    def get_trending(self, game_domain: str) -> list[NexusModInfo]:
+        """Return trending mods for a game (REST). Prefer get_trending_mods_graphql for consistency."""
+        items = self._get(f"/games/{game_domain}/mods/trending")
+        return [self._parse_mod_info(m, game_domain) for m in items]
+
+    def get_trending_mods_graphql(
+        self,
+        game_domain: str,
+        count: int = 20,
+        offset: int = 0,
+        category_names: list[str] | None = None,
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        Fetch trending mods via GraphQL: mods published in the last 7 days,
+        sorted by endorsements (highest first).
+        """
+        seven_days_ago = int(time.time()) - (7 * 24 * 60 * 60)
+        base_filter = self._build_mods_filter(game_domain, category_names, extra=filters)
+        base_filter["filter"].append({
+            "createdAt": [{"value": str(seven_days_ago), "op": "GTE"}],
+        })
+        query = """
+        query TrendingMods($filter: ModsFilter, $count: Int, $offset: Int) {
+            mods(
+                filter: $filter
+                sort: [{ endorsements: { direction: DESC } }]
+                count: $count
+                offset: $offset
+            ) {
+                nodes {
+                    modId
+                    name
+                    summary
+                    description
+                    author
+                    version
+                    endorsements
+                    downloads
+                    pictureUrl
+                    adultContent
+                    createdAt
+                    updatedAt
+                    fileSize
+                    uploader { name memberId }
+                    modCategory { name }
+                }
+            }
+        }
+        """
+        variables = {
+            "filter": base_filter,
+            "count": count,
+            "offset": offset,
+        }
+        try:
+            resp = self._post_search_graphql(query, variables,
+                                             op="GraphQL trendingMods")
+            if not resp.ok:
+                raise NexusAPIError(
+                    f"GraphQL trending query failed: {resp.status_code}",
+                    resp.status_code,
+                )
+            parse_started = time.perf_counter() if perftrace.is_enabled() else 0.0
+            data = resp.json()
+            if "errors" in data:
+                raise NexusAPIError(
+                    f"GraphQL error: {data['errors'][0].get('message', 'unknown')}"
+                )
+            nodes = data.get("data", {}).get("mods", {}).get("nodes", [])
+            results: list[NexusModInfo] = []
+            for n in nodes:
+                results.append(NexusModInfo(
+                    mod_id=n.get("modId", 0),
+                    name=n.get("name", "") or "",
+                    summary=n.get("summary", "") or "",
+                    description=n.get("description", "") or "",
+                    version=n.get("version", "") or "",
+                    author=n.get("author", "") or "",
+                    **_uploader_fields(n),
+                    category_id=0,
+                    game_id=0,
+                    domain_name=game_domain,
+                    endorsement_count=n.get("endorsements", 0) or 0,
+                    downloads_total=n.get("downloads", 0) or 0,
+                    picture_url=n.get("pictureUrl", "") or "",
+                    contains_adult_content=bool(n.get("adultContent", False)),
+                    created_at=n.get("createdAt", "") or "",
+                    updated_at=n.get("updatedAt", "") or "",
+                    file_size_kb=n.get("fileSize", 0) or 0,
+                    category_name=(n.get("modCategory") or {}).get("name", "") or "",
+                ))
+            if parse_started:
+                perftrace.mark("nexus.list.parse", time.perf_counter() - parse_started)
+            return results
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            raise NexusAPIError(f"GraphQL trending error: {exc}") from exc
+
+    def get_updated_mods(self, game_domain: str,
+                         period: str = "1w") -> list[dict]:
+        """Get mods updated within a period (1d, 1w, 1m)."""
+        return self._get(
+            f"/games/{game_domain}/mods/updated",
+            params={"period": period},
+        )
+
+    # -- Files --------------------------------------------------------------
+
+    def _resolve_game_id(self, game_domain: str) -> int:
+        """Return the numeric Nexus game ID for a domain, cached per session.
+
+        Returns 0 on failure (caller should fall back to REST).
+        """
+        cached = self._game_id_cache.get(game_domain)
+        if cached is not None:
+            return cached
+        try:
+            resp = self._post_graphql(
+                f'{{ game(domainName: "{game_domain}") {{ id }} }}',
+                op="GraphQL resolveGameId")
+            if not resp.ok:
+                return 0
+            payload = resp.json()
+            if "errors" in payload:
+                return 0
+            gid = int(
+                ((payload.get("data") or {}).get("game") or {}).get("id") or 0
+            )
+        except Exception:
+            return 0
+        if gid:
+            self._game_id_cache[game_domain] = gid
+        return gid
+
+    def _enrich_files_from_rest(self, game_domain: str, mod_id: int,
+                                files: "list[NexusModFile]") -> None:
+        """Fill GraphQL modFiles gaps from the REST files endpoint (in place).
+
+        Nexus's newer upload pipeline returns ``sizeInBytes: null`` and a CDN
+        UUID *path* in ``uri`` (e.g. ``ed/8d/27/ed8d270a-…``) instead of the
+        archive filename. The REST endpoint still carries the real
+        ``file_name`` - which for these uploads is the exact browser-download
+        name - plus ``size_kb``. Without them, download detection and cache
+        matching have nothing to match on. Only called when at least one entry
+        is deficient, and merged strictly by ``file_id``, so the REST
+        wrong-mod bug (see get_mod_files docstring) can't corrupt anything -
+        unmatched ids are simply left as they were. Best-effort: REST errors
+        leave the GraphQL data untouched.
+        """
+        def _deficient(f: NexusModFile) -> bool:
+            no_size = not (f.size_in_bytes or f.size_kb)
+            bad_name = (not f.file_name) or ("/" in f.file_name)
+            return no_size or bad_name
+
+        if not any(_deficient(f) for f in files):
+            return
+        try:
+            data = self._get(f"/games/{game_domain}/mods/{mod_id}/files")
+            rest = {}
+            for r in data.get("files", []):
+                try:
+                    rest[int(r.get("file_id") or 0)] = r
+                except (TypeError, ValueError):
+                    continue
+            for f in files:
+                r = rest.get(f.file_id)
+                if r is None:
+                    continue
+                if (not f.file_name) or ("/" in f.file_name):
+                    fn = (r.get("file_name") or "").strip()
+                    if fn:
+                        f.file_name = fn
+                if not (f.size_in_bytes or f.size_kb):
+                    sz_b = r.get("size_in_bytes") or 0
+                    sz_kb = r.get("size_kb") or r.get("size") or 0
+                    if sz_b:
+                        f.size_in_bytes = int(sz_b)
+                        f.size_kb = int(sz_b) // 1024
+                    elif sz_kb:
+                        f.size_kb = int(sz_kb)
+        except Exception as exc:
+            app_log(f"REST file enrichment failed for {game_domain}/{mod_id}: {exc}")
+
+    def get_mod_files(self, game_domain: str,
+                      mod_id: int) -> NexusModFiles:
+        """List all files uploaded for a mod.
+
+        Prefers GraphQL ``modFiles(gameId, modId)`` because Nexus's REST
+        endpoint ``/games/{domain}/mods/{id}/files`` can return files for a
+        different mod entirely on some games (e.g. subnautica2 mod 20 returns
+        files from subnautica mod 220). GraphQL disambiguates via the numeric
+        gameId and is rate-limit-free; REST remains as a fallback.
+        """
+        game_id = self._resolve_game_id(game_domain)
+        if game_id:
+            try:
+                query = (
+                    f"query ModFiles {{\n"
+                    f"  modFiles(gameId: {game_id}, modId: {mod_id}) {{\n"
+                    f"    fileId name version description\n"
+                    f"    categoryId category\n"
+                    f"    sizeInBytes date uri\n"
+                    f"  }}\n"
+                    f"}}"
+                )
+                resp = self._post_graphql(query, op="GraphQL modFiles")
+                if resp.ok:
+                    payload = resp.json()
+                    entries = (
+                        (payload.get("data") or {}).get("modFiles")
+                    )
+                    if entries is not None and "errors" not in payload:
+                        files: list[NexusModFile] = []
+                        for entry in entries:
+                            try:
+                                fid = int(entry.get("fileId") or 0)
+                            except (TypeError, ValueError):
+                                fid = 0
+                            if not fid:
+                                continue
+                            cat_raw = entry.get("category")
+                            if isinstance(cat_raw, dict):
+                                cat_name = (cat_raw.get("name") or "").strip()
+                            elif isinstance(cat_raw, str):
+                                cat_name = cat_raw.strip()
+                            else:
+                                cat_name = ""
+                            try:
+                                ts = int(entry.get("date") or 0)
+                            except (TypeError, ValueError):
+                                ts = 0
+                            try:
+                                sz = int(entry.get("sizeInBytes") or 0)
+                            except (TypeError, ValueError):
+                                sz = 0
+                            files.append(NexusModFile(
+                                file_id=fid,
+                                name=entry.get("name", "") or "",
+                                version=entry.get("version", "") or "",
+                                category_name=cat_name,
+                                file_name=entry.get("uri", "") or "",
+                                category_id=int(entry.get("categoryId") or 0),
+                                size_in_bytes=sz or None,
+                                size_kb=(sz // 1024) if sz else 0,
+                                mod_version="",
+                                description=entry.get("description", "") or "",
+                                uploaded_timestamp=ts,
+                                is_primary=(cat_name == "MAIN"),
+                            ))
+                        self._enrich_files_from_rest(game_domain, mod_id, files)
+                        return NexusModFiles(files=files, file_updates=[])
+            except Exception as exc:
+                app_log(f"GraphQL modFiles error for {game_domain}/{mod_id}: {exc} - falling back to REST")
+
+        data = self._get(f"/games/{game_domain}/mods/{mod_id}/files")
+        files = [
+            NexusModFile(
+                file_id=f["file_id"],
+                name=f.get("name", ""),
+                version=f.get("version", ""),
+                category_name=f.get("category_name", ""),
+                file_name=f.get("file_name", ""),
+                category_id=int(f.get("category_id") or 0),
+                size_in_bytes=f.get("size_in_bytes"),
+                size_kb=f.get("size_kb", 0),
+                mod_version=f.get("mod_version", ""),
+                description=f.get("description", ""),
+                uploaded_timestamp=f.get("uploaded_timestamp", 0),
+                is_primary=f.get("is_primary", False),
+                changelog_html=f.get("changelog_html", ""),
+                external_virus_scan_url=f.get("external_virus_scan_url", ""),
+            )
+            for f in data.get("files", [])
+        ]
+        return NexusModFiles(
+            files=files,
+            file_updates=data.get("file_updates", []),
+        )
+
+    def get_mod_file_updates(self, game_domain: str, mod_id: int) -> list[dict]:
+        """Return the REST file-update chain for one Nexus mod."""
+        data = self._get(f"/games/{game_domain}/mods/{mod_id}/files")
+        updates = data.get("file_updates", [])
+        return updates if isinstance(updates, list) else []
+
+    def get_file_info(self, game_domain: str, mod_id: int,
+                      file_id: int) -> NexusModFile:
+        """Get details about a specific file."""
+        f = self._get(
+            f"/games/{game_domain}/mods/{mod_id}/files/{file_id}")
+        return NexusModFile(
+            file_id=f["file_id"],
+            name=f.get("name", ""),
+            version=f.get("version", ""),
+            category_name=f.get("category_name", ""),
+            file_name=f.get("file_name", ""),
+            category_id=int(f.get("category_id") or 0),
+            size_in_bytes=f.get("size_in_bytes"),
+            size_kb=f.get("size_kb", 0),
+            mod_version=f.get("mod_version", ""),
+            description=f.get("description", ""),
+            uploaded_timestamp=f.get("uploaded_timestamp", 0),
+            is_primary=f.get("is_primary", False),
+            changelog_html=f.get("changelog_html", ""),
+            external_virus_scan_url=f.get("external_virus_scan_url", ""),
+        )
+
+    def get_download_links(
+        self,
+        game_domain: str,
+        mod_id: int,
+        file_id: int,
+        key: str | None = None,
+        expires: int | None = None,
+    ) -> list[NexusDownloadLink]:
+        """
+        Generate download URLs for a file.
+
+        Premium users can call this directly (no key/expires needed).
+        Free users must provide key + expires from an nxm:// link
+        (the "Download with Manager" button on the website).
+
+        Parameters
+        ----------
+        game_domain : str  Nexus game domain, e.g. "skyrimspecialedition"
+        mod_id      : int  Nexus mod ID
+        file_id     : int  Nexus file ID
+        key         : str  Download key from nxm:// link (free users)
+        expires     : int  Expiry timestamp from nxm:// link (free users)
+
+        Returns
+        -------
+        List of download mirror URLs.
+        """
+        path = (f"/games/{game_domain}/mods/{mod_id}"
+                f"/files/{file_id}/download_link")
+        params: dict[str, Any] = {}
+        if key is not None and expires is not None:
+            params["key"] = key
+            params["expires"] = str(expires)
+        data = self._get(path, params=params or None)
+        return [
+            NexusDownloadLink(
+                name=d.get("name", ""),
+                short_name=d.get("short_name", ""),
+                URI=d["URI"],
+            )
+            for d in data
+        ]
+
+    # -- MD5 lookup ---------------------------------------------------------
+
+    def get_file_by_md5(self, game_domain: str,
+                        md5: str) -> list[dict]:
+        """
+        Find mod/file info by MD5 hash.
+
+        Useful for identifying already-downloaded archives.
+        May return multiple results if the same file was uploaded
+        to different mods.
+        """
+        return self._get(
+            f"/games/{game_domain}/mods/md5_search/{md5}")
+
+    # -- Endorsements -------------------------------------------------------
+
+    def get_endorsements(self) -> list[dict]:
+        """Get the current user's endorsements."""
+        return self._get("/user/endorsements")
+
+    def endorse_mod(self, game_domain: str, mod_id: int, version: str = "") -> dict:
+        """Endorse a mod on Nexus Mods."""
+        return self._post_v1(
+            f"/games/{game_domain}/mods/{mod_id}/endorse",
+            {"Version": version},
+        )
+
+    def abstain_mod(self, game_domain: str, mod_id: int, version: str = "") -> dict:
+        """Abstain from endorsing a mod on Nexus Mods.
+
+        The REST v1 /abstain endpoint returns 200 but does not actually remove
+        the endorsement on the site, so we prefer the GraphQL v2
+        abstainFromModEndorsement mutation. REST is kept as a last-resort
+        fallback if the uid lookup fails.
+        """
+        try:
+            result = self._abstain_mod_graphql(game_domain, mod_id)
+            if result is not None:
+                return result
+        except Exception as exc:
+            app_log(f"GraphQL abstain failed, falling back to REST: {exc}")
+
+        resp = self._session.post(
+            f"{API_BASE}/games/{game_domain}/mods/{mod_id}/abstain",
+            json={"Version": version},
+            timeout=self._timeout,
+        )
+        self._update_rate_limits(resp)
+        self._log_response("POST", f"/games/{game_domain}/mods/{mod_id}/abstain", resp)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _abstain_mod_graphql(self, game_domain: str, mod_id: int) -> dict | None:
+        """Abstain via GraphQL v2. Returns None if the uid cannot be resolved."""
+        uid_query = """
+        query ModUid($ids: [CompositeDomainWithIdInput!]!) {
+            legacyModsByDomain(ids: $ids) {
+                nodes { uid }
+            }
+        }
+        """
+        uid_vars = {"ids": [{"gameDomain": game_domain, "modId": mod_id}]}
+        resp = self._post_graphql(uid_query, uid_vars, op="GraphQL ModUid")
+        if not resp.ok:
+            return None
+        payload = resp.json()
+        if "errors" in payload:
+            app_log(f"GraphQL ModUid errors: {payload['errors']}")
+            return None
+        nodes = ((payload.get("data") or {})
+                 .get("legacyModsByDomain") or {}).get("nodes") or []
+        if not nodes:
+            return None
+        mod_uid = nodes[0].get("uid")
+        if not mod_uid:
+            return None
+
+        mutation = """
+        mutation AbstainFromModEndorsement($modUid: String!) {
+            abstainFromModEndorsement(modUid: $modUid) {
+                success
+            }
+        }
+        """
+        m_resp = self._post_graphql(mutation, {"modUid": str(mod_uid)},
+                                    op="GraphQL abstainFromModEndorsement")
+        m_resp.raise_for_status()
+        m_payload = m_resp.json()
+        if "errors" in m_payload:
+            raise NexusAPIError(
+                f"GraphQL abstain error: {m_payload['errors'][0].get('message', 'unknown')}"
+            )
+        return m_payload.get("data", {}).get("abstainFromModEndorsement") or {}
+
+    # -- Mod requirements (GraphQL v2) --------------------------------------
+
+    _GRAPHQL_REQUIREMENTS_PAGE_SIZE = 50
+
+    @staticmethod
+    def _parse_graphql_requirements(
+        nodes: list[dict], fallback_domain: str = ""
+    ) -> list[NexusModRequirement]:
+        results: list[NexusModRequirement] = []
+        for node in nodes:
+            try:
+                mod_id = int(node.get("modId", 0))
+            except (ValueError, TypeError):
+                mod_id = 0
+            results.append(NexusModRequirement(
+                mod_id=mod_id,
+                mod_name=node.get("modName", "") or "",
+                game_domain=node.get("gameId", fallback_domain) or fallback_domain,
+                url=node.get("url", "") or "",
+                is_external=bool(node.get("externalRequirement", False)),
+                notes=node.get("notes", "") or "",
+            ))
+        return results
+
+    def get_mod_requirements(
+        self, game_domain: str, mod_id: int
+    ) -> list[NexusModRequirement]:
+        """
+        Fetch the Nexus-listed requirements for a mod via the GraphQL v2 API.
+
+        Returns a list of NexusModRequirement (one per required mod).
+        External requirements (non-Nexus links) are included with is_external=True.
+        """
+        query = """
+        query ModRequirements(
+            $ids: [CompositeDomainWithIdInput!]!
+            $count: Int!
+            $offset: Int!
+        ) {
+            legacyModsByDomain(ids: $ids) {
+                nodes {
+                    modRequirements {
+                        nexusRequirements(count: $count, offset: $offset) {
+                            totalCount
+                            nodes {
+                                modId
+                                modName
+                                gameId
+                                url
+                                externalRequirement
+                                notes
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+        try:
+            results: list[NexusModRequirement] = []
+            offset = 0
+            total = 0
+            while offset == 0 or offset < total:
+                variables = {
+                    "ids": [{"gameDomain": game_domain, "modId": mod_id}],
+                    "count": self._GRAPHQL_REQUIREMENTS_PAGE_SIZE,
+                    "offset": offset,
+                }
+                resp = self._post_graphql(query, variables,
+                                          op="GraphQL modRequirements")
+                if not resp.ok:
+                    app_log(f"GraphQL requirements query failed: {resp.status_code}")
+                    return []
+                data = resp.json()
+                mod_nodes = (
+                    (data.get("data") or {})
+                    .get("legacyModsByDomain") or {}
+                ).get("nodes") or []
+                if not mod_nodes:
+                    return []
+                page = (
+                    (mod_nodes[0].get("modRequirements") or {})
+                    .get("nexusRequirements") or {}
+                )
+                nodes = page.get("nodes") or []
+                total = int(page.get("totalCount") or 0)
+                results.extend(self._parse_graphql_requirements(
+                    nodes, game_domain))
+                if not nodes:
+                    break
+                offset += len(nodes)
+            return results
+        except Exception as exc:
+            app_log(f"GraphQL requirements query error: {exc}")
+            return []
+
+    # -- File-level requirements (REST v3, experimental) ---------------------
+
+    def get_file_dependency_candidates_batch(
+        self,
+        version_uids: list[int],
+    ) -> list[FileDependencyCandidate]:
+        """Fetch materialized file-level dependency candidates for a set of
+        installed file version UIDs ((game_id << 32) | file_id).
+
+        Returns one row per candidate version per dependency definition; see
+        FileDependencyCandidate for grouping semantics. Sources with no
+        file-level dependencies contribute no rows. Raises on HTTP failure
+        (the v3 API is experimental - callers must degrade gracefully).
+        """
+        out: list[FileDependencyCandidate] = []
+        _MAX_IDS = 5000
+        _PAGE_SIZE = 1000
+        _MAX_PAGES = 50  # safety cap against inconsistent total_count
+        for start in range(0, len(version_uids), _MAX_IDS):
+            chunk = version_uids[start:start + _MAX_IDS]
+            fetched = 0
+            for page in range(1, _MAX_PAGES + 1):
+                data = self._post_v3(
+                    "/mod-file-versions/dependencies/ranges/materialized/batch",
+                    {"version_ids": [str(u) for u in chunk],
+                     "page": page, "page_size": _PAGE_SIZE})
+                rows = (data.get("data") or {}).get("candidates") or []
+                total = int((data.get("meta") or {}).get("total_count") or 0)
+                for row in rows:
+                    try:
+                        out.append(FileDependencyCandidate(
+                            source_version_id=int(row.get("source_version_id") or 0),
+                            definition_id=int(row.get("definition_id") or 0),
+                            mod_uid=int(row.get("mod_id") or 0),
+                            mod_file_id=int(row.get("mod_file_id") or 0),
+                            version_id=int(row.get("version_id") or 0),
+                            position=float(row.get("position") or 0),
+                            category=str(row.get("category") or ""),
+                            mod_status=str(row.get("mod_status") or ""),
+                        ))
+                    except (ValueError, TypeError):
+                        continue
+                fetched += len(rows)
+                if not rows or fetched >= total:
+                    break
+        return out
+
+    def get_mods_batch(self, mod_uids: list[int]) -> dict[int, dict]:
+        """Resolve composite mod UIDs to display details via the v3 API.
+
+        Returns {mod_uid: mod_dict} where mod_dict has "name",
+        "game_scoped_id", "status", etc. Best-effort: failed chunks are
+        logged and skipped, unknown ids are simply absent.
+        """
+        out: dict[int, dict] = {}
+        _MAX_IDS = 2000
+        for start in range(0, len(mod_uids), _MAX_IDS):
+            chunk = mod_uids[start:start + _MAX_IDS]
+            try:
+                data = self._post_v3(
+                    "/mods/batch", {"mod_ids": [str(u) for u in chunk]})
+                for mod in (data.get("data") or {}).get("mods") or []:
+                    try:
+                        out[int(mod.get("id") or 0)] = mod
+                    except (ValueError, TypeError):
+                        continue
+            except Exception as exc:
+                app_log(f"v3 mods/batch chunk failed: {exc}")
+                continue
+        return out
+
+    # -- NXM download helper (GraphQL v2) -----------------------------------
+
+    def get_mod_and_file_info_graphql(
+        self,
+        game_domain: str,
+        mod_id: int,
+        file_id: int,
+    ) -> "tuple[NexusModInfo | None, NexusModFile | None]":
+        """
+        Fetch mod info + a specific file's metadata in a single GraphQL request,
+        replacing the two REST calls (get_mod + get_mod_files) used during NXM
+        downloads.
+
+        Returns (NexusModInfo, NexusModFile) - either may be None on failure.
+        Falls back gracefully so callers can still use partial data.
+        """
+        # Mod type has no 'files' field; request mod + category only (file_info from link)
+        query = """
+        query NxmModAndFile($ids: [CompositeDomainWithIdInput!]!) {
+            legacyModsByDomain(ids: $ids) {
+                nodes {
+                    modId
+                    name
+                    summary
+                    version
+                    status
+                    author
+                    uploader { name memberId }
+                    modCategory { categoryId name }
+                    game { domainName }
+                }
+            }
+        }
+        """
+        variables = {"ids": [{"gameDomain": game_domain, "modId": mod_id}]}
+        try:
+            resp = self._post_graphql(query, variables,
+                                      op="GraphQL NxmModAndFile")
+            if not resp.ok:
+                app_log(f"GraphQL NxmModAndFile failed: {resp.status_code}")
+                return (None, None)
+            data = resp.json()
+            if "errors" in data:
+                app_log(f"GraphQL NxmModAndFile errors: {data['errors']}")
+            nodes = (
+                (data.get("data") or {})
+                .get("legacyModsByDomain") or {}
+            ).get("nodes") or []
+            if not nodes:
+                return (None, None)
+            n = nodes[0]
+            mid = int(n.get("modId") or mod_id)
+            domain = (n.get("game") or {}).get("domainName") or game_domain
+            mcat = n.get("modCategory") or {}
+            cat_id = int(mcat.get("categoryId") or 0) if isinstance(mcat.get("categoryId"), (int, str)) else 0
+            cat_name = (mcat.get("name") or "").strip() if isinstance(mcat.get("name"), str) else ""
+            mod_info = NexusModInfo(
+                mod_id=mid,
+                name=n.get("name", "") or "",
+                summary=n.get("summary", "") or "",
+                description="",
+                version=n.get("version", "") or "",
+                status=n.get("status", "") or "",
+                author=n.get("author", "") or "",
+                **_uploader_fields(n),
+                category_id=cat_id,
+                category_name=cat_name,
+                game_id=0,
+                domain_name=domain,
+            )
+            # Mod has no 'files' field; file_info not available from this query
+            return (mod_info, None)
+        except Exception as exc:
+            app_log(f"GraphQL NxmModAndFile error: {exc}")
+            return (None, None)
+
+    # -- Batch update check (GraphQL v2) ------------------------------------
+
+    _GRAPHQL_UPDATE_BATCH = 20  # legacyModsByDomain returns at most 20 nodes per request
+
+    def _map_graphql_batches(self, batches, fetch_batch) -> dict:
+        if not batches:
+            return {}
+
+        workers = min(4, len(batches))
+
+        def fetch_lane(lane):
+            results = {}
+            with requests.Session() as session:
+                session.verify = self._session.verify
+                for batch in lane:
+                    results.update(fetch_batch(batch, session))
+            return results
+
+        if workers == 1:
+            return fetch_lane(batches)
+        results = {}
+        with ThreadPoolExecutor(max_workers=workers,
+                                thread_name_prefix="nexus-update") as pool:
+            for result in pool.map(fetch_lane,
+                                   [batches[i::workers] for i in range(workers)]):
+                results.update(result)
+        return results
+
+    def graphql_mod_update_info_batch(
+        self,
+        ids: list[tuple[str, int]],
+    ) -> dict[int, "NexusModUpdateInfo"]:
+        """
+        Fetch update-relevant info for a batch of mods via a single GraphQL
+        request (or a small number of them for large lists).
+
+        Parameters
+        ----------
+        ids : list of (game_domain, mod_id)
+
+        Returns
+        -------
+        dict mapping mod_id → NexusModUpdateInfo
+        """
+        query = """
+        query BatchUpdateCheck(
+            $ids: [CompositeDomainWithIdInput!]!
+            $requirementsCount: Int!
+            $requirementsOffset: Int!
+        ) {
+            legacyModsByDomain(ids: $ids) {
+                nodes {
+                    modId
+                    name
+                    version
+                    summary
+                    updatedAt
+                    viewerUpdateAvailable
+                    viewerEndorsed
+                    uploader { name memberId }
+                    modCategory { categoryId name }
+                    modRequirements {
+                        nexusRequirements(
+                            count: $requirementsCount
+                            offset: $requirementsOffset
+                        ) {
+                            totalCount
+                            nodes {
+                                modId
+                                modName
+                                gameId
+                                url
+                                externalRequirement
+                                notes
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+        def fetch_batch(batch, session):
+            results: dict[int, NexusModUpdateInfo] = {}
+            requirement_totals: dict[int, int] = {}
+            variables = {
+                "ids": [{"gameDomain": gd, "modId": mid} for gd, mid in batch],
+                "requirementsCount": self._GRAPHQL_REQUIREMENTS_PAGE_SIZE,
+                "requirementsOffset": 0,
+            }
+            try:
+                resp = self._post_graphql(query, variables,
+                                          op="GraphQL batchUpdateCheck",
+                                          session=session)
+                if not resp.ok:
+                    app_log(f"GraphQL batch update check failed: {resp.status_code}")
+                    return results
+                data = resp.json()
+                if not isinstance(data, dict):
+                    app_log("GraphQL batch update check: unexpected response format")
+                    return results
+                if "errors" in data:
+                    app_log(f"GraphQL batch update check errors: {data['errors']}")
+                nodes = (
+                    (data.get("data") or {})
+                    .get("legacyModsByDomain") or {}
+                ).get("nodes") or []
+                for n in nodes:
+                    mid = int(n.get("modId", 0))
+                    updated_at = None
+                    raw_ts = n.get("updatedAt")
+                    if raw_ts:
+                        try:
+                            updated_at = datetime.fromisoformat(
+                                raw_ts.replace("Z", "+00:00")
+                            )
+                        except ValueError:
+                            pass
+                    vua = n.get("viewerUpdateAvailable")
+                    ven = n.get("viewerEndorsed")
+                    req_page = (
+                        (n.get("modRequirements") or {})
+                        .get("nexusRequirements") or {}
+                    )
+                    reqs = self._parse_graphql_requirements(
+                        req_page.get("nodes") or [])
+                    requirement_totals[mid] = int(
+                        req_page.get("totalCount") or 0)
+                    mcat = n.get("modCategory") or {}
+                    cat_id = int(mcat.get("categoryId") or 0) if isinstance(mcat.get("categoryId"), (int, str)) else 0
+                    cat_name = (mcat.get("name") or "").strip() if isinstance(mcat.get("name"), str) else ""
+                    # Mod type from legacyModsByDomain has no 'files' field; file-level checks use REST get_mod_files
+                    results[mid] = NexusModUpdateInfo(
+                        mod_id=mid,
+                        name=n.get("name", "") or "",
+                        version=n.get("version", "") or "",
+                        summary=n.get("summary", "") or "",
+                        updated_at=updated_at,
+                        viewer_update_available=None if vua is None else bool(vua),
+                        viewer_endorsed=None if ven is None else bool(ven),
+                        requirements=reqs,
+                        category_id=cat_id,
+                        category_name=cat_name,
+                        uploaded_by=(n.get("uploader") or {}).get("name", "") or "",
+                        files=[],  # Mod has no files field in GraphQL; REST used for file checks
+                    )
+
+                offset = self._GRAPHQL_REQUIREMENTS_PAGE_SIZE
+                while any(total > offset
+                          for total in requirement_totals.values()):
+                    variables["requirementsOffset"] = offset
+                    resp = self._post_graphql(
+                        query, variables,
+                        op="GraphQL batchUpdateCheck requirements page",
+                        session=session)
+                    if not resp.ok:
+                        app_log("GraphQL batch requirements page failed: "
+                                f"{resp.status_code}")
+                        break
+                    page_data = resp.json()
+                    if not isinstance(page_data, dict):
+                        app_log("GraphQL batch requirements page: unexpected response format")
+                        break
+                    if "errors" in page_data:
+                        app_log("GraphQL batch requirements page errors: "
+                                f"{page_data['errors']}")
+                    page_nodes = (
+                        (page_data.get("data") or {})
+                        .get("legacyModsByDomain") or {}
+                    ).get("nodes") or []
+                    for page_node in page_nodes:
+                        page_mid = int(page_node.get("modId", 0))
+                        info = results.get(page_mid)
+                        if info is None:
+                            continue
+                        req_page = (
+                            (page_node.get("modRequirements") or {})
+                            .get("nexusRequirements") or {}
+                        )
+                        info.requirements.extend(
+                            self._parse_graphql_requirements(
+                                req_page.get("nodes") or []))
+                    offset += self._GRAPHQL_REQUIREMENTS_PAGE_SIZE
+            except Exception as exc:
+                app_log(f"GraphQL batch update check error: {exc}")
+            return results
+
+        batch_size = self._GRAPHQL_UPDATE_BATCH
+        return self._map_graphql_batches(
+            [ids[i:i + batch_size] for i in range(0, len(ids), batch_size)],
+            fetch_batch)
+
+    def graphql_mod_files_batch(
+        self,
+        game_domain: str,
+        mod_ids: list[int],
+    ) -> dict[int, list["NexusModFile"]]:
+        """
+        Fetch the file list for a batch of mods via aliased GraphQL modFiles
+        queries. Rate-limit-free (GraphQL does not consume the REST hourly limit).
+
+        Returns a dict mapping mod_id → list of NexusModFile. Mods that fail
+        (or are missing from the response) are simply absent from the dict;
+        callers should fall back to REST get_mod_files for those.
+        """
+        if not mod_ids:
+            return {}
+
+        game_id = self._resolve_game_id(game_domain)
+        if not game_id:
+            app_log(f"GraphQL modFilesBatch: could not resolve game ID for {game_domain!r}")
+            return {}
+
+        def fetch_batch(batch, session):
+            results: dict[int, list[NexusModFile]] = {}
+            aliases = "\n".join(
+                f"    m{mid}: modFiles(gameId: {game_id}, modId: {mid}) {{\n"
+                f"        fileId name version description\n"
+                f"        categoryId category\n"
+                f"        sizeInBytes date uri\n"
+                f"    }}"
+                for mid in batch
+            )
+            query = f"query ModFilesBatch {{\n{aliases}\n}}"
+            try:
+                resp = self._post_graphql(query, op="GraphQL modFilesBatch",
+                                          session=session)
+                if not resp.ok:
+                    app_log(f"GraphQL modFilesBatch failed: {resp.status_code}")
+                    return results
+                payload = resp.json()
+                if "errors" in payload:
+                    app_log(f"GraphQL modFilesBatch errors: {payload['errors']}")
+                data = (payload.get("data") or {})
+                for mid in batch:
+                    entries = data.get(f"m{mid}")
+                    if not entries:
+                        continue
+                    files: list[NexusModFile] = []
+                    for entry in entries:
+                        try:
+                            fid = int(entry.get("fileId") or 0)
+                        except (TypeError, ValueError):
+                            fid = 0
+                        if not fid:
+                            continue
+                        cat_raw = entry.get("category")
+                        if isinstance(cat_raw, dict):
+                            cat_name = (cat_raw.get("name") or "").strip()
+                        elif isinstance(cat_raw, str):
+                            cat_name = cat_raw.strip()
+                        else:
+                            cat_name = ""
+                        try:
+                            ts = int(entry.get("date") or 0)
+                        except (TypeError, ValueError):
+                            ts = 0
+                        try:
+                            sz = int(entry.get("sizeInBytes") or 0)
+                        except (TypeError, ValueError):
+                            sz = 0
+                        files.append(NexusModFile(
+                            file_id=fid,
+                            name=entry.get("name", "") or "",
+                            version=entry.get("version", "") or "",
+                            category_name=cat_name,
+                            file_name=entry.get("uri", "") or "",
+                            category_id=int(entry.get("categoryId") or 0),
+                            size_in_bytes=sz or None,
+                            size_kb=(sz // 1024) if sz else 0,
+                            mod_version="",
+                            description=entry.get("description", "") or "",
+                            uploaded_timestamp=ts,
+                        ))
+                    if files:
+                        results[mid] = files
+            except Exception as exc:
+                app_log(f"GraphQL modFilesBatch error: {exc}")
+
+            return results
+
+        unique_mods = list(dict.fromkeys(mod_ids))
+        batch_size = self._GRAPHQL_FILE_BATCH
+        return self._map_graphql_batches(
+            [unique_mods[i:i + batch_size]
+             for i in range(0, len(unique_mods), batch_size)],
+            fetch_batch)
+
+    def graphql_mod_info_batch(
+        self,
+        ids: list[tuple[str, int]],
+    ) -> "dict[int, NexusModInfo]":
+        """
+        Fetch full display info (name, author, version, summary, picture,
+        endorsements, downloads) for a batch of mods via a single GraphQL
+        request (or a small number of them for large lists).
+
+        Uses the same ``legacyModsByDomain`` endpoint as the update-check
+        batch, but requests the full field set needed for the Tracked/Endorsed
+        panels - replacing N individual ``get_mod()`` REST calls with
+        ceil(N/20) rate-limit-free GraphQL requests.
+
+        Parameters
+        ----------
+        ids : list of (game_domain, mod_id) tuples
+
+        Returns
+        -------
+        dict mapping mod_id → NexusModInfo
+        """
+        query = """
+        query ModInfoBatch($ids: [CompositeDomainWithIdInput!]!) {
+            legacyModsByDomain(ids: $ids) {
+                nodes {
+                    modId
+                    name
+                    summary
+                    version
+                    author
+                    uploader { name memberId }
+                    endorsements
+                    downloads
+                    pictureUrl
+                    game { domainName }
+                }
+            }
+        }
+        """
+        results: dict[int, NexusModInfo] = {}
+        batch_size = self._GRAPHQL_UPDATE_BATCH
+        for i in range(0, len(ids), batch_size):
+            batch = ids[i: i + batch_size]
+            variables = {
+                "ids": [{"gameDomain": gd, "modId": mid} for gd, mid in batch]
+            }
+            try:
+                resp = self._post_graphql(query, variables,
+                                          op="GraphQL modInfoBatch")
+                if not resp.ok:
+                    app_log(f"GraphQL modInfoBatch failed: {resp.status_code}")
+                    continue
+                data = resp.json()
+                if "errors" in data:
+                    app_log(f"GraphQL modInfoBatch errors: {data['errors']}")
+                nodes = (
+                    (data.get("data") or {})
+                    .get("legacyModsByDomain") or {}
+                ).get("nodes") or []
+                for n in nodes:
+                    mid = int(n.get("modId", 0))
+                    domain = (n.get("game") or {}).get("domainName", "") or ""
+                    # Use the domain from the input batch if GraphQL doesn't return it
+                    if not domain:
+                        domain = next((gd for gd, bid in batch if bid == mid), "")
+                    results[mid] = NexusModInfo(
+                        mod_id=mid,
+                        name=n.get("name", "") or "",
+                        summary=n.get("summary", "") or "",
+                        description="",
+                        version=n.get("version", "") or "",
+                        author=n.get("author", "") or "",
+                        **_uploader_fields(n),
+                        category_id=0,
+                        game_id=0,
+                        domain_name=domain,
+                        picture_url=n.get("pictureUrl", "") or "",
+                        endorsement_count=int(n.get("endorsements", 0) or 0),
+                        downloads_total=int(n.get("downloads", 0) or 0),
+                    )
+            except Exception as exc:
+                app_log(f"GraphQL modInfoBatch error: {exc}")
+        return results
+
+    # -- Batch file-size lookup (GraphQL v2) ---------------------------------
+
+    _GRAPHQL_FILE_BATCH = 20  # alias limit per request (keep requests manageable)
+
+    def graphql_file_sizes_batch(
+        self,
+        game_domain: str,
+        mod_file_pairs: list[tuple[int, int]],
+    ) -> dict[tuple[int, int], int]:
+        """
+        Fetch file sizes for a list of (mod_id, file_id) pairs using a single
+        GraphQL request per batch of up to _GRAPHQL_FILE_BATCH mod IDs.
+
+        Uses aliased ``modFiles`` queries - one alias per unique mod_id - so
+        N mods cost ceil(N/_GRAPHQL_FILE_BATCH) rate-limit-free GraphQL calls
+        instead of N REST calls.
+
+        Parameters
+        ----------
+        game_domain : e.g. "skyrimspecialedition"
+        mod_file_pairs : list of (mod_id, file_id)
+
+        Returns
+        -------
+        dict mapping (mod_id, file_id) → size_in_bytes (0 if not found)
+        """
+        # Resolve domain name → numeric game ID (modFiles requires the integer ID)
+        try:
+            gid_resp = self._post_graphql(
+                f'{{ game(domainName: "{game_domain}") {{ id }} }}',
+                op="GraphQL resolveGameId")
+            game_id = int(
+                ((gid_resp.json().get("data") or {}).get("game") or {}).get("id") or 0
+            )
+        except Exception:
+            game_id = 0
+        if not game_id:
+            app_log(f"GraphQL fileSizesBatch: could not resolve game ID for {game_domain!r}")
+            return {}
+
+        # Group by mod_id so each mod appears only once per batch
+        from collections import defaultdict
+        mod_to_file_ids: dict[int, list[int]] = defaultdict(list)
+        for mod_id, file_id in mod_file_pairs:
+            mod_to_file_ids[mod_id].append(file_id)
+
+        unique_mods = list(mod_to_file_ids.keys())
+        results: dict[tuple[int, int], int] = {}
+
+        batch_size = self._GRAPHQL_FILE_BATCH
+        for i in range(0, len(unique_mods), batch_size):
+            batch = unique_mods[i: i + batch_size]
+            # One alias per mod: m<mod_id>: modFiles(gameId: <int>, modId: <int>)
+            aliases = "\n".join(
+                f"    m{mid}: modFiles(gameId: {game_id}, modId: {mid}) {{\n"
+                f"        fileId\n        sizeInBytes\n    }}"
+                for mid in batch
+            )
+            query = f"query FileSizesBatch {{\n{aliases}\n}}"
+            try:
+                resp = self._post_graphql(query, op="GraphQL fileSizesBatch")
+                if not resp.ok:
+                    app_log(f"GraphQL fileSizesBatch failed: {resp.status_code}")
+                    continue
+                data = (resp.json().get("data") or {})
+                for mid in batch:
+                    entries = data.get(f"m{mid}") or []
+                    for entry in entries:
+                        fid = int(entry.get("fileId") or 0)
+                        sz  = int(entry.get("sizeInBytes") or 0)
+                        if fid and (mid, fid) not in results:
+                            results[(mid, fid)] = sz
+            except Exception as exc:
+                app_log(f"GraphQL fileSizesBatch error: {exc}")
+
+        return results
+
+    # -- Top mods (GraphQL v2) -----------------------------------------------
+
+    _TOP_MODS_SORT_KEYS = {"downloads", "endorsements", "createdAt", "updatedAt"}
+
+    def get_top_mods(
+        self, game_domain: str, count: int = 10, offset: int = 0,
+        category_names: list[str] | None = None,
+        created_since_days: int | None = None,
+        sort_key: str = "downloads",
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        Fetch top mods for a game via the GraphQL v2 API.
+
+        Results are sorted by `sort_key` descending. Valid sort_key values:
+        "downloads" (default), "endorsements", "createdAt", "updatedAt".
+        Pass category_names to restrict results to specific categories.
+        Pass created_since_days to restrict to mods uploaded within the last N days
+        (None = all time). Pass filters for tag/language/size/downloads/
+        endorsements/adult conditions (see NexusSearchFilters).
+        """
+        if sort_key not in self._TOP_MODS_SORT_KEYS:
+            sort_key = "downloads"
+        base_filter = self._build_mods_filter(game_domain, category_names, extra=filters)
+        if created_since_days is not None and created_since_days > 0:
+            cutoff = int(time.time()) - (created_since_days * 24 * 60 * 60)
+            base_filter["filter"].append(
+                {"createdAt": [{"value": str(cutoff), "op": "GTE"}]})
+        query = f"""
+        query TopMods($filter: ModsFilter, $count: Int, $offset: Int) {{
+            mods(
+                filter: $filter
+                sort: [{{ {sort_key}: {{ direction: DESC }} }}]
+                count: $count
+                offset: $offset
+            ) {{
+                nodes {{
+                    modId
+                    name
+                    summary
+                    description
+                    author
+                    version
+                    endorsements
+                    downloads
+                    pictureUrl
+                    adultContent
+                    createdAt
+                    updatedAt
+                    fileSize
+                    uploader {{ name memberId }}
+                    modCategory {{ name }}
+                }}
+            }}
+        }}
+        """
+        variables = {
+            "filter": base_filter,
+            "count": count,
+            "offset": offset,
+        }
+        try:
+            resp = self._post_search_graphql(query, variables,
+                                             op="GraphQL topMods")
+            if not resp.ok:
+                raise NexusAPIError(
+                    f"GraphQL top-mods query failed: {resp.status_code}",
+                    resp.status_code,
+                )
+            parse_started = time.perf_counter() if perftrace.is_enabled() else 0.0
+            data = resp.json()
+            if "errors" in data:
+                raise NexusAPIError(
+                    f"GraphQL error: {data['errors'][0].get('message', 'unknown')}"
+                )
+            nodes = data.get("data", {}).get("mods", {}).get("nodes", [])
+            results: list[NexusModInfo] = []
+            for n in nodes:
+                results.append(NexusModInfo(
+                    mod_id=n.get("modId", 0),
+                    name=n.get("name", "") or "",
+                    summary=n.get("summary", "") or "",
+                    description=n.get("description", "") or "",
+                    version=n.get("version", "") or "",
+                    author=n.get("author", "") or "",
+                    **_uploader_fields(n),
+                    category_id=0,
+                    game_id=0,
+                    domain_name=game_domain,
+                    endorsement_count=n.get("endorsements", 0) or 0,
+                    downloads_total=n.get("downloads", 0) or 0,
+                    picture_url=n.get("pictureUrl", "") or "",
+                    contains_adult_content=bool(n.get("adultContent", False)),
+                    created_at=n.get("createdAt", "") or "",
+                    updated_at=n.get("updatedAt", "") or "",
+                    file_size_kb=n.get("fileSize", 0) or 0,
+                    category_name=(n.get("modCategory") or {}).get("name", "") or "",
+                ))
+            if parse_started:
+                perftrace.mark("nexus.list.parse", time.perf_counter() - parse_started)
+            return results
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            raise NexusAPIError(f"GraphQL top-mods error: {exc}") from exc
+
+    def search_mods(
+        self, game_domain: str, query_text: str, count: int = 10, offset: int = 0,
+        category_names: list[str] | None = None,
+        sort_key: str = "downloads",
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        Search mods by name for a game via the GraphQL v2 API.
+        Pass category_names to restrict results to specific categories.
+        Results are sorted by `sort_key` descending (see get_top_mods for the
+        valid values); invalid keys fall back to "downloads".
+        """
+        return self._search_mods_by_field(
+            "name", game_domain, query_text, count=count, offset=offset,
+            category_names=category_names, sort_key=sort_key, filters=filters)
+
+    def search_mods_by_uploader_id(
+        self, game_domain: str, uploader_id: int, count: int = 10, offset: int = 0,
+        category_names: list[str] | None = None,
+        sort_key: str = "downloads",
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        List a game's mods by the uploader's stable account id (GraphQL
+        `uploaderId`). This is the RELIABLE "mods by this person" filter: the id
+        never changes even when the account is renamed, and unlike the mod's
+        free-text `author` field the uploader can't set it to anything.
+
+        The GraphQL schema exposes `uploaderId` as a BaseFilterValue (EQUALS
+        only - no WILDCARD), and the value must be passed as a *string*.
+        """
+        if not uploader_id:
+            return []
+        # uploaderId is EQUALS-only and the server rejects an int value - coerce
+        # to a string. No min-length guard: it's an exact numeric id, not text.
+        cond = {"uploaderId": [{"value": str(uploader_id)}]}
+        return self._search_mods_filtered(
+            game_domain, cond, count=count, offset=offset,
+            category_names=category_names, sort_key=sort_key, filters=filters)
+
+    def search_mods_by_author(
+        self, game_domain: str, author: str, count: int = 10, offset: int = 0,
+        category_names: list[str] | None = None,
+        sort_key: str = "downloads",
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        Search a game's mods by the uploader's display name (GraphQL `uploader`
+        field). Used by the browser's author search bar, where the user types a
+        name (we have no id to match on).
+
+        NB: this matches the uploader's *current* name (EQUALS, not the mod's
+        free-text `author` field). For a stable "this exact person's mods" query
+        prefer search_mods_by_uploader_id().
+        """
+        if len((author or "").strip()) < 2:
+            return []
+        cond = {"uploader": [{"value": author}]}
+        return self._search_mods_filtered(
+            game_domain, cond, count=count, offset=offset,
+            category_names=category_names, sort_key=sort_key, filters=filters)
+
+    def _search_mods_by_field(
+        self, field: str, game_domain: str, value: str, count: int = 10,
+        offset: int = 0, category_names: list[str] | None = None,
+        sort_key: str = "downloads",
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        WILDCARD text search on a single field (used by search_mods for `name`).
+
+        The `name` WILDCARD operator does substring matching on the raw value -
+        the `nameStemmed` filter only matches whole (stemmed) words, so a
+        trailing partial word like "disp" in "sse disp" never matches "SSE
+        Display Tweaks". NB: do NOT add `*`/`%` wildcard chars around the value -
+        the operator already matches substrings, and supplying them makes it
+        match nothing. WILDCARD needs ≥2 chars, so short values short-circuit.
+        """
+        if len((value or "").strip()) < 2:
+            return []
+        return self._search_mods_filtered(
+            game_domain, {field: {"value": value, "op": "WILDCARD"}},
+            count=count, offset=offset, category_names=category_names,
+            sort_key=sort_key, filters=filters)
+
+    def _search_mods_filtered(
+        self, game_domain: str, cond: dict, count: int = 10,
+        offset: int = 0, category_names: list[str] | None = None,
+        sort_key: str = "downloads",
+        filters: "NexusSearchFilters | None" = None,
+    ) -> list[NexusModInfo]:
+        """
+        Shared GraphQL mod search: run the SearchMods query with *cond* (a
+        prebuilt ModsFilter condition) AND-ed onto the domain/category/advanced
+        filter. Keeps the query + node parsing in one place for all the search
+        variants.
+        """
+        if sort_key not in self._TOP_MODS_SORT_KEYS:
+            sort_key = "downloads"
+        base_filter = self._build_mods_filter(game_domain, category_names, extra=filters)
+        base_filter["filter"].append(cond)
+        query = f"""
+        query SearchMods($filter: ModsFilter, $count: Int, $offset: Int) {{
+            mods(
+                filter: $filter
+                sort: [{{ {sort_key}: {{ direction: DESC }} }}]
+                count: $count
+                offset: $offset
+            ) {{
+                nodes {{
+                    modId
+                    name
+                    summary
+                    description
+                    author
+                    version
+                    endorsements
+                    downloads
+                    pictureUrl
+                    adultContent
+                    createdAt
+                    updatedAt
+                    fileSize
+                    uploader {{ name memberId }}
+                    modCategory {{ name }}
+                }}
+            }}
+        }}
+        """
+        variables = {
+            "filter": base_filter,
+            "count": count,
+            "offset": offset,
+        }
+        try:
+            resp = self._post_search_graphql(query, variables,
+                                             op="GraphQL searchMods")
+            if not resp.ok:
+                raise NexusAPIError(
+                    f"GraphQL search query failed: {resp.status_code}",
+                    resp.status_code,
+                )
+            parse_started = time.perf_counter() if perftrace.is_enabled() else 0.0
+            data = resp.json()
+            if "errors" in data:
+                raise NexusAPIError(
+                    f"GraphQL error: {data['errors'][0].get('message', 'unknown')}"
+                )
+            nodes = data.get("data", {}).get("mods", {}).get("nodes", [])
+            results: list[NexusModInfo] = []
+            for n in nodes:
+                results.append(NexusModInfo(
+                    mod_id=n.get("modId", 0),
+                    name=n.get("name", "") or "",
+                    summary=n.get("summary", "") or "",
+                    description=n.get("description", "") or "",
+                    version=n.get("version", "") or "",
+                    author=n.get("author", "") or "",
+                    **_uploader_fields(n),
+                    category_id=0,
+                    game_id=0,
+                    domain_name=game_domain,
+                    endorsement_count=n.get("endorsements", 0) or 0,
+                    downloads_total=n.get("downloads", 0) or 0,
+                    picture_url=n.get("pictureUrl", "") or "",
+                    contains_adult_content=bool(n.get("adultContent", False)),
+                    created_at=n.get("createdAt", "") or "",
+                    updated_at=n.get("updatedAt", "") or "",
+                    file_size_kb=n.get("fileSize", 0) or 0,
+                    category_name=(n.get("modCategory") or {}).get("name", "") or "",
+                ))
+            if parse_started:
+                perftrace.mark("nexus.list.parse", time.perf_counter() - parse_started)
+            return results
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            raise NexusAPIError(f"GraphQL search error: {exc}") from exc
+
+    def search_mod_by_id(
+        self, game_domain: str, mod_id: int
+    ) -> list[NexusModInfo]:
+        """
+        Look up a single mod by its numeric mod id for the browse search.
+
+        Returns a one-element list (to match search_mods' shape) or an empty
+        list if the mod doesn't exist / isn't visible. Network/auth errors are
+        still raised so the caller can surface them.
+        """
+        try:
+            return [self.get_mod(game_domain, mod_id)]
+        except NexusAPIError as exc:
+            # A missing or hidden mod (404) is "no results", not an error.
+            if getattr(exc, "status_code", None) == 404:
+                return []
+            raise
+        except Exception:
+            # get_mod uses self._get, which raises requests' HTTPError for 404.
+            return []
+
+    # -- Tracked mods -------------------------------------------------------
+
+    def get_tracked_mods(self) -> list[dict]:
+        """Get all mods being tracked by the current user."""
+        return self._get("/user/tracked_mods")
+
+    def track_mod(self, game_domain: str, mod_id: int) -> dict:
+        """Start tracking a mod."""
+        resp = self._session.post(
+            f"{API_BASE}/user/tracked_mods",
+            json={"domain_name": game_domain, "mod_id": mod_id},
+            timeout=self._timeout,
+        )
+        self._update_rate_limits(resp)
+        self._log_response("POST", "/user/tracked_mods", resp)
+        if resp.status_code == 422:
+            # Already tracked - not an error
+            return {"message": "Already tracked"}
+        resp.raise_for_status()
+        return resp.json()
+
+    def untrack_mod(self, game_domain: str, mod_id: int) -> dict:
+        """Stop tracking a mod."""
+        resp = self._session.delete(
+            f"{API_BASE}/user/tracked_mods",
+            json={"domain_name": game_domain, "mod_id": mod_id},
+            timeout=self._timeout,
+        )
+        self._update_rate_limits(resp)
+        self._log_response("DELETE", "/user/tracked_mods", resp)
+        resp.raise_for_status()
+        return resp.json()
+
+    # -- Collections (GraphQL v2) -------------------------------------------
+
+    # Accepted sort keys → the collectionsV2 `sort` clause. These are baked into
+    # the GraphQL query text (field names cannot be passed as variables), so the
+    # mapping doubles as an allow-list - only these keys ever reach the query.
+    COLLECTION_SORTS = {
+        "downloads": "{ downloads: { direction: DESC } }",
+        "endorsements": "{ endorsements: { direction: DESC } }",
+        "rating": "{ rating: { direction: DESC } }",
+        "recent": "{ createdAt: { direction: DESC } }",
+    }
+    _DEFAULT_COLLECTION_SORT = "downloads"
+
+    def _collection_sort_clause(self, sort: str) -> str:
+        return self.COLLECTION_SORTS.get(
+            sort, self.COLLECTION_SORTS[self._DEFAULT_COLLECTION_SORT])
+
+    @staticmethod
+    def _collections_query(sort_clause: str) -> str:
+        return """
+    query Collections(
+        $gameDomain: String!
+        $schemaId: Int!
+        $count: Int
+        $offset: Int
+    ) {
+        collectionsV2(
+            filter: {
+                gameDomain: [{ value: $gameDomain }]
+                schemaId: [{ value: $schemaId, op: EQUALS }]
+            }
+            count: $count
+            offset: $offset
+            sort: [%s]
+        ) {
+            nodes {
+                id
+                slug
+                name
+                summary
+                tileImage { url }
+                user { name }
+                game { domainName }
+                latestPublishedRevision { modCount }
+                totalDownloads
+                endorsements
+                adultContent
+            }
+        }
+    }
+    """ % sort_clause
+
+    @staticmethod
+    def _parse_collection_nodes(nodes: list, game_domain: str) -> list["NexusCollection"]:
+        results: list[NexusCollection] = []
+        for n in nodes:
+            tile = (n.get("tileImage") or {}).get("url", "")
+            user_name = (n.get("user") or {}).get("name", "")
+            rev = n.get("latestPublishedRevision") or {}
+            mod_count = rev.get("modCount", 0) or 0
+            domain = (n.get("game") or {}).get("domainName", game_domain) or game_domain
+            results.append(NexusCollection(
+                id=n.get("id", 0) or 0,
+                slug=n.get("slug", "") or "",
+                name=n.get("name", "") or "",
+                summary=n.get("summary", "") or "",
+                user_name=user_name,
+                total_downloads=n.get("totalDownloads", 0) or 0,
+                endorsements=n.get("endorsements", 0) or 0,
+                mod_count=mod_count,
+                tile_image_url=tile,
+                game_domain=domain,
+                contains_adult_content=bool(n.get("adultContent", False)),
+            ))
+        return results
+
+    def get_collections(
+        self, game_domain: str, count: int = 20, offset: int = 0,
+        sort: str = "downloads"
+    ) -> list[NexusCollection]:
+        """
+        Fetch collections for a game domain via GraphQL.
+
+        *sort* is one of COLLECTION_SORTS (downloads / endorsements / rating /
+        recent); unknown values fall back to the most-downloaded default.
+        """
+        variables = {
+            "gameDomain": game_domain,
+            "schemaId": _SUPPORTED_COLLECTION_SCHEMA_ID,
+            "count": count,
+            "offset": offset,
+        }
+        query = self._collections_query(self._collection_sort_clause(sort))
+        try:
+            resp = self._post_graphql(query, variables,
+                                      op="GraphQL get_collections")
+            if not resp.ok:
+                app_log(f"GraphQL get_collections failed: {resp.status_code}")
+                return []
+            data = resp.json()
+            if "errors" in data:
+                app_log(f"GraphQL get_collections errors: {data['errors']}")
+                return []
+            nodes = (
+                data.get("data", {})
+                .get("collectionsV2", {})
+                .get("nodes", [])
+            )
+            return self._parse_collection_nodes(nodes, game_domain)
+        except Exception as exc:
+            app_log(f"GraphQL get_collections error: {exc}")
+            return []
+
+    @staticmethod
+    def _collections_search_query(sort_clause: str) -> str:
+        return """
+    query CollectionsSearch(
+        $gameDomain: String!
+        $schemaId: Int!
+        $query: String!
+        $count: Int
+        $offset: Int
+    ) {
+        collectionsV2(
+            filter: {
+                gameDomain: [{ value: $gameDomain }]
+                schemaId: [{ value: $schemaId, op: EQUALS }]
+                name: { value: $query, op: WILDCARD }
+            }
+            count: $count
+            offset: $offset
+            sort: [%s]
+        ) {
+            nodes {
+                id
+                slug
+                name
+                summary
+                tileImage { url }
+                user { name }
+                game { domainName }
+                latestPublishedRevision { modCount }
+                totalDownloads
+                endorsements
+                adultContent
+            }
+        }
+    }
+    """ % sort_clause
+
+    def search_collections(
+        self, game_domain: str, query: str, count: int = 20, offset: int = 0,
+        sort: str = "downloads"
+    ) -> list[NexusCollection]:
+        """
+        Search collections for a game domain by name via the GraphQL
+        collectionsV2 `name` WILDCARD filter (case-insensitive substring match).
+
+        The server-side filter searches the full catalogue and supports
+        count/offset pagination, so results are not limited to the most-
+        downloaded batch the way a client-side filter would be. Do NOT add
+        `*`/`%` wildcard chars around the value - the WILDCARD operator already
+        matches substrings, and supplying them makes it match nothing.
+
+        *sort* is one of COLLECTION_SORTS (see get_collections).
+        """
+        variables = {
+            "gameDomain": game_domain,
+            "schemaId": _SUPPORTED_COLLECTION_SCHEMA_ID,
+            "query": query,
+            "count": count,
+            "offset": offset,
+        }
+        query_text = self._collections_search_query(
+            self._collection_sort_clause(sort))
+        try:
+            resp = self._post_graphql(query_text, variables,
+                                      op="GraphQL search_collections")
+            if not resp.ok:
+                app_log(f"GraphQL search_collections failed: {resp.status_code}")
+                return []
+            data = resp.json()
+            if "errors" in data:
+                app_log(f"GraphQL search_collections errors: {data['errors']}")
+                return []
+            nodes = (
+                data.get("data", {})
+                .get("collectionsV2", {})
+                .get("nodes", [])
+            )
+            return self._parse_collection_nodes(nodes, game_domain)
+        except Exception as exc:
+            app_log(f"GraphQL search_collections error: {exc}")
+            return []
+
+    _COLLECTION_DETAIL_QUERY = """
+    query CollectionDetail($slug: String!, $domain: String!) {
+        collection(slug: $slug, domainName: $domain) {
+            name slug totalDownloads endorsements
+            tileImage { url }
+            revisions {
+                revisionNumber
+                revisionStatus
+            }
+            latestPublishedRevision {
+                revisionNumber
+                collectionSchemaId
+                gameVersions { reference }
+                modCount totalSize assetsSizeBytes
+                downloadLink
+                modFiles {
+                    optional
+                    fileId
+                    file {
+                        name version sizeInBytes
+                        mod { modId name author }
+                    }
+                }
+            }
+        }
+    }
+    """
+
+    _COLLECTION_REVISION_QUERY = """
+    query CollectionRevision($slug: String!, $domain: String!, $revision: Int!) {
+        collectionRevision(slug: $slug, domainName: $domain, revision: $revision) {
+            revisionNumber
+            collectionSchemaId
+            gameVersions { reference }
+            modCount totalSize assetsSizeBytes
+            downloadLink
+            modFiles {
+                optional
+                fileId
+                file {
+                    name version sizeInBytes
+                    mod { modId name author }
+                }
+            }
+        }
+    }
+    """
+
+    def get_collection_detail(
+        self, slug: str, game_domain: str, revision_number: "int | None" = None
+    ) -> "tuple[str, int, int, list[NexusCollectionMod], str, list[dict], dict]":
+        """
+        Fetch the full mod list for a collection revision.
+
+        Uses a fresh session so this method is safe to call from a background
+        thread without interfering with the shared session used elsewhere.
+
+        Parameters
+        ----------
+        revision_number:
+            If given, fetch that specific revision instead of the latest published.
+
+        Returns
+        -------
+        (collection_name, total_size_bytes, mod_count, mods, download_link_path,
+         revisions, card)
+        where ``revisions`` is a list of dicts with ``revisionNumber`` and
+        ``revisionStatus`` (only populated on the initial/latest fetch, not on
+        specific-revision fetches), and ``card`` carries collection-level display
+        fields for re-hydrating a NexusCollection. Unsupported revision schemas
+        return no install data and are identified in ``card``.
+        """
+        try:
+            self._refresh_oauth_if_needed()
+        except Exception as exc:
+            app_log(f"get_collection_detail: OAuth refresh failed: {exc}")
+        headers = dict(self._session.headers)
+        try:
+            # Always fetch the main collection query to get name + full revisions list
+            variables = {"slug": slug, "domain": game_domain}
+            resp = requests.post(
+                GRAPHQL_BASE,
+                json={"query": self._COLLECTION_DETAIL_QUERY, "variables": variables},
+                headers=headers,
+                timeout=max(self._timeout, 90),
+                verify=self._session.verify,
+            )
+            self._log_response("POST", "GraphQL get_collection_detail", resp)
+            if not resp.ok:
+                app_log(f"GraphQL get_collection_detail failed: {resp.status_code}")
+                return ("", 0, 0, [], "", [], {})
+            data = resp.json()
+            if "errors" in data:
+                app_log(f"GraphQL get_collection_detail errors: {data['errors']}")
+                return ("", 0, 0, [], "", [], {})
+            col = data.get("data", {}).get("collection") or {}
+            col_name = col.get("name", "") or ""
+            card = {
+                "tile_image_url": (col.get("tileImage") or {}).get("url", "") or "",
+                "total_downloads": int(col.get("totalDownloads") or 0),
+                "endorsements": int(col.get("endorsements") or 0),
+            }
+            revisions: list[dict] = col.get("revisions") or []
+            latest_rev = col.get("latestPublishedRevision") or {}
+            latest_rev_num = int(latest_rev.get("revisionNumber") or 0)
+
+            if revision_number is not None and revision_number != latest_rev_num:
+                # Fetch the specific revision's mod files separately
+                rev_variables = {"slug": slug, "domain": game_domain, "revision": revision_number}
+                rev_resp = requests.post(
+                    GRAPHQL_BASE,
+                    json={"query": self._COLLECTION_REVISION_QUERY, "variables": rev_variables},
+                    headers=headers,
+                    timeout=max(self._timeout, 90),
+                    verify=self._session.verify,
+                )
+                self._log_response("POST", "GraphQL get_collection_detail (specific revision)", rev_resp)
+                if not rev_resp.ok:
+                    app_log(f"GraphQL get_collection_detail (revision) failed: {rev_resp.status_code}")
+                    return ("", 0, 0, [], "", [], {})
+                rev_data = rev_resp.json()
+                if "errors" in rev_data:
+                    app_log(f"GraphQL get_collection_detail (revision) errors: {rev_data['errors']}")
+                    return ("", 0, 0, [], "", [], {})
+                rev = rev_data.get("data", {}).get("collectionRevision") or {}
+            else:
+                rev = latest_rev
+
+            game_versions = []
+            for item in (rev.get("gameVersions") or []):
+                reference = (item.get("reference") if isinstance(item, dict)
+                             else item)
+                reference = str(reference or "").strip()
+                if reference:
+                    game_versions.append(reference)
+            card["game_versions"] = game_versions
+
+            schema_id_value = rev.get("collectionSchemaId")
+            if schema_id_value is not None:
+                try:
+                    schema_id = int(schema_id_value)
+                except (TypeError, ValueError):
+                    schema_id = 0
+                card["collection_schema_id"] = schema_id
+                if schema_id != _SUPPORTED_COLLECTION_SCHEMA_ID:
+                    card["unsupported_collection_schema"] = True
+                    app_log(
+                        f"get_collection_detail: unsupported collection schema "
+                        f"{schema_id} for slug={slug!r} rev={revision_number}"
+                    )
+                    return (col_name, 0, 0, [], "", revisions, card)
+
+            total_size = int(rev.get("totalSize") or 0) + int(rev.get("assetsSizeBytes") or 0)
+            mod_count = int(rev.get("modCount") or 0)
+            download_link_path = rev.get("downloadLink") or ""
+            if not download_link_path:
+                app_log(
+                    f"get_collection_detail: no downloadLink for slug={slug!r} "
+                    f"rev={revision_number} rev_keys={sorted(rev.keys())}"
+                )
+            mods: list[NexusCollectionMod] = []
+            _seen_file_ids: set[int] = set()
+            for entry in (rev.get("modFiles") or []):
+                f = entry.get("file") or {}
+                mod = f.get("mod") or {}
+                fid = int(entry.get("fileId") or 0)
+                if fid and fid in _seen_file_ids:
+                    app_log(f"get_collection_detail: duplicate fileId {fid} in modFiles - skipping")
+                    continue
+                if fid:
+                    _seen_file_ids.add(fid)
+                mods.append(NexusCollectionMod(
+                    mod_id=int(mod.get("modId") or 0),
+                    file_id=fid,
+                    mod_name=mod.get("name", "") or "",
+                    mod_author=mod.get("author", "") or "",
+                    file_name=f.get("name", "") or "",
+                    version=f.get("version", "") or "",
+                    size_bytes=int(f.get("sizeInBytes") or 0),
+                    optional=bool(entry.get("optional", False)),
+                ))
+            return (col_name, total_size, mod_count, mods, download_link_path,
+                    revisions, card)
+        except Exception as exc:
+            app_log(f"GraphQL get_collection_detail error: {exc}")
+            return ("", 0, 0, [], "", [], {})
+
+    def get_collection_archive_json(
+        self, download_link_path: str,
+        keep_archive_at: "str | None" = None,
+    ) -> dict:
+        """
+        Resolve a collection ``downloadLink`` path to an archive CDN URL,
+        download the ``.7z`` archive, extract ``collection.json`` from it,
+        and return the parsed JSON dict.
+
+        If ``keep_archive_at`` is provided, the archive is streamed directly
+        to that path (no temp copy).
+        """
+        import tempfile
+
+        import py7zr
+        import requests as _requests
+
+        try:
+            self._refresh_oauth_if_needed()
+        except Exception as exc:
+            app_log(f"get_collection_archive_json: OAuth refresh failed: {exc}")
+        _verify = self._session.verify
+        api_headers = dict(self._session.headers)
+        try:
+            # Step 1: resolve download-link path → CDN URI
+            link_resp = _requests.get(
+                f"https://api.nexusmods.com{download_link_path}",
+                headers=api_headers,
+                timeout=30,
+                verify=_verify,
+            )
+            link_resp.raise_for_status()
+            cdn_urls = [e.get("URI", "") for e in (link_resp.json().get("download_links") or []) if e.get("URI")]
+            if not cdn_urls:
+                app_log("get_collection_archive_json: no CDN URI returned")
+                return {}
+
+            # Step 2: download the archive into a temp file.
+            # Try each mirror in turn - some CDN nodes geo-restrict collection
+            # archives and return 401 for certain regions.
+            # When keep_archive_at is provided, stream straight there to avoid
+            # using /tmp (tmpfs/SteamOS - too small for 1+ GB archives).
+            import os as _os
+            if keep_archive_at:
+                _os.makedirs(_os.path.dirname(keep_archive_at), exist_ok=True)
+                tmp_path = keep_archive_at
+                _delete_after = False
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".7z", delete=False) as tmp:
+                    tmp_path = tmp.name
+                _delete_after = True
+            try:
+                dl_resp = None
+                for cdn_url in cdn_urls:
+                    try:
+                        r = _requests.get(cdn_url, headers={}, stream=True, timeout=120, verify=_verify)
+                        r.raise_for_status()
+                        dl_resp = r
+                        break
+                    except Exception as _mirror_exc:
+                        app_log(f"get_collection_archive_json: mirror {cdn_url!r} failed: {_mirror_exc}")
+                if dl_resp is None:
+                    raise RuntimeError("all CDN mirrors failed")
+                from Utils.downloads import bandwidth as _bw
+                with open(tmp_path, "wb") as fh:
+                    for chunk in dl_resp.iter_content(chunk_size=65536):
+                        if chunk:
+                            fh.write(chunk)
+                            _bw.throttle(len(chunk))
+                if keep_archive_at:
+                    app_log(f"get_collection_archive_json: saved archive to {keep_archive_at}")
+
+                # Step 3: extract collection.json using a nested temp dir
+                import json as _json
+                import tempfile as _tempfile
+                with _tempfile.TemporaryDirectory() as extract_dir:
+                    with py7zr.SevenZipFile(tmp_path, mode="r") as arc:
+                        names = arc.getnames()
+                        target = next(
+                            (n for n in names if n.lstrip("/") == "collection.json"),
+                            None,
+                        )
+                        if target is None:
+                            app_log("get_collection_archive_json: collection.json not found in archive")
+                            return {}
+                        arc.extract(path=extract_dir, targets=[target])
+                    out_path = _os.path.join(extract_dir, target.lstrip("/"))
+                    if not _os.path.isfile(out_path):
+                        app_log("get_collection_archive_json: collection.json not found after extract")
+                        return {}
+                    with open(out_path, "r", encoding="utf-8") as fh:
+                        return _json.load(fh)
+            finally:
+                if _delete_after:
+                    try:
+                        _os.unlink(tmp_path)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            app_log(f"get_collection_archive_json error: {exc}")
+            return {}
+
+    def get_collection_archive_full(
+        self, download_link_path: str, extract_dir: str,
+        keep_archive_at: "str | None" = None,
+    ) -> dict:
+        """
+        Resolve a collection ``downloadLink`` path to a CDN URL, download the
+        ``.7z`` archive, extract **all** contents to ``extract_dir``, and
+        return the parsed ``collection.json`` dict.
+
+        Unlike ``get_collection_archive_json`` this keeps the full archive
+        contents on disk so the caller can install bundled assets from it.
+
+        If ``keep_archive_at`` is provided, the archive is streamed directly
+        to that path (no temp copy).
+        """
+        import json as _json
+        import os as _os
+        import tempfile
+
+        import py7zr
+        import requests as _requests
+
+        try:
+            self._refresh_oauth_if_needed()
+        except Exception as exc:
+            app_log(f"get_collection_archive_full: OAuth refresh failed: {exc}")
+        _verify = self._session.verify
+        api_headers = dict(self._session.headers)
+        try:
+            link_resp = _requests.get(
+                f"https://api.nexusmods.com{download_link_path}",
+                headers=api_headers,
+                timeout=30,
+                verify=_verify,
+            )
+            link_resp.raise_for_status()
+            cdn_urls = [e.get("URI", "") for e in (link_resp.json().get("download_links") or []) if e.get("URI")]
+            if not cdn_urls:
+                app_log("get_collection_archive_full: no CDN URI returned")
+                return {}
+
+            # Download the .7z directly to keep_archive_at when provided
+            # (avoids a copy through /tmp, which is tmpfs on SteamOS and only
+            # has a few hundred MB free - collection archives can be 1.5+ GB).
+            # Otherwise put the temp file next to extract_dir, which the caller
+            # has chosen to be on real disk.
+            if keep_archive_at:
+                _os.makedirs(_os.path.dirname(keep_archive_at), exist_ok=True)
+                tmp_path = keep_archive_at
+                _delete_after = False
+            else:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".7z", delete=False, dir=extract_dir,
+                ) as tmp:
+                    tmp_path = tmp.name
+                _delete_after = True
+            try:
+                dl_resp = None
+                for cdn_url in cdn_urls:
+                    try:
+                        r = _requests.get(cdn_url, headers={}, stream=True, timeout=300, verify=_verify)
+                        r.raise_for_status()
+                        dl_resp = r
+                        break
+                    except Exception as _mirror_exc:
+                        app_log(f"get_collection_archive_full: mirror {cdn_url!r} failed: {_mirror_exc}")
+                if dl_resp is None:
+                    raise RuntimeError("all CDN mirrors failed")
+                from Utils.downloads import bandwidth as _bw
+                with open(tmp_path, "wb") as fh:
+                    for chunk in dl_resp.iter_content(chunk_size=65536):
+                        if chunk:
+                            fh.write(chunk)
+                            _bw.throttle(len(chunk))
+                if keep_archive_at:
+                    app_log(f"get_collection_archive_full: saved archive to {keep_archive_at}")
+
+                with py7zr.SevenZipFile(tmp_path, mode="r") as arc:
+                    arc.extractall(path=extract_dir)
+
+                cj_path = _os.path.join(extract_dir, "collection.json")
+                if not _os.path.isfile(cj_path):
+                    app_log("get_collection_archive_full: collection.json not found after extract")
+                    return {}
+                with open(cj_path, "r", encoding="utf-8") as fh:
+                    return _json.load(fh)
+            finally:
+                if _delete_after:
+                    try:
+                        _os.unlink(tmp_path)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            app_log(f"get_collection_archive_full error: {exc}")
+            return {}
+
+    def download_collection_archive(
+        self, download_link_path: str, dest_path: str,
+        progress_fn=None,
+    ) -> bool:
+        """Download a collection's ``.7z`` archive to ``dest_path`` verbatim.
+
+        Unlike the two ``get_collection_archive_*`` methods this neither extracts
+        nor parses anything - it is the raw manifest-archive fetch behind the dev
+        menu's "Download Manifest". ``progress_fn(done_bytes, total_bytes)`` is
+        called as the stream advances (``total`` is 0 when unknown).
+        Returns True on success; never raises.
+        """
+        import os as _os
+
+        import requests as _requests
+
+        try:
+            self._refresh_oauth_if_needed()
+        except Exception as exc:
+            app_log(f"download_collection_archive: OAuth refresh failed: {exc}")
+        _verify = self._session.verify
+        api_headers = dict(self._session.headers)
+        try:
+            link_resp = _requests.get(
+                f"https://api.nexusmods.com{download_link_path}",
+                headers=api_headers, timeout=30, verify=_verify,
+            )
+            link_resp.raise_for_status()
+            cdn_urls = [e.get("URI", "")
+                        for e in (link_resp.json().get("download_links") or [])
+                        if e.get("URI")]
+            if not cdn_urls:
+                app_log("download_collection_archive: no CDN URI returned")
+                return False
+
+            _os.makedirs(_os.path.dirname(dest_path) or ".", exist_ok=True)
+            # Same mirror walk as get_collection_archive_full - some CDN nodes
+            # geo-restrict collection archives and answer 401.
+            dl_resp = None
+            for cdn_url in cdn_urls:
+                try:
+                    r = _requests.get(cdn_url, headers={}, stream=True,
+                                      timeout=300, verify=_verify)
+                    r.raise_for_status()
+                    dl_resp = r
+                    break
+                except Exception as _mirror_exc:
+                    app_log(f"download_collection_archive: mirror {cdn_url!r} "
+                            f"failed: {_mirror_exc}")
+            if dl_resp is None:
+                raise RuntimeError("all CDN mirrors failed")
+
+            total = int(dl_resp.headers.get("Content-Length") or 0)
+            done = 0
+            # Stream to a .part sidecar so an interrupted download never leaves a
+            # truncated .7z that later looks like a complete archive.
+            part_path = f"{dest_path}.part"
+            from Utils.downloads import bandwidth as _bw
+            with open(part_path, "wb") as fh:
+                for chunk in dl_resp.iter_content(chunk_size=65536):
+                    if chunk:
+                        fh.write(chunk)
+                        _bw.throttle(len(chunk))
+                        done += len(chunk)
+                        if progress_fn is not None:
+                            try:
+                                progress_fn(done, total)
+                            except Exception:
+                                pass
+            _os.replace(part_path, dest_path)
+            app_log(f"download_collection_archive: saved {dest_path}")
+            return True
+        except Exception as exc:
+            app_log(f"download_collection_archive error: {exc}")
+            try:
+                _os.unlink(f"{dest_path}.part")
+            except OSError:
+                pass
+            return False
+
+    # -- Collection upload (create / revise) --------------------------------
+
+    def upload_collection_archive(self, file_path, progress_cb=None, *,
+                                  check_cancel=None, phase_cb=None) -> str:
+        """Upload and finalise an archive, returning its V3 upload ID."""
+        from xml.etree import ElementTree as ET
+
+        check_cancel = check_cancel or (lambda: None)
+        phase_cb = phase_cb or (lambda phase: None)
+        check_cancel()
+        path = Path(file_path)
+        total = path.stat().st_size
+        if total <= 0:
+            raise NexusAPIError("The collection archive is empty.")
+        filename = "collection.7z"
+        headers = {"Content-Type": "application/octet-stream",
+                   "Content-Disposition": f'attachment; filename="{filename}"'}
+        payload = {"size_bytes": total, "filename": filename}
+        multipart = total > 100 * 1024 * 1024
+        with path.open("rb") as fh:
+            if not multipart:
+                phase_cb("hash")
+                digest = hashlib.md5()
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    check_cancel()
+                    digest.update(chunk)
+                payload["md5"] = digest.hexdigest()
+                headers["Content-MD5"] = base64.b64encode(digest.digest()).decode("ascii")
+                fh.seek(0)
+            check_cancel()
+            upload = self._request_v3(
+                "POST", "/uploads/multipart" if multipart else "/uploads", payload)
+            upload_id = upload.get("id")
+            if not upload_id:
+                raise NexusAPIError("Nexus did not provide an upload ID.")
+
+            class _Reader:
+                def __init__(self, offset, size):
+                    self.remaining = self.size = size
+                    self.done = offset
+
+                def __len__(self):
+                    return self.size
+
+                def read(self, size=-1):
+                    check_cancel()
+                    count = self.remaining if size < 0 else min(size, self.remaining)
+                    chunk = fh.read(count)
+                    if not chunk and self.remaining:
+                        raise OSError("The collection archive ended unexpectedly.")
+                    self.remaining -= len(chunk)
+                    self.done += len(chunk)
+                    if chunk and progress_cb:
+                        progress_cb(self.done, total)
+                    return chunk
+
+            if multipart:
+                part_size = upload.get("part_size_bytes", 0)
+                urls = upload.get("part_presigned_urls") or []
+                complete_url = upload.get("complete_presigned_url")
+                if (not isinstance(part_size, int) or part_size <= 0
+                        or not complete_url or not isinstance(urls, list)
+                        or len(urls) != (total + part_size - 1) // part_size):
+                    raise NexusAPIError("Nexus returned an invalid multipart upload session.")
+            else:
+                part_size = total
+                urls = [upload.get("presigned_url")]
+            if not all(isinstance(url, str) and url for url in urls):
+                raise NexusAPIError("Nexus did not provide valid upload URLs.")
+
+            phase_cb("upload")
+            completion = ET.Element("CompleteMultipartUpload")
+            for number, url in enumerate(urls, 1):
+                offset = (number - 1) * part_size
+                for attempt in range(3):
+                    check_cancel()
+                    fh.seek(offset)
+                    reader = _Reader(offset, min(part_size, total - offset))
+                    try:
+                        response = self._collection_storage_request("PUT", url, reader, headers)
+                        break
+                    except NexusAPIError as exc:
+                        if attempt == 2 or exc.status_code not in (0, 408, 429, 500, 502, 503, 504):
+                            raise
+                        app_log(f"[collection-upload] retrying part {number} ({attempt + 1}/2)")
+                        for _ in range(10 * (attempt + 1)):
+                            check_cancel()
+                            time.sleep(0.1)
+                if reader.remaining:
+                    raise NexusAPIError("The collection archive was not fully transferred.")
+                if multipart:
+                    etag = response.headers.get("ETag")
+                    if not etag:
+                        raise NexusAPIError("The storage service did not acknowledge an upload part.")
+                    part = ET.SubElement(completion, "Part")
+                    ET.SubElement(part, "PartNumber").text = str(number)
+                    ET.SubElement(part, "ETag").text = etag
+            if multipart:
+                check_cancel()
+                phase_cb("finalise")
+                response = self._collection_storage_request(
+                    "POST", complete_url, ET.tostring(completion, encoding="utf-8"),
+                    {"Content-Type": "application/xml"})
+                try:
+                    result = ET.fromstring(response.content)
+                except ET.ParseError as exc:
+                    raise NexusAPIError("The storage service returned an invalid completion response.") from exc
+                if result.tag.rsplit("}", 1)[-1] != "CompleteMultipartUploadResult":
+                    raise NexusAPIError("The storage service could not complete the multipart upload.")
+
+        check_cancel()
+        phase_cb("finalise")
+        self._request_v3("POST", f"/uploads/{upload_id}/finalise")
+        phase_cb("wait")
+        deadline = time.monotonic() + 300
+        while time.monotonic() < deadline:
+            check_cancel()
+            state = self._request_v3("GET", f"/uploads/{upload_id}").get("state")
+            if state == "available":
+                return str(upload_id)
+            if state != "created":
+                raise NexusAPIError(f"Nexus returned an unexpected upload state: {state}.")
+            for _ in range(20):
+                check_cancel()
+                time.sleep(0.1)
+        raise NexusAPIError("Nexus did not make the uploaded archive available within five minutes.")
+
+    def _collection_storage_request(self, method, url, data, headers):
+        try:
+            response = requests.request(
+                method, url, data=data, headers=headers, timeout=(15, 60),
+                verify=self._session.verify)
+        except requests.RequestException as exc:
+            raise NexusAPIError(
+                f"The collection archive transfer failed ({type(exc).__name__}).") from None
+        app_log(f"[collection-upload] storage {method} → {response.status_code}")
+        if not 200 <= response.status_code < 300:
+            raise NexusAPIError(
+                f"The storage service rejected the archive (HTTP {response.status_code}).",
+                response.status_code)
+        return response
+
+    @staticmethod
+    def _collection_payload(manifest: dict, adult_content: bool) -> dict:
+        info = manifest.get("info") or {}
+        info_fields = {"author": "author", "authorUrl": "author_url",
+                       "name": "name", "description": "description",
+                       "summary": "summary", "domainName": "domain_name",
+                       "gameVersions": "game_versions"}
+        source_fields = {"type": "type", "modId": "mod_id", "fileId": "file_id",
+                         "md5": "md5", "fileSize": "file_size",
+                         "updatePolicy": "update_policy", "logicalFilename": "logical_filename",
+                         "fileExpression": "file_expression", "url": "url",
+                         "adultContent": "adult_content"}
+        mods = []
+        for mod in manifest.get("mods") or []:
+            source = mod.get("source") or {}
+            mapped = {dst: source[src] for src, dst in source_fields.items() if src in source}
+            for key in ("mod_id", "file_id"):
+                if mapped.get(key) is not None:
+                    mapped[key] = str(mapped[key])
+                else:
+                    mapped.pop(key, None)
+            entry = {key: mod[key] for key in ("name", "version", "optional", "author")
+                     if key in mod}
+            entry.update(domain_name=mod.get("domainName", ""), source=mapped)
+            mods.append(entry)
+        return {"adult_content": bool(adult_content),
+                "collection_schema_id": _SUPPORTED_COLLECTION_SCHEMA_ID,
+                "collection_manifest": {
+                    "info": {dst: info[src] for src, dst in info_fields.items() if src in info},
+                    "mods": mods}}
+
+    def _run_collection_mutation(self, mutation: str, variables: dict,
+                                 op: str, result_key: str,
+                                 manifest: "dict | None" = None) -> "dict | None":
+        """POST one collection mutation; returns its payload dict or None."""
+        try:
+            resp = self._post_graphql(mutation, variables, op=op)
+            body = resp.json()
+            errors = body.get("errors")
+            if errors:
+                msgs = "; ".join(e.get("message", "?") for e in errors)
+                app_log(f"{op}: GraphQL errors: {msgs}")
+                raise NexusAPIError(
+                    describe_collection_error(errors, manifest),
+                    url=GRAPHQL_BASE)
+            data = (body.get("data") or {}).get(result_key) or {}
+            if not data.get("success"):
+                app_log(f"{op}: success=false in {str(data)[:300]}")
+                return None
+            return data
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            app_log(f"{op} error: {exc}")
+            return None
+
+    def get_collection_status(self, slug: str, collection_id: int = 0) -> str:
+        """Whether a collection we intend to revise is still there.
+
+        Returns ``"ok"`` / ``"discarded"`` / ``"missing"`` / ``"unknown"``.
+        ``"unknown"`` means the lookup itself failed - callers must NOT treat
+        that as gone, or a network blip turns an "upload revision" into a
+        duplicate collection.
+
+        The owner's own view is authoritative: a never-published draft or an
+        unlisted collection is invisible to the plain ``collection(slug:)``
+        lookup, so check ``myCollections`` (which asks for unlisted, under-
+        moderation and adult content) first.
+        """
+        try:
+            mine = self.get_my_collections()
+        except Exception as exc:
+            app_log(f"get_collection_status: myCollections failed: {exc}")
+            return "unknown"
+        wanted_slug = (slug or "").lower()
+        for col in mine:
+            if ((wanted_slug and col.slug.lower() == wanted_slug)
+                    or (collection_id and col.id == int(collection_id))):
+                return "ok"
+
+        # Not among the user's collections - separate "deliberately discarded"
+        # from "never existed / no longer visible" for a clearer log, and keep
+        # lookup failures distinguishable from both.
+        if not slug:
+            return "missing"
+        query = ('query CollectionStatus($slug: String) { '
+                 'collection(slug: $slug, viewAdultContent: true) '
+                 '{ id collectionStatus } }')
+        try:
+            resp = self._post_graphql(query, {"slug": slug},
+                                      op="CollectionStatus")
+            body = resp.json()
+            for err in body.get("errors") or []:
+                code = (err.get("extensions") or {}).get("code", "")
+                if code == "COLLECTION_DISCARDED":
+                    return "discarded"
+            if ((body.get("data") or {}).get("collection") or {}).get("id"):
+                return "ok"
+        except Exception as exc:
+            app_log(f"get_collection_status error: {exc}")
+            return "unknown"
+        return "missing"
+
+    # -- Managing collections the user owns ---------------------------------
+
+    _MY_COLLECTIONS_QUERY = """
+query MyCollections($count: Int, $offset: Int) {
+  myCollections(count: $count, offset: $offset, viewAdultContent: true,
+                viewUnlisted: true, viewUnderModeration: true) {
+    nodesCount
+    nodes {
+      id slug name summary description collectionStatus
+      draftRevisionNumber endorsements totalDownloads updatedAt
+      tileImage { url }
+      game { domainName name }
+      category { id name }
+      latestPublishedRevision { revisionNumber }
+      revisions {
+        id revisionNumber revisionStatus status modCount createdAt
+        collectionChangelog { id description }
+      }
+    }
+  }
+}"""
+
+    def get_my_collections(self, count: int = 50,
+                           offset: int = 0) -> "list[MyCollection]":
+        """Collections owned by the signed-in user, drafts and unlisted included."""
+        try:
+            resp = self._post_graphql(
+                self._MY_COLLECTIONS_QUERY,
+                {"count": int(count), "offset": int(offset)},
+                op="MyCollections")
+            body = resp.json()
+            if body.get("errors"):
+                msgs = "; ".join(e.get("message", "?") for e in body["errors"])
+                raise NexusAPIError(f"Nexus rejected the request: {msgs}",
+                                    url=GRAPHQL_BASE)
+            nodes = ((body.get("data") or {}).get("myCollections")
+                     or {}).get("nodes") or []
+        except NexusAPIError:
+            raise
+        except Exception as exc:
+            app_log(f"get_my_collections error: {exc}")
+            return []
+
+        out: list[MyCollection] = []
+        for n in nodes:
+            game = n.get("game") or {}
+            cat = n.get("category") or {}
+            latest = n.get("latestPublishedRevision") or {}
+            revisions = []
+            for r in (n.get("revisions") or []):
+                chlog = r.get("collectionChangelog") or {}
+                # The server spells the state in either field depending on
+                # version; treat anything that isn't an explicit draft as live.
+                state = str(r.get("revisionStatus")
+                            or r.get("status") or "").lower()
+                revisions.append(MyCollectionRevision(
+                    id=int(r.get("id") or 0),
+                    revision_number=int(r.get("revisionNumber") or 0),
+                    status=state,
+                    mod_count=int(r.get("modCount") or 0),
+                    created_at=r.get("createdAt", "") or "",
+                    published=state not in ("draft", "drafted", ""),
+                    changelog_id=int(chlog.get("id") or 0),
+                    changelog=chlog.get("description", "") or "",
+                ))
+            revisions.sort(key=lambda r: r.revision_number, reverse=True)
+            out.append(MyCollection(
+                id=int(n.get("id") or 0),
+                slug=n.get("slug", "") or "",
+                name=n.get("name", "") or "",
+                summary=n.get("summary", "") or "",
+                description=n.get("description", "") or "",
+                status=str(n.get("collectionStatus") or "").lower(),
+                tile_image_url=(n.get("tileImage") or {}).get("url", "") or "",
+                game_domain=game.get("domainName", "") or "",
+                game_name=game.get("name", "") or "",
+                category_id=int(cat.get("id") or 0),
+                category_name=cat.get("name", "") or "",
+                endorsements=int(n.get("endorsements") or 0),
+                total_downloads=int(n.get("totalDownloads") or 0),
+                draft_revision_number=int(n.get("draftRevisionNumber") or 0),
+                latest_published_revision=int(latest.get("revisionNumber") or 0),
+                updated_at=n.get("updatedAt", "") or "",
+                revisions=revisions,
+            ))
+        return out
+
+    def get_collection_categories(self) -> "list[tuple[int, str]]":
+        """The (id, name) collection categories Nexus offers, or []."""
+        query = "query CollectionCategories { categories(global: true) { id name } }"
+        try:
+            resp = self._post_graphql(query, op="CollectionCategories")
+            cats = (resp.json().get("data") or {}).get("categories") or []
+            return [(int(c["id"]), c.get("name", "")) for c in cats if c.get("id")]
+        except Exception as exc:
+            app_log(f"get_collection_categories error: {exc}")
+            return []
+
+    def publish_revision(self, revision_id: int, listed: bool = True,
+                         adult_content: bool = False) -> bool:
+        """Publish a draft revision, listed or unlisted."""
+        mutation = """
+mutation PublishRevision($revisionId: ID!, $status: CollectionStatus,
+                         $adult: Boolean) {
+  publishRevision(revisionId: $revisionId, collectionStatus: $status,
+                  hasAdultResources: $adult) { success }
+}"""
+        result = self._run_collection_mutation(
+            mutation,
+            {"revisionId": str(revision_id),
+             "status": "listed" if listed else "unlisted",
+             "adult": bool(adult_content)},
+            "PublishRevision", "publishRevision")
+        return bool(result)
+
+    def edit_collection(self, collection_id: int, *, name: "str | None" = None,
+                        summary: "str | None" = None,
+                        description: "str | None" = None,
+                        category_id: "int | None" = None) -> bool:
+        """Update a collection's metadata; only the passed fields change."""
+        payload = {}
+        for key, value in (("name", name), ("summary", summary),
+                           ("description", description)):
+            if value is not None:
+                payload[key] = value
+        if category_id:
+            payload["category_id"] = int(category_id)
+        if payload:
+            self._request_v3("PATCH", f"/collections/{int(collection_id)}", payload)
+        return True
+
+    def set_collection_listed(self, collection_id: int, listed: bool) -> bool:
+        """List (publicly visible) or unlist a collection."""
+        if listed:
+            mutation = ("mutation ListCollection($id: Int!) { "
+                        "listCollection(collectionId: $id) { success } }")
+            variables = {"id": int(collection_id)}
+            key = "listCollection"
+        else:
+            mutation = ("mutation UnlistCollection($id: ID!) { "
+                        "unlistCollection(collectionId: $id) { success } }")
+            variables = {"id": str(collection_id)}
+            key = "unlistCollection"
+        result = self._run_collection_mutation(
+            mutation, variables, key[0].upper() + key[1:], key)
+        return bool(result)
+
+    def set_revision_changelog(self, revision_id: int, description: str,
+                               changelog_id: int = 0) -> bool:
+        """Create or replace a revision's changelog entry."""
+        if changelog_id:
+            mutation = """
+mutation UpdateChangelog($id: ID!, $description: String) {
+  updateChangelog(changelogId: $id, description: $description) { success }
+}"""
+            variables = {"id": str(changelog_id), "description": description}
+            op, key = "UpdateChangelog", "updateChangelog"
+        else:
+            mutation = """
+mutation CreateChangelog($revisionId: ID!, $description: String) {
+  createChangelog(revisionId: $revisionId, description: $description) { success }
+}"""
+            variables = {"revisionId": str(revision_id),
+                         "description": description}
+            op, key = "CreateChangelog", "createChangelog"
+        result = self._run_collection_mutation(mutation, variables, op, key)
+        return bool(result)
+
+    def discard_revision(self, collection_id: int, revision_number: int,
+                         reason: str = "") -> bool:
+        """Discard a draft revision (or a very new one - Nexus enforces limits)."""
+        mutation = """
+mutation DiscardRevision($collectionId: ID!, $revisionNumber: Int!,
+                         $reason: String) {
+  discardRevision(collectionId: $collectionId, revisionNumber: $revisionNumber,
+                  reason: $reason) { success }
+}"""
+        result = self._run_collection_mutation(
+            mutation,
+            {"collectionId": str(collection_id),
+             "revisionNumber": int(revision_number),
+             "reason": reason or "Discarded from Amethyst"},
+            "DiscardRevision", "discardRevision")
+        return bool(result)
+
+    def create_collection(self, upload_id: str, manifest: dict,
+                          adult_content: bool = False) -> dict:
+        data = self._request_v3("POST", "/collections", {
+            "upload_id": upload_id,
+            "collection_data": self._collection_payload(manifest, adult_content),
+        })
+        return {"success": True, "collectionId": int(data["id"]),
+                "collection": {"id": int(data["id"]), "slug": data["slug"]},
+                "revision": {"id": int(data["revision_id"]),
+                             "revisionNumber": int(data["revision_number"])}}
+
+    def create_collection_revision(self, collection_id: int, upload_id: str,
+                                   manifest: dict,
+                                   adult_content: bool = False) -> dict:
+        name = (manifest.get("info") or {}).get("name") or ""
+        if name:
+            self.edit_collection(collection_id, name=name)
+        data = self._request_v3("POST", f"/collections/{int(collection_id)}/revisions", {
+            "upload_id": upload_id,
+            "collection_data": self._collection_payload(manifest, adult_content),
+        })
+        return {"success": True, "collectionId": int(data["collection_id"]),
+                "collection": {"id": int(data["collection_id"])},
+                "revision": {"id": int(data["id"]),
+                             "revisionNumber": int(data["revision_number"])}}
+
+    # -- Helpers ------------------------------------------------------------
+
+    def _parse_mod_info(self, d: dict,
+                        game_domain: str) -> NexusModInfo:
+        cat_name = d.get("category_name", "") or d.get("category", "") or ""
+        return NexusModInfo(
+            mod_id=d.get("mod_id", 0),
+            name=d.get("name", ""),
+            summary=d.get("summary", ""),
+            description=d.get("description", ""),
+            version=d.get("version", ""),
+            author=d.get("author", ""),
+            category_id=d.get("category_id", 0),
+            category_name=cat_name if isinstance(cat_name, str) else "",
+            game_id=d.get("game_id", 0),
+            domain_name=d.get("domain_name", game_domain),
+            picture_url=d.get("picture_url", ""),
+            endorsement_count=d.get("endorsement_count", 0),
+            created_timestamp=d.get("created_timestamp", 0),
+            updated_timestamp=d.get("updated_timestamp", 0),
+            available=d.get("available", True),
+            contains_adult_content=d.get("contains_adult_content", False),
+            status=d.get("status", ""),
+            uploaded_by=d.get("uploaded_by", ""),
+        )

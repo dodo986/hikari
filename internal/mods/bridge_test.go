@@ -11,20 +11,12 @@ import (
 	"hikari/internal/engine"
 )
 
-// newTestBridge points a Bridge at a temp Amethyst tree and replaces the
-// embedded script with a sh program, so the protocol is exercised end to end
-// without Python or a real install.
+// newTestBridge unpacks the embedded backend into a temp root and replaces the
+// bridge script with a sh program, so the protocol runs without Python.
 func newTestBridge(t *testing.T, script string) *Bridge {
 	t.Helper()
 	root := t.TempDir()
-	source := filepath.Join(root, "amethyst", "src")
-	if err := os.MkdirAll(source, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "cli.py"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	bridge := New(Options{Root: root, Source: source, Python: "/bin/sh"})
+	bridge := New(Options{Root: root, Python: "/bin/sh"})
 	if bridge.blocked != "" {
 		t.Fatalf("bridge blocked in test setup: %s", bridge.blocked)
 	}
@@ -36,7 +28,7 @@ func newTestBridge(t *testing.T, script string) *Bridge {
 
 func TestBridgeGamesParsesProtocol(t *testing.T) {
 	bridge := newTestBridge(t, `#!/bin/sh
-echo "src=$HIKARI_AMETHYST_SRC"
+echo "src=$HIKARI_BACKEND_SRC"
 echo '{"t":"log","m":"Loading handlers"}'
 echo 'a diagnostic that is not JSON'
 echo '{"t":"result","data":{"games":[{"id":"skyrim_se","name":"Skyrim Special Edition","steam_app_id":"489830","configured":true,"profiles":["default"],"deploy_active":true,"deployed_profile":"default"}]}}'
@@ -138,18 +130,15 @@ func TestBridgeInstallNeedsArchiveOrURL(t *testing.T) {
 	}
 }
 
-func TestBridgeBlockedWithoutAmethyst(t *testing.T) {
-	bridge := New(Options{Root: t.TempDir(), Source: filepath.Join(t.TempDir(), "missing")})
+func TestBridgeBlockedWithoutPython(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	bridge := New(Options{Root: t.TempDir()})
 	status := bridge.Status(context.Background())
 	if status.Available {
-		t.Fatal("Status reported available without an Amethyst tree")
+		t.Fatal("Status reported available without python3")
 	}
-	if !strings.Contains(status.Reason, "Amethyst") {
-		t.Fatalf("Status reason = %q, want it to name Amethyst", status.Reason)
-	}
-	_, err := bridge.Games(context.Background())
-	if KindOf(err) != KindUnavailable {
-		t.Fatalf("Games error = %v (kind %q), want unavailable", err, KindOf(err))
+	if !strings.Contains(status.Reason, "python3") {
+		t.Fatalf("Status reason = %q, want it to name python3", status.Reason)
 	}
 }
 
@@ -221,7 +210,7 @@ func TestLastLine(t *testing.T) {
 }
 
 func TestBridgeRunnerIsOptional(t *testing.T) {
-	bridge := New(Options{Root: t.TempDir(), Source: "/nonexistent", Runner: engine.NewRunner(nil)})
+	bridge := New(Options{Root: t.TempDir(), Runner: engine.NewRunner(nil)})
 	if bridge.runner == nil {
 		t.Fatal("New did not keep the supplied runner")
 	}
@@ -247,34 +236,16 @@ func TestAsSourceDirAcceptsTheCheckoutRoot(t *testing.T) {
 	}
 }
 
-func TestDiscoverSourceFindsACheckoutUnderHome(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("HIKARI_MODS_SOURCE", "")
-	src := filepath.Join(home, "games", "Amethyst-Mod-Manager", "src")
-	if err := os.MkdirAll(src, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(src, "cli.py"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := discoverSource(); got != src {
-		t.Fatalf("discoverSource() = %q, want %q", got, src)
-	}
-}
-
-func TestSetupWithoutASourceIsAConfigError(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("HIKARI_MODS_SOURCE", "")
-	bridge := New(Options{Root: t.TempDir(), Python: "/bin/sh"})
+func TestSetupWithoutPythonIsAConfigError(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	bridge := New(Options{Root: t.TempDir()})
 	err := bridge.Setup(context.Background(), Sink{})
 	var bridgeErr *Error
 	if !errors.As(err, &bridgeErr) || bridgeErr.Kind != KindConfig {
 		t.Fatalf("Setup error = %v, want a config error", err)
 	}
-	if !strings.Contains(bridgeErr.Message, "source_dir") {
-		t.Fatalf("Setup error %q does not point at source_dir", bridgeErr.Message)
+	if !strings.Contains(bridgeErr.Message, "python3") {
+		t.Fatalf("Setup error %q does not point at python3", bridgeErr.Message)
 	}
 }
 

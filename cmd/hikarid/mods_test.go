@@ -225,35 +225,26 @@ func TestMatchLibraryGame(t *testing.T) {
 }
 
 func TestModsSettingsApplyWithoutARestart(t *testing.T) {
-	d, client := startDaemon(t)
+	d, _ := startDaemon(t)
 	d.mods = mods.New(mods.Options{Root: t.TempDir()})
 
-	var before mods.Status
-	if err := client.Call("mods.status", nil, &before); err != nil {
-		t.Fatalf("mods.status: %v", err)
+	before := d.mods.Status(context.Background())
+	if !strings.HasSuffix(filepath.ToSlash(before.Source), "backend/src") {
+		t.Fatalf("status source = %q, want the unpacked backend", before.Source)
 	}
-	if before.Available {
-		t.Fatalf("status before setup = %+v, want unavailable", before)
+	if strings.Contains(before.Reason, "source_dir") {
+		t.Fatalf("status still asks for an Amethyst checkout: %q", before.Reason)
 	}
 
-	source := filepath.Join(t.TempDir(), "src")
-	if err := os.MkdirAll(source, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "cli.py"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	settings := "[mods]\nsource_dir = \"" + source + "\"\n"
+	settings := "[mods]\npython = \"/opt/nowhere/python3\"\n"
 	if err := os.WriteFile(d.paths.Settings, []byte(settings), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	d.refreshModsSettings()
 
-	var after mods.Status
-	if err := client.Call("mods.status", nil, &after); err != nil {
-		t.Fatalf("mods.status after the edit: %v", err)
-	}
-	if after.Source != source {
-		t.Fatalf("status source = %q after editing settings.toml, want %q", after.Source, source)
+	after := d.mods.Status(context.Background())
+	if !strings.Contains(after.Reason, "nowhere") {
+		t.Fatalf("status reason = %q, want the python from settings.toml", after.Reason)
 	}
 }
 

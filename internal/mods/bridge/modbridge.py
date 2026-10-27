@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Hikari's bridge to the Amethyst modding backend.
+"""Hikari's bridge to the vendored Amethyst backend.
 
-One JSON event per line on fd 1, diagnostics on fd 2. Paths to Amethyst's
-source tree and native extension arrive in HIKARI_AMETHYST_SRC and
-HIKARI_AMETHYST_EXT; nothing about this process is Amethyst's CLI contract.
+One JSON event per line on fd 1, diagnostics on fd 2. The backend tree and the
+native extension arrive in HIKARI_BACKEND_SRC and HIKARI_BACKEND_EXT; nothing
+about this process is Amethyst's CLI contract.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ import traceback
 
 sys.dont_write_bytecode = True  # the Amethyst tree is never written to
 
-SRC = os.environ.get("HIKARI_AMETHYST_SRC", "")
-EXT = os.environ.get("HIKARI_AMETHYST_EXT", "")
+SRC = os.environ.get("HIKARI_BACKEND_SRC", "")
+EXT = os.environ.get("HIKARI_BACKEND_EXT", "")
 
 REQUIRED_MODULES = (
     "msgpack", "py7zr", "lz4", "bsdiff4", "keyring", "requests", "zstandard",
@@ -88,11 +88,10 @@ def _parse(argv: list) -> tuple:
 
 
 def _setup() -> None:
-    if not SRC or not os.path.isfile(os.path.join(SRC, "cli.py")):
+    if not SRC or not os.path.isfile(os.path.join(SRC, "app_bootstrap.py")):
         raise BridgeError(
             "config",
-            "Amethyst's source tree was not found; set mods.source_dir in "
-            "settings.toml to an Amethyst install")
+            "the modding backend was not unpacked; run `hikari mods setup`")
     if EXT:
         os.environ["AMETHYST_FILEGRAPH_EXTENSION"] = EXT
     if SRC not in sys.path:

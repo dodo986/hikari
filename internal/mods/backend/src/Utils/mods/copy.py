@@ -1,0 +1,258 @@
+"""Copy, move, or link mods to another profile - tkinter-free.
+
+Ported from the Tk ``modlist_panel._copy_mod_to_profile`` / ``_copy_mods_to_profile``
+file-work so the Qt (or any) GUI can reuse it. Collision decisions (replace / rename
+/ skip) are the CALLER's: pass ``dest_name`` to rename, or pre-delete the existing
+folder to replace.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+from pathlib import Path
+
+from Utils.fs.clone import clone_tree_hardlinked
+
+
+def resolve_target_staging(game, target_profile_dir: Path) -> Path:
+    """The staging folder a mod should be copied INTO for *target_profile_dir*:
+    the profile's own ``mods/`` when it uses profile-specific mods, else the
+    game's shared staging folder."""
+    from Utils.profiles.state import profile_uses_specific_mods
+    if profile_uses_specific_mods(target_profile_dir):
+        return target_profile_dir / "mods"
+    return game.get_mod_staging_path()
+
+
+def mod_exists_in_profile(target_staging: Path, name: str) -> bool:
+    """True if a mod folder named *name* already exists in *target_staging*."""
+    folder = target_staging / name
+    return folder.exists() or folder.is_symlink()
+
+
+def copy_fomod_choice(src_profile_dir: Path, dst_profile_dir: Path,
+                      mod_name: str, dest_name: "str | None" = None) -> None:
+    """Copy a mod's saved installer-choice JSON (FOMOD or BAIN) between profiles,
+    if present. *dest_name* renames the choice file to match a renamed folder.
+    Port of Tk ``_copy_fomod_choice``."""
+    out = dest_name or mod_name
+    for sub in ("fomod", "bain"):
+        src = src_profile_dir / sub / f"{mod_name}.json"
+        if not src.is_file():
+            continue
+        dst_dir = dst_profile_dir / sub
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dst_dir / f"{out}.json"))
+
+
+def copy_mod_to_profile(src_staging: Path, src_profile_dir: Path,
+                        target_staging: Path, target_profile_dir: Path,
+                        mod_name: str, enabled: bool = True, *,
+                        dest_name: "str | None" = None,
+                        game=None, register: bool = True,
+                        symlink: bool = False) -> "str | None":
+    """Copy the ``<src_staging>/<mod_name>`` folder into *target_staging* (as
+    *dest_name* if given), copy its FOMOD/BAIN choice, and (when *register*)
+    prepend it to the target profile's ``modlist.txt``. Returns the staged dest
+    name, or None on failure. *symlink* links directly to the resolved source.
+
+    The caller must resolve collisions first: pass ``dest_name`` to install under
+    a new name, or delete the existing folder to replace it. If the dest folder
+    already exists (and wasn't handled), the copy fails and returns None.
+
+    *game* (optional but recommended) lets us add the copied mod to the target
+    staging's ``modindex.bin`` incrementally - without it, the target profile's
+    cached index is stale and the mod is invisible to the filemap rebuild
+    (no deploy / no plugins / no conflicts) until a full Refresh.
+
+    *register* controls the per-mod modlist prepend. When copying SEVERAL mods,
+    pass ``register=False`` and call :func:`register_mods_in_modlist` once with
+    the full ordered block afterwards - prepending each mod individually reverses
+    the group's relative order (the source-topmost mod is prepended first and
+    ends up lowest), matching the Tk single-block prepend."""
+    src_folder = Path(src_staging) / mod_name
+    if src_folder.is_symlink():
+        from Utils.profiles.groups import get_members, is_group, owner_of
+        if is_group(src_profile_dir):
+            owner = owner_of(src_profile_dir, mod_name)
+            if owner is None or owner[0] not in get_members(src_profile_dir):
+                return None
+    try:
+        src_folder = src_folder.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not src_folder.is_dir():
+        return None
+    out = dest_name or mod_name
+    dest_folder = Path(target_staging) / out
+    if dest_folder.exists() or dest_folder.is_symlink():
+        return None
+    if symlink and game is not None:
+        from Utils.mods.links import eligible_targets
+        if target_profile_dir.name not in eligible_targets(game, src_profile_dir, src_staging):
+            return None
+    created_link = False
+    try:
+        dest_folder.parent.mkdir(parents=True, exist_ok=True)
+        if symlink:
+            dest_folder.symlink_to(os.path.relpath(src_folder, dest_folder.parent.resolve()),
+                                   target_is_directory=True)
+            created_link = True
+        else:
+            clone_tree_hardlinked(src_folder, dest_folder, link_files=False)
+    except Exception:
+        if created_link:
+            dest_folder.unlink()
+        elif not symlink and dest_folder.is_dir() and not dest_folder.is_symlink():
+            shutil.rmtree(dest_folder, ignore_errors=True)
+        return None
+    try:
+        copy_fomod_choice(src_profile_dir, target_profile_dir, mod_name,
+                          dest_name=out)
+    except Exception:
+        if created_link:
+            dest_folder.unlink()
+        raise
+    if game is not None:
+        _update_target_index(game, target_staging, target_profile_dir,
+                             out, dest_folder)
+    if register:
+        _register_in_modlist(target_profile_dir / "modlist.txt", out, enabled)
+    return out
+
+
+def _update_target_index(game, target_staging: Path, target_profile_dir: Path,
+                         mod_name: str, dest_root: Path) -> None:
+    """Atomically catalogue the copied mod in its target library."""
+    del target_staging, dest_root
+    try:
+        from Utils.filegraph.service import FileGraphService
+        library = FileGraphService.open_library(game, target_profile_dir)
+        library.refresh(target_profile_dir, mod_names=[mod_name])
+    except Exception:
+        # The next explicit Refresh repairs a failed targeted transaction.
+        pass
+
+
+def _register_in_modlist(target_modlist: Path, name: str, enabled: bool) -> None:
+    """Prepend *name* to the target modlist (dedup by name). No-op if already
+    present."""
+    register_mods_in_modlist(target_modlist, [(name, enabled)])
+
+
+def register_mods_in_modlist(target_modlist: Path,
+                             mods: "list[tuple[str, bool]]") -> None:
+    """Prepend *mods* - ordered highest-priority-first - to the target modlist as
+    a single block (dedup by name), preserving their relative order. Mirrors the
+    Tk single-block prepend; do NOT call this per-mod in a loop, which reverses
+    the group."""
+    from Utils.mods.modlist import read_modlist, write_modlist, ModEntry, modlist_lock
+    with modlist_lock(target_modlist):
+        try:
+            entries = read_modlist(target_modlist) if target_modlist.exists() else []
+        except Exception:
+            entries = []
+        existing_names = {e.name for e in entries}
+        new_entries = [
+            ModEntry(name=name, enabled=enabled, locked=False)
+            for name, enabled in mods
+            if name not in existing_names
+        ]
+        if new_entries:
+            write_modlist(target_modlist, new_entries + entries)
+
+
+def register_separator_block_in_modlist(
+        target_modlist: Path, separator_name: str,
+        mods: "list[tuple[str, bool]]") -> bool:
+    """Insert or merge a separator and place *mods* directly beneath it.
+
+    Existing target mod entries keep their target enabled/locked state. Returns
+    True when the separator was newly created.
+    """
+    from Utils.mods.modlist import read_modlist, write_modlist, ModEntry, modlist_lock
+
+    if not separator_name.endswith("_separator"):
+        separator_name += "_separator"
+    with modlist_lock(target_modlist):
+        try:
+            entries = read_modlist(target_modlist) if target_modlist.exists() else []
+        except Exception:
+            entries = []
+
+        separator_index = next(
+            (i for i, e in enumerate(entries)
+             if e.is_separator and e.name == separator_name), None)
+        existing_separator = (entries[separator_index]
+                              if separator_index is not None else None)
+        existing_mods = {e.name: e for e in entries if not e.is_separator}
+
+        members = []
+        member_names = set()
+        for name, enabled in mods:
+            if not name or name in member_names:
+                continue
+            member_names.add(name)
+            members.append(existing_mods.get(name) or ModEntry(
+                name=name, enabled=enabled, locked=False))
+
+        def _removed(e):
+            return ((e.is_separator and e.name == separator_name)
+                    or (not e.is_separator and e.name in member_names))
+
+        if separator_index is None:
+            insert_at = 0
+        else:
+            insert_at = sum(not _removed(e)
+                            for e in entries[:separator_index])
+        remaining = [e for e in entries if not _removed(e)]
+        separator = existing_separator or ModEntry(
+            name=separator_name, enabled=True, locked=True, is_separator=True)
+        remaining[insert_at:insert_at] = [separator, *members]
+        if remaining != entries:
+            write_modlist(target_modlist, remaining)
+        return existing_separator is None
+
+
+def copy_separator_state(src_profile_dir: Path, target_profile_dir: Path,
+                         separator_name: str) -> None:
+    """Copy a newly-created separator's visual and deployment state."""
+    from Utils.profiles.state import (
+        read_collapsed_seps, read_separator_colors, read_separator_deploy_paths,
+        read_separator_locks, write_collapsed_seps, write_separator_colors,
+        write_separator_deploy_paths, write_separator_locks,
+    )
+
+    suffix = "_separator"
+    display_name = (separator_name[:-len(suffix)]
+                    if separator_name.endswith(suffix) else separator_name)
+
+    for reader, writer, target_key in (
+        (read_separator_colors, write_separator_colors, separator_name),
+        (read_separator_deploy_paths, write_separator_deploy_paths,
+         separator_name),
+        (read_separator_locks, write_separator_locks, display_name),
+    ):
+        source = reader(src_profile_dir)
+        target = reader(target_profile_dir)
+        source_value = None
+        found = False
+        for key in (separator_name, display_name):
+            if key in source:
+                source_value = source[key]
+                found = True
+                break
+        target.pop(separator_name, None)
+        target.pop(display_name, None)
+        if found:
+            target[target_key] = source_value
+        writer(target_profile_dir, target)
+
+    collapsed = read_collapsed_seps(target_profile_dir)
+    source_collapsed = read_collapsed_seps(src_profile_dir)
+    collapsed.discard(separator_name)
+    collapsed.discard(display_name)
+    if separator_name in source_collapsed or display_name in source_collapsed:
+        collapsed.add(display_name)
+    write_collapsed_seps(target_profile_dir, collapsed)

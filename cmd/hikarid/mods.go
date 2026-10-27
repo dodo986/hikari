@@ -40,7 +40,7 @@ func (d *daemon) refreshModsSettings() {
 		return
 	}
 	if bridge, ok := d.mods.(*mods.Bridge); ok {
-		bridge.Configure(settings.Mods.SourceDir, settings.Mods.Python, settings.Mods.Filegraph)
+		bridge.Configure(settings.Mods.Python, settings.Mods.Filegraph)
 	}
 	d.modsMu.Lock()
 	d.modsSettingsAt = info.ModTime()

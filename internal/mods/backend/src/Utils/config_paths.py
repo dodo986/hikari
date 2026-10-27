@@ -1,0 +1,711 @@
+"""
+config_paths.py
+Central helpers for resolving user-writable config directories.
+
+Follows the XDG Base Directory Specification:
+  Config lives in $XDG_CONFIG_HOME/AmethystModManager  (default: ~/.config/AmethystModManager)
+
+This is required for AppImage packaging - the AppImage mount is read-only,
+so all user config must be written outside the app bundle.
+"""
+
+import errno
+import os
+import shutil
+import threading
+import uuid
+from pathlib import Path
+
+APP_NAME = "AmethystModManager"
+
+
+def get_config_dir() -> Path:
+    """Return the app config directory, creating it if it doesn't exist.
+
+    Respects $XDG_CONFIG_HOME; falls back to ~/.config/AmethystModManager.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    config_dir = base / APP_NAME
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
+
+
+def get_game_config_path(game_name: str) -> Path:
+    """Return the paths.json path for a given game, creating parent dirs as needed.
+
+    Result: ~/.config/AmethystModManager/games/<game_name>/paths.json
+    """
+    path = get_config_dir() / "games" / game_name / "paths.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_game_config_dir(game_name: str) -> Path:
+    """Return the config directory for a given game, creating it if needed.
+
+    Result: ~/.config/AmethystModManager/games/<game_name>/
+    """
+    d = get_config_dir() / "games" / game_name
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_loot_data_dir() -> Path:
+    """Return the LOOT masterlist data directory, creating it if needed.
+
+    Result: ~/.config/AmethystModManager/LOOT/data/
+    """
+    d = get_config_dir() / "LOOT" / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_loot_game_dir(game_id: str) -> Path:
+    """Return the per-game LOOT directory, creating it if needed.
+
+    Result: ~/.config/AmethystModManager/LOOT/<game_id>/
+    A global userlist.yaml placed here applies to all profiles of this game.
+    """
+    d = get_config_dir() / "LOOT" / game_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_default_staging_root() -> Path:
+    """Return the built-in default mod-staging root: ``~/Games/Amethyst``.
+
+    Mod staging must live on the *same filesystem* as the game install so that
+    deployed files can be hardlinked.  Under Flatpak the app's config dir lives
+    in ``~/.var/app/<id>/config`` - a separate namespace mount from the games
+    exposed via ``--filesystem=home`` - so hardlinking staged files into the
+    game silently falls back to symlink/copy (``os.link`` → ``EXDEV``).  Placing
+    the default staging in the user's real home (``~/Games/Amethyst``) keeps it
+    on the ``--filesystem=home`` mount alongside the games, so hardlinks work in
+    the Flatpak, AppImage and native installs alike.
+    """
+    return Path.home() / "Games" / "Amethyst"
+
+
+def get_default_game_staging_root(game_name: str) -> Path:
+    """Return the preferred staging *root* for a newly-added game.
+
+    ``~/Games/Amethyst/<game>`` - the per-game folder that holds ``mods/``,
+    ``profiles/``, ``overwrite/`` and ``filemap.txt`` (i.e. what the backend
+    stores as a game's custom ``_staging_path``).  Used by the add-game / reset
+    UI to seed the staging field so new games land beside the game installs on
+    the same filesystem (hardlink-friendly) - including on *existing* installs,
+    whose already-staged games keep resolving via get_profiles_dir() below.
+    """
+    return get_default_staging_root() / game_name
+
+
+def get_profiles_dir() -> Path:
+    """Return the legacy root Profiles directory for default-staged games.
+
+    Resolution order:
+      1. $MOD_MANAGER_PROFILES_DIR - explicit override (set by AppImage AppRun).
+      2. Legacy <config>/Profiles - if it already exists, existing users keep it
+         so upgrades never relocate an in-use staging tree.  Games with an empty
+         (default) staging_path resolve their mods dir from here, so this MUST
+         stay stable for existing installs.
+      3. Fresh install → ~/Games/Amethyst/Profiles.  Unlike the config dir (which
+         Flatpak redirects into ~/.var/app), the user's home is exposed on the
+         same mount as the game installs, so deployed files can be hardlinked
+         instead of falling back to symlink/copy.
+
+    NB: new games no longer default here - the add-game UI seeds a per-game
+    custom root via get_default_game_staging_root() so their layout is
+    ~/Games/Amethyst/<game>/mods (no Profiles/ segment).  This function only
+    resolves games that already carry an empty staging_path.
+
+    The fresh-install path is returned WITHOUT being created: this is called at
+    import time by every game handler (and re-run by discover_games on each
+    add-game reload), so an eager mkdir here dropped ~/Games/Amethyst into the
+    user's home on first startup and after every game add - even when nothing
+    ever stages there.  Anything that actually uses the path creates it with
+    mkdir(parents=True) at that point.
+    """
+    env = os.environ.get("MOD_MANAGER_PROFILES_DIR")
+    if env:
+        p = Path(env)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    legacy = get_config_dir() / "Profiles"
+    if legacy.exists():
+        return legacy
+    return get_default_staging_root() / "Profiles"
+
+
+def get_exe_args_path() -> Path:
+    """Return the path to exe_args.json in the config directory.
+
+    Result: ~/.config/AmethystModManager/exe_args.json
+    """
+    return get_config_dir() / "exe_args.json"
+
+
+def get_profile_exe_args_path(profile_dir: Path) -> Path:
+    """Return the per-profile exe_args.json path inside a profile directory.
+
+    Result: <profile_dir>/exe_args.json
+    """
+    return profile_dir / "exe_args.json"
+
+
+def get_fomod_selections_path(game_name: str, mod_name: str) -> Path:
+    """Return the path to a saved FOMOD selection file for a given game and mod.
+
+    Result: ~/.config/AmethystModManager/games/<game_name>/fomod_selections/<mod_name>.json
+    """
+    path = get_config_dir() / "games" / game_name / "fomod_selections" / f"{mod_name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_bain_selections_path(game_name: str, mod_name: str) -> Path:
+    """Return the path to a saved BAIN selection file for a given game and mod.
+
+    Result: ~/.config/AmethystModManager/games/<game_name>/bain_selections/<mod_name>.json
+    """
+    path = get_config_dir() / "games" / game_name / "bain_selections" / f"{mod_name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_last_game_path() -> Path:
+    """Return the path to the last-opened game state file.
+
+    Result: ~/.config/AmethystModManager/last_game.json
+    """
+    return get_config_dir() / "last_game.json"
+
+
+def get_logs_dir() -> Path:
+    """Return the logs directory, creating it if it doesn't exist.
+
+    Result: ~/.config/AmethystModManager/logs/
+    """
+    d = get_config_dir() / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+LOG_RETENTION_DAYS = 7
+
+# Only files this app writes into the logs dir are ever pruned - a user may keep
+# unrelated notes or a hand-saved log in there, and an age sweep must not eat
+# them. Covers session logs (amethyst-<ts>-<pid>.log), faulthandler dumps
+# (amethyst-fault-<pid>.log) and the NXM handoff log plus its rotated .old.
+def _is_prunable_log(name: str) -> bool:
+    if name.startswith("amethyst-") and name.endswith(".log"):
+        return True
+    return name in ("nxm.log", "nxm.log.old")
+
+
+def prune_old_logs(max_age_days: int = LOG_RETENTION_DAYS,
+                   keep: "set[Path] | None" = None,
+                   log_fn=None) -> int:
+    """Delete app-written logs older than *max_age_days*; return how many went.
+
+    *keep* holds paths the caller still has open (the current session's log and
+    fault dump) - deleting those would silently break this session's logging,
+    and their mtime can look stale before the first line is written. Wholly
+    best-effort: a log dir we cannot read or a file we cannot unlink is not
+    worth failing startup over.
+    """
+    import time
+
+    if max_age_days <= 0:
+        return 0
+    keep = {Path(p).resolve() for p in (keep or ())}
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    try:
+        entries = list(get_logs_dir().iterdir())
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            if not entry.is_file() or not _is_prunable_log(entry.name):
+                continue
+            if entry.resolve() in keep:
+                continue
+            if entry.stat().st_mtime >= cutoff:
+                continue
+            entry.unlink()
+            removed += 1
+        except OSError:
+            continue
+    if removed and log_fn is not None:
+        try:
+            log_fn(f"[log] removed {removed} log file(s) older than "
+                   f"{max_age_days} days")
+        except Exception:
+            pass
+    return removed
+
+
+def get_requirement_external_tool_mod_ids_path() -> Path:
+    """Return the path to the cached requirement filter (external tool mod IDs).
+
+    Fetched from GitHub and merged with user additions. Users can edit this file
+    to add mod IDs; new IDs from the remote are appended on the next fetch.
+
+    Result: ~/.config/AmethystModManager/requirement_external_tool_mod_ids.txt
+    """
+    return get_config_dir() / "requirement_external_tool_mod_ids.txt"
+
+
+def get_custom_games_dir() -> Path:
+    """Return the directory where user-defined custom game JSON files are stored.
+
+    Users drop one JSON file per game here to add support for games not built
+    into the application.
+
+    Result: ~/.config/AmethystModManager/custom_games/
+    """
+    d = get_config_dir() / "custom_games"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_vcredist_cache_path() -> Path:
+    """Return the path where the VC++ Redistributable installer is cached.
+
+    Result: <download_cache>/.amethyst/vcredist/vc_redist.x64.exe
+    """
+    return get_application_cache_dir(
+        "vcredist", legacy=get_config_dir() / "vcredist",
+    ) / "vc_redist.x64.exe"
+
+
+def get_dotnet_cache_dir() -> Path:
+    """Return the directory where .NET runtime installers are cached.
+
+    Result: <download_cache>/.amethyst/dotnet/
+    """
+    return get_application_cache_dir(
+        "dotnet", legacy=get_config_dir() / "dotnet",
+    )
+
+
+def get_custom_game_images_dir() -> Path:
+    """Return the directory holding persistent custom game banner images.
+
+    When a user provides an image URL in the custom game definition, the image
+    is downloaded once and stored beside the definition so the game picker can
+    display it offline.
+
+    Result: ~/.config/AmethystModManager/custom_games/
+    """
+    target = get_custom_games_dir()
+    legacy = (
+        get_config_dir() / "custom_game_images",
+        get_download_cache_dir() / ".amethyst" / "custom_game_images",
+    )
+    for source in legacy:
+        if source.exists() or source.is_symlink():
+            _migrate_directory(source, target)
+    return target
+
+
+def cli_invocation() -> "list[str]":
+    """Return the argv prefix that re-runs this app's CLI from outside it.
+
+    Steam launch options run on the host, so the command has to be whatever the
+    user's install actually exposes:
+
+      * Flatpak - a clean ``flatpak run --command=... <app-id>``. Steam is
+        outside the sandbox, so it cannot call our interpreter directly, and
+        its legacy runtime loader paths must not reach the host Flatpak CLI.
+      * AppImage - the ``.AppImage`` itself, from ``APPIMAGE`` (set by the
+        runtime; ``sys.executable`` points inside the mounted squashfs, which
+        disappears when the app exits).
+      * Source checkout - the running interpreter plus ``src/cli.py``.
+    """
+    import os
+    import sys
+
+    app_id = os.environ.get("FLATPAK_ID")
+    if app_id:
+        # meson installs this wrapper (`exec python3 -m cli "$@"`) into bindir.
+        # Native Steam exports pinned legacy libraries into every Launch
+        # Options process. Those make /usr/bin/flatpak load Steam's libcurl
+        # and terminate before Amethyst can start (CURL_OPENSSL_4 mismatch).
+        # `env -u` is also valid after a launcher Flatpak's host escape.
+        return [
+            "/usr/bin/env",
+            "-u", "LD_LIBRARY_PATH",
+            "-u", "LD_PRELOAD",
+            "-u", "LD_AUDIT",
+            "/usr/bin/flatpak", "run",
+            "--command=amethyst-mod-manager-cli", app_id,
+        ]
+
+    # APPIMAGE is set by whatever AppImage is running, which is not necessarily
+    # ours - a developer's editor may be one (and then this would hand out the
+    # editor's path). Only trust it when this module was actually loaded from
+    # inside that image's mount point.
+    appimage = os.environ.get("APPIMAGE")
+    appdir = os.environ.get("APPDIR")
+    here = str(Path(__file__).resolve())
+    if appimage and appdir and here.startswith(str(Path(appdir).resolve())):
+        # The AppImage wrapper dispatches on the subcommand name itself (see
+        # src/appimage/PKGBUILD) - anything it does not recognise starts the
+        # GUI, so "launch" has to stay in that case list.
+        return [appimage]
+
+    cli_py = Path(__file__).resolve().parent.parent / "cli.py"
+    return [sys.executable, str(cli_py)]
+
+
+def get_tools_dir() -> Path:
+    """Return the directory holding helper binaries we download on demand.
+
+    winetricks, cabextract and umu-run live here. In the app config (not the
+    download cache) so "Clear Cache" never removes them, and host-visible so a
+    flatpak-spawn'd launch can execute them.
+
+    Result: ~/.config/AmethystModManager/tools/
+    """
+    d = get_config_dir() / "tools"
+    _migrate_directory(get_config_dir() / "Tools", d)
+    return d
+
+
+_CACHE_ROOT_RESERVED: set[str] = set()
+_WABBAJACK_CACHE_LOCK = threading.Lock()
+_DIRECTORY_MIGRATION_LOCK = threading.RLock()
+
+
+def _move_directory_contents(source: Path, target: Path) -> None:
+    if source.is_symlink() or target.is_symlink():
+        raise OSError("Cache migration requires directories, not symbolic links")
+    if not source.is_dir():
+        raise OSError(f"Cache migration source is not a directory: {source}")
+    if target.exists() and not target.is_dir():
+        raise OSError(f"Cache migration target is not a directory: {target}")
+    target.mkdir(parents=True, exist_ok=True)
+    for child in source.iterdir():
+        destination = target / child.name
+        if destination.is_symlink():
+            raise OSError(f"Cache migration encountered a symbolic link: {destination}")
+        if not child.is_symlink() and child.is_dir() and destination.is_dir():
+            _move_directory_contents(child, destination)
+            continue
+        if destination.exists():
+            destination = destination.with_name(
+                destination.name + ".migrated-" + uuid.uuid4().hex)
+        shutil.move(str(child), str(destination))
+    source.rmdir()
+
+
+def _migrate_directory(source: Path, target: Path) -> Path:
+    """Move a legacy directory into *target*, merging without data loss."""
+    with _DIRECTORY_MIGRATION_LOCK:
+        source_resolved = source.resolve()
+        target_resolved = target.resolve()
+        if source_resolved == target_resolved:
+            target.mkdir(parents=True, exist_ok=True)
+            return target
+        if source.is_symlink() or target.is_symlink():
+            raise OSError("Cache migration requires directories, not symbolic links")
+        if target_resolved.is_relative_to(source_resolved):
+            raise OSError("The download cache cannot be inside a legacy cache directory")
+        if source.exists():
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    source.rename(target)
+                    return target
+                except OSError as exc:
+                    if exc.errno != errno.EXDEV:
+                        raise
+            _move_directory_contents(source, target)
+        else:
+            target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def get_wine_prefixes_dir() -> Path:
+    """Return the directory holding Wine prefixes for VRAMr/Bendr/ParallaxR.
+
+    Lives in the app config (not the download cache) so "Clear Cache" never
+    blows it away and a user-relocated download cache stays archive-only.
+
+    Result: ~/.config/AmethystModManager/wine_prefixes/
+
+    Migrates an existing ``<download_cache>/wine_prefixes`` directory on first
+    access - best-effort: if migration fails the old location is left alone.
+    """
+    d = get_config_dir() / "wine_prefixes"
+    if not d.exists():
+        legacy = get_config_dir() / "download_cache" / "wine_prefixes"
+        try:
+            from Utils.ui.config import load_download_cache_path  # lazy: avoid cycles
+            custom = load_download_cache_path().strip()
+        except Exception:
+            custom = ""
+        if custom:
+            try:
+                legacy_custom = Path(custom).expanduser() / "wine_prefixes"
+                if legacy_custom.is_dir():
+                    legacy = legacy_custom
+            except Exception:
+                pass
+        if legacy.is_dir():
+            try:
+                legacy.rename(d)
+            except OSError:
+                pass
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_download_cache_dir() -> Path:
+    """Return the download cache root directory, creating it if it doesn't exist.
+
+    Honours the user-configured path from ``[paths] download_cache_path`` in
+    amethyst.ini.  When unset (or unwritable) falls back to
+    ``~/.config/AmethystModManager/download_cache/``.
+
+    The setting is read on every call so a path change in the Settings panel
+    takes effect without restarting.
+    """
+    try:
+        from Utils.ui.config import load_download_cache_path  # lazy: avoid cycles
+        custom = load_download_cache_path().strip()
+    except Exception:
+        custom = ""
+    if custom:
+        d = Path(custom).expanduser()
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+        except OSError:
+            pass  # fall through to default
+    d = get_config_dir() / "download_cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_application_cache_dir(
+        *parts: str, legacy: "Path | tuple[Path, ...] | None" = None) -> Path:
+    """Return a reconstructible application-cache directory.
+
+    These entries live below the selected download cache so Manage Download
+    Caches can report and remove them. Any former config-directory location is
+    migrated on first use.
+    """
+    if not parts or any(
+            not part or part in {".", ".."} or Path(part).name != part
+            for part in parts):
+        raise ValueError("Application cache path components must be plain names")
+    target = get_download_cache_dir() / ".amethyst"
+    for part in parts:
+        target /= part
+    sources = legacy if isinstance(legacy, tuple) else (() if legacy is None else (legacy,))
+    existing = tuple(
+        source for source in sources if source.exists() or source.is_symlink())
+    if not existing:
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+    for source in existing:
+        _migrate_directory(source, target)
+    return target
+
+
+def migrate_legacy_application_caches() -> list[str]:
+    """Move known reconstructible payloads out of the config directory."""
+    config = get_config_dir()
+    migrations = (
+        ((config / "curated_profiles",), ("curated_profiles",)),
+        ((config / "dotnet",), ("dotnet",)),
+        ((config / "vcredist",), ("vcredist",)),
+        ((config / "gh_cache",), ("github",)),
+        ((config / "tools" / "texconv", config / "Tools" / "texconv"),
+         ("tools", "texconv")),
+        ((config / "tools" / "compressonator",
+          config / "Tools" / "compressonator"),
+         ("tools", "compressonator")),
+    )
+    errors: list[str] = []
+    try:
+        get_custom_game_images_dir()
+    except OSError as exc:
+        errors.append(f"custom game images: {exc}")
+    for sources, parts in migrations:
+        for source in sources:
+            if not source.exists() and not source.is_symlink():
+                continue
+            try:
+                get_application_cache_dir(*parts, legacy=source)
+            except OSError as exc:
+                errors.append(f"{source}: {exc}")
+    try:
+        get_tools_dir()
+    except OSError as exc:
+        errors.append(f"{config / 'Tools'}: {exc}")
+    return errors
+
+
+def get_download_cache_dir_for_game(game_name: str | None) -> Path:
+    """Per-game cache subfolder under :func:`get_download_cache_dir`.
+
+    Falls back to the cache root when *game_name* is empty.  Game name is
+    used as a directory component verbatim, matching the convention used
+    elsewhere (e.g. :func:`get_game_config_path`).
+    """
+    root = get_download_cache_dir()
+    if not game_name:
+        return root
+    d = root / game_name
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_wabbajack_cache_dir() -> Path:
+    import errno
+    import shutil
+    import tempfile
+    import uuid
+
+    target = get_download_cache_dir() / "wabbajack"
+    legacy = get_config_dir() / "wabbajack"
+    with _WABBAJACK_CACHE_LOCK:
+        if legacy.resolve() == target.resolve():
+            return target
+        if target.is_symlink() or legacy.is_symlink():
+            raise OSError("Wabbajack cache migration requires directories, not symbolic links")
+        if not legacy.exists():
+            return target
+        if not legacy.is_dir() or target.exists() and not target.is_dir():
+            raise OSError("Wabbajack cache path is occupied by a file")
+        if target.resolve().is_relative_to(legacy.resolve()):
+            raise OSError("The download cache cannot be inside the old Wabbajack cache")
+        if not target.exists():
+            try:
+                legacy.rename(target)
+                return target
+            except OSError as exc:
+                if exc.errno != errno.EXDEV:
+                    raise
+
+        def move(source, destination):
+            if source.is_symlink() or destination.is_symlink():
+                raise OSError(f"Cache migration encountered a symbolic link: {source}")
+            if destination.exists() and not (source.is_dir() and destination.is_dir()):
+                destination = destination.with_name(destination.name + ".migrated-" + uuid.uuid4().hex)
+            if source.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                for child in source.iterdir():
+                    move(child, destination / child.name)
+                source.rmdir()
+                return
+            if not source.is_file():
+                raise OSError(f"Cache migration encountered a special file: {source}")
+            try:
+                source.rename(destination)
+            except OSError as exc:
+                if exc.errno != errno.EXDEV:
+                    raise
+                fd, name = tempfile.mkstemp(prefix=".migrate-", dir=destination.parent)
+                os.close(fd)
+                temporary = Path(name)
+                try:
+                    shutil.copy2(source, temporary)
+                    with temporary.open("rb") as stream:
+                        os.fsync(stream.fileno())
+                    temporary.replace(destination)
+                    directory_fd = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+                    source.unlink()
+                finally:
+                    temporary.unlink(missing_ok=True)
+        move(legacy, target)
+    return target
+
+
+def list_all_cache_dirs(active_game_name: str | None = None) -> list[Path]:
+    """Cache directories to scan for already-downloaded archives.
+
+    Returns ``[active-game folder, cache root]``, de-duplicated by resolved
+    path.  Other games' subfolders are intentionally NOT included: file_id
+    is not unique across mods/games, so cross-game scans risk matching an
+    unrelated archive whose ``.fileid`` sidecar happens to share a value
+    with the requested file (e.g. Darktide mod 373 file 2964 colliding with
+    Palworld mod 678 file 2964).  The cache root is still included so
+    legacy archives placed there before per-game subdirs existed remain
+    discoverable.
+    """
+    root = get_download_cache_dir()
+    out: list[Path] = []
+    seen: set[Path] = set()
+    if active_game_name:
+        active = root / active_game_name
+        if active.is_dir():
+            out.append(active)
+            seen.add(active.resolve())
+    root_resolved = root.resolve()
+    if root_resolved not in seen:
+        out.append(root)
+        seen.add(root_resolved)
+    return out
+
+
+def get_plugins_dir() -> Path:
+    """Return the directory where external wizard plugin scripts are stored.
+
+    Users drop Python scripts here to add custom wizard tools without modifying
+    the application source.
+
+    Result: ~/.config/AmethystModManager/Plugins/
+    """
+    d = get_config_dir() / "Plugins"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_languages_dir() -> Path:
+    """Return the directory where downloaded / user-added UI translations live.
+
+    Compiled Qt translation files (``amethyst_<code>.qm``) are stored here. They
+    are synced from the Resources branch on startup (see Utils.github.sync) and users
+    can drop their own ``.qm`` in to add a language without an app update. The
+    built-in source-tree English is always available regardless of this folder.
+
+    Result: ~/.config/AmethystModManager/languages/
+    """
+    d = get_config_dir() / "languages"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_ludusavi_manifest_path() -> Path:
+    """Return the path of the downloaded Ludusavi save-path data file.
+
+    Synced from the Resources branch (see Utils.github.sync) so save locations for
+    new games can ship without an app update. The built-in copy under
+    ``src/Games/`` is the offline fallback; whichever of the two carries the
+    later ``generated`` date wins (see Utils.saves.ludusavi).
+
+    Result: ~/.config/AmethystModManager/ludusavi/ludusavi_saves.json
+    """
+    d = get_config_dir() / "ludusavi"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "ludusavi_saves.json"
+
+
+def get_download_locations_path() -> Path:
+    """Return the path to the extra download scan locations config file.
+
+    Users can add custom folders to scan for archives in addition to ~/Downloads.
+    Stored as JSON array of path strings.
+
+    Result: ~/.config/AmethystModManager/download_locations.json
+    """
+    return get_config_dir() / "download_locations.json"
