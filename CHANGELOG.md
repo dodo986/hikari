@@ -8,6 +8,9 @@
 - Store covers are judged by their pixels, so a wide banner stops being zoomed
   into a portrait card. A tight crop is only used when the source has the
   resolution for it, otherwise the banner is shown whole over a dimmed backdrop.
+- A card no longer goes blank when a store hands over a dead image URL or
+  nothing but a banner: it falls back to the next best picture the game has,
+  and Steam tools find the art Steam already cached locally.
 - `hikari artwork-key <key>` stores a SteamGridDB key in `settings.toml`, and
   Settings has the same field. Covers for games Steam does not carry are looked
   up again as soon as a key is saved; it is never compiled into the binary.

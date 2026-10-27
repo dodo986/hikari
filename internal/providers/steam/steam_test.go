@@ -165,6 +165,14 @@ func TestSteamArtFindsEveryCacheLayout(t *testing.T) {
 
 	os.Remove(portrait)
 	os.Remove(header)
+	capsule := filepath.Join(hash, "library_capsule.jpg")
+	if err := os.WriteFile(capsule, []byte("jpg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if art := steamArt(root, "5172140"); art.Cover != capsule {
+		t.Errorf("Cover = %q, want the hashed capsule", art.Cover)
+	}
+	os.Remove(capsule)
 	art = steamArt(root, "5172140")
 	if !strings.HasSuffix(art.Cover, "apps/5172140/library_600x900_2x.jpg") {
 		t.Errorf("Cover = %q, want the double resolution CDN grid", art.Cover)

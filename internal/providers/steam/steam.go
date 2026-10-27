@@ -140,7 +140,7 @@ func parseManifest(path, lib string) (library.Game, bool) {
 func steamArt(lib, appID string) library.Artwork {
 	dir := filepath.Join(lib, "appcache", "librarycache", appID)
 	cover := cdn(appID, "library_600x900_2x.jpg", "library_600x900.jpg")
-	if c := cacheImage(dir, "library_600x900_2x.jpg", "library_600x900.jpg"); c != "" {
+	if c := cacheImage(dir, "library_600x900_2x.jpg", "library_600x900.jpg", "library_capsule.jpg"); c != "" {
 		cover = c
 	}
 	square := cdn(appID, "library_hero.jpg", "library_header.jpg")
