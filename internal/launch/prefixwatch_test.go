@@ -135,3 +135,31 @@ func waitForPIDFile(t *testing.T, path string) int {
 	t.Fatalf("no pid file at %s", path)
 	return 0
 }
+
+func TestAdoptionSkipsProcessesFromEarlierSessions(t *testing.T) {
+	prefix := t.TempDir()
+	old := startWithPrefix(t, "WINEPREFIX", prefix)
+	since := time.Now()
+	fresh := startWithPrefix(t, "WINEPREFIX", prefix)
+	if pid, ok := launchPID(prefix, "", since); !ok || pid == old {
+		t.Fatalf("adopted %d (ok=%v), want the process started at %d", pid, ok, fresh)
+	}
+	if pid, ok := launchPID(prefix, "", since.Add(time.Minute)); ok {
+		t.Fatalf("adopted %d although every process predates the launch", pid)
+	}
+}
+
+func TestAdoptionPrefersTheGameExecutable(t *testing.T) {
+	prefix := t.TempDir()
+	startWithPrefix(t, "WINEPREFIX", prefix)
+	since := time.Now()
+	game := startWithPrefix(t, "WINEPREFIX", prefix)
+	if pid, ok := launchPID(prefix, "", since); !ok || pid != game {
+		t.Fatalf("adopted %d, want the newest process %d", pid, game)
+	}
+	// With an executable hint, a prefix process that is not the game is only a
+	// fallback; here nothing matches, so the newest process still wins.
+	if pid, ok := launchPID(prefix, "cyberpunk2077.exe", since); !ok || pid != game {
+		t.Fatalf("fallback adopted %d, want %d", pid, game)
+	}
+}

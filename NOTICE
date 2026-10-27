@@ -17,6 +17,22 @@ following projects, whose source was used as a behavioural reference only
 - Ryoku (GPL-3.0) — daemon socket conventions, TOML config persistence
   pattern, packaging conventions. https://github.com/Ryoku-dev/ryoku
 
+Hikari bundles, and therefore distributes, Amethyst Mod Manager's headless
+modding backend under the same GPL-3.0-or-later terms. The copy under
+internal/mods/backend is a byte-exact snapshot of upstream src/ for the
+non-graphical trees plus its native filegraph crate; provenance, the exact
+upstream revision, the excluded Qt trees and the sync procedure are in
+internal/mods/backend/README.md. Nothing in that tree is modified by hand.
+
+- Amethyst Mod Manager (GPL-3.0-or-later)
+  https://github.com/Amethyst-Mod-Manager/Amethyst-Mod-Manager
+
 Hikari runs, but does not distribute, the following third-party tools:
-legendary, gogdl, nile, comet, umu-launcher, Proton, Wine. Their licenses
-apply to themselves.
+legendary, gogdl, nile, comet, umu-launcher, Proton, Wine, and the Amethyst
+Mod Manager's modding backend. Their licenses apply to themselves.
+
+The Mods page drives Amethyst's own Python backend (GPL-3.0) as a child
+process instead of re-implementing it; nothing from its tree is copied or
+linked. The bridge that speaks to it, internal/mods/bridge/modbridge.py, is
+Hikari's own code and is covered by Hikari's license.
+https://github.com/ChrisDKN/Amethyst-Mod-Manager

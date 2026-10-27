@@ -50,6 +50,35 @@ Usage:
   hikari wine releases                   downloadable Proton builds
   hikari wine install <tag> [--follow]   download + verify + extract a build
   hikari wine remove <name>              delete a Hikari-installed build
+  hikari mods status                     is the modding backend ready?
+  hikari mods setup                      install the Python packages mods need
+  hikari mods configure <game> --path DIR point a game at its folder
+  hikari mods games                      games Hikari can mod, with their profiles
+  hikari mods updates <game>             installed mods with a newer Nexus file
+  hikari mods update <game> --name M     download and install that newer file
+  hikari mods deploy <game> [--profile P]  apply a profile to the game
+  hikari mods restore <game>             strip the deployed mods again
+  hikari mods install <game> --archive PATH | --url nxm://…  [--profile P] [--name N]
+                                         install one mod archive (FOMOD: defaults)
+  hikari mods cancel                     stop the running deploy/install
+  hikari mods login                      sign in to Nexus in your browser
+  hikari mods logout                     forget the browser login
+  hikari mods account                    who is signed in, and are they premium?
+  hikari mods nxm <nxm://url>            what the browser hands over: install that link
+  hikari mods scheme [status|set]        make Hikari the nxm:// handler
+  hikari mods downloads <game> --mod-id N [--file-id N]
+                                         has the browser download landed yet?
+  hikari mods browse <game> [query] [--sort downloads|endorsements|created|updated]
+                                         search a game's mods on Nexus
+  hikari mods files <game> <mod-id>      the files a browsed mod offers
+  hikari mods installed <game> [--profile P]  the profile's modlist, in order
+  hikari mods toggle <game> <name>       enable or disable one mod
+  hikari mods remove <game> <name>       delete a mod and its files
+  hikari mods missing <game>             requirements the profile is missing
+  hikari mods overrides <game>           Wine DLL overrides the mods need
+  hikari mods health <game> [--network]  what is stopping these mods loading
+  hikari mods repair <game>              redeploy when that is the fix
+  hikari mods nexus [status|set|clear]   a Nexus API key, if you have one instead
   hikari shutdown                        stop the daemon
 
 Every command also accepts --json and --socket PATH.
@@ -268,6 +297,13 @@ func dispatch(cmd string, args []string) error {
 				ExitCode int      `json:"exit_code"`
 				Running  bool     `json:"running"`
 				State    string   `json:"state"`
+				ModStop  *struct {
+					Loader  string `json:"loader"`
+					Plugin  string `json:"plugin"`
+					Log     string `json:"log"`
+					Message string `json:"message"`
+					Fix     string `json:"fix"`
+				} `json:"mod_stop"`
 			}
 			if err := dial(c).Call("game.log", map[string]any{"store": pos[0], "id": pos[1]}, &rec); err != nil {
 				return err
@@ -280,6 +316,16 @@ func dispatch(cmd string, args []string) error {
 			}
 			for _, line := range rec.Lines {
 				fmt.Println(line)
+			}
+			if note := rec.ModStop; note != nil && note.Message != "" {
+				fmt.Println()
+				fmt.Println(note.Message)
+				if note.Fix != "" {
+					fmt.Println(note.Fix)
+				}
+				if note.Log != "" {
+					fmt.Printf("(%s: %s)\n", note.Loader, note.Log)
+				}
 			}
 			return nil
 		}
@@ -783,6 +829,9 @@ func dispatch(cmd string, args []string) error {
 		}
 		return nil
 
+	case "mods":
+		return modsCmd(args)
+
 	case "shutdown":
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
@@ -1068,6 +1117,7 @@ type planView struct {
 	Argv     []string          `json:"argv"`
 	Env      map[string]string `json:"env"`
 	Cwd      string            `json:"cwd"`
+	Exe      string            `json:"exe,omitempty"`
 	Engine   string            `json:"engine"`
 	WineType string            `json:"wine_type"`
 }
@@ -1075,6 +1125,7 @@ type planView struct {
 func printPlan(p *planView) {
 	fmt.Println("engine:   ", p.Engine)
 	fmt.Println("wine:     ", p.WineType)
+	fmt.Println("executable:", orDefault(p.Exe, "(the store's own)"))
 	fmt.Println("directory:", orDefault(p.Cwd, "(inherit)"))
 	fmt.Println("command:")
 	fmt.Println("  " + shellLine(p.Argv))

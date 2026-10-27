@@ -12,6 +12,8 @@ Item {
 
     property string page: "library"
     property var detail: null
+    property string modGame: ""
+    property string modTab: ""
 
     readonly property int installedCount: {
         var count = 0;
@@ -20,21 +22,43 @@ Item {
         return count;
     }
     readonly property int storeCount: Daemon.games.length - installedCount
+    readonly property int deployedCount: {
+        var count = 0;
+        for (var i = 0; i < Daemon.modsGames.length; i++)
+            if (Daemon.modsGames[i].deploy_active) count++;
+        return count;
+    }
 
     function navigate(target: string) {
-        if (target === "library" || target === "store" || target === "downloads" ||
-                target === "accounts" || target === "settings" || target === "about") {
+        if (target === "library" || target === "store" || target === "mods" ||
+                target === "downloads" || target === "accounts" ||
+                target === "settings" || target === "about") {
             app.detail = null;
+            app.modGame = "";
             app.page = target;
         }
     }
     function openGame(store: string, id: string) { app.detail = { store: store, id: id }; }
     function closeDetail() { app.detail = null; }
+    function openModGame(id: string) { app.modGame = id; }
+    function closeModGame() { app.modGame = ""; }
     function requestQuit() { Qt.quit(); }
+
+    Connections {
+        target: Daemon
+        // An nxm:// link (or any mods job started elsewhere) opens the right page.
+        function onModsJobGame(game) {
+            if (!game) return;
+            app.detail = null;
+            app.page = "mods";
+            app.modGame = game;
+        }
+    }
 
     focus: true
     Keys.onEscapePressed: event => {
-        if (app.detail) { app.closeDetail(); }
+        if (app.modGame) { app.closeModGame(); }
+        else if (app.detail) { app.closeDetail(); }
         else event.accepted = false;
     }
 
@@ -81,6 +105,7 @@ Item {
                     readonly property Item activeRow: app.detail ? null
                         : app.page === "library" ? rowLibrary
                         : app.page === "store" ? rowStore
+                        : app.page === "mods" ? rowMods
                         : app.page === "downloads" ? rowDownloads
                         : app.page === "accounts" ? rowAccounts
                         : app.page === "settings" ? rowSettings
@@ -107,6 +132,14 @@ Item {
                             badge: app.storeCount
                             active: app.page === "store" && !app.detail
                             onClicked: { app.detail = null; app.page = "store"; }
+                        }
+                        RailButton {
+                            id: rowMods
+                            glyph: "extension"
+                            label: I18n.tr("Mods")
+                            badge: app.deployedCount
+                            active: app.page === "mods"
+                            onClicked: { app.detail = null; app.modGame = ""; app.page = "mods"; }
                         }
                         RailButton {
                             id: rowDownloads
@@ -247,6 +280,7 @@ Item {
                     if (app.detail) return gameDetail;
                     switch (app.page) {
                     case "store": return storePage;
+                    case "mods": return modsPage;
                     case "downloads": return downloadsPage;
                     case "accounts": return accountsPage;
                     case "settings": return settingsPage;
@@ -282,6 +316,7 @@ Item {
             Component { id: libraryPage; LibraryPage { onOpenGame: (s, i) => app.openGame(s, i) } }
             Component { id: storePage; LibraryPage { storeMode: true; onOpenGame: (s, i) => app.openGame(s, i) } }
             Component { id: gameDetail; GameDetailPage { game: app.detail } }
+            Component { id: modsPage; ModsPage {} }
             Component { id: downloadsPage; DownloadsPage {} }
             Component { id: accountsPage; AccountsPage {} }
             Component { id: settingsPage; SettingsPage {} }

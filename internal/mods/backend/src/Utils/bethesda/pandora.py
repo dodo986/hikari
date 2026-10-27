@@ -1,0 +1,207 @@
+"""
+Toolkit-neutral Pandora Behaviour Engine+ logic.
+
+Ported from wizards/pandora.py so both the Tk wizard and the Qt wizard view
+can share it without importing GUI code.
+
+Pandora ships as a regular mod, so its exe lives under the mod staging folder.
+It runs in a wizard-tool Wine prefix (see exe_launch.resolve_tool_prefix) with
+the .NET 10 desktop runtime installed into that prefix.
+
+install_net10 / run_pandora are blocking - call them from a worker thread.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from Games.base_game import BaseGame
+
+from Utils.wine.protontricks import dotnet_dep_key as _dotnet_dep_key
+
+EXE_NAME = "Pandora Behaviour Engine+.exe"
+NEXUS_URL = "https://www.nexusmods.com/skyrimspecialedition/mods/133232?tab=files"
+ARCHIVE_PREFIX = "pandora behaviour engine"
+
+# .NET 10 install now runs through Utils.wine.proton.install_dotnet_runtime
+# (single source of truth for URL/filename/exit-code handling).
+NET10_DEP_KEY = _dotnet_dep_key("10")
+
+
+def _noop(_msg: str) -> None:
+    pass
+
+
+def find_pandora_exe(game: "BaseGame") -> Path | None:
+    """Search the mod staging directory for Pandora Behaviour Engine+.exe.
+
+    Uses the memory-cached modindex (with a disk-walk fallback) so gating the
+    wizard stays fast on large modlists - see Utils.wizards.gates.find_staged_exe.
+    """
+    from Utils.wizards.gates import find_staged_exe
+    return find_staged_exe(game, EXE_NAME)
+
+
+def find_pandora_archive() -> Path | None:
+    """Return the newest complete ``Pandora Behaviour Engine*.zip`` archive."""
+    import zipfile
+
+    from Utils.downloads.locations import get_effective_download_locations
+
+    matches: list[tuple[float, Path]] = []
+    for folder in get_effective_download_locations():
+        try:
+            entries = list(folder.iterdir())
+        except OSError:
+            continue
+        for path in entries:
+            if (not path.is_file()
+                    or not path.name.casefold().startswith(ARCHIVE_PREFIX)
+                    or path.suffix.casefold() != ".zip"):
+                continue
+            try:
+                if path.stat().st_size > 0 and zipfile.is_zipfile(path):
+                    matches.append((path.stat().st_mtime, path))
+            except OSError:
+                continue
+    return max(matches, default=(0.0, None), key=lambda item: item[0])[1]
+
+
+def net10_installed(compat_data: Path) -> bool:
+    """True when .NET 10 is already marked installed in this prefix."""
+    from Utils.wine.protontricks import is_dep_installed
+    return is_dep_installed(Path(compat_data) / "pfx", NET10_DEP_KEY)
+
+
+def install_net10(proton_script: Path, compat_data: Path, env: dict,
+                  log_fn=_noop, status_fn=_noop) -> None:
+    """Download (cached) + silently install the .NET 10 desktop runtime into
+    the prefix, then mark the dep key. Raises on failure. Blocking.
+
+    *status_fn* receives short user-facing progress strings; *log_fn* the
+    detailed log lines.
+    """
+    from Utils.wine.proton import install_dotnet_runtime
+
+    ok = install_dotnet_runtime(
+        "10", proton_script, env, Path(compat_data) / "pfx",
+        log_fn=log_fn, status_fn=status_fn, dep_key=NET10_DEP_KEY)
+    if not ok:
+        raise RuntimeError("Pandora .NET 10 install failed (see log).")
+
+
+def run_pandora(exe: Path, game: "BaseGame", proton_script: Path,
+                compat_data: Path, env: dict,
+                log_fn=_noop, on_started=None, owner=None, *,
+                rendering_workaround: bool = True) -> int:
+    """Launch Pandora via Proton and wait for it to exit. Returns the exit
+    code (stderr is logged). Blocking - call from a worker thread.
+
+    *on_started* fires once the process has spawned (the UI can enable its
+    Done button while Pandora runs). Shuts the prefix wineserver down after
+    exit. When the winetricks-style marker is in *env* (Proton-step checkbox,
+    via resolve_tool_prefix) the launch bypasses the proton script and runs
+    plain Wine the way winetricks does - handled here rather than through
+    run_tool_logged's delegation because the rebuilt environment must get
+    Pandora's .NET/renderer tweaks re-applied; prefix prep (registry seed,
+    Settings.json) still happens the same way.
+    """
+    from Utils.bethesda.registry import maybe_register_for_game
+    from Utils.executables.arguments import _bootstrap_pandora_settings
+    from Utils.executables.launch import shutdown_prefix_wineserver
+    from Utils.vfs import direct_tool_game_root
+    from Utils.wine.paths import to_wine_path
+
+    game_path = game.get_game_path()
+    if game_path is None:
+        raise RuntimeError("Game path not configured.")
+    staging = game.get_effective_mod_staging_path()
+    profile_dir = getattr(game, "_active_profile_dir", None)
+    launch_game = game
+    shadow_root = direct_tool_game_root(game)
+    if shadow_root is not None:
+        game_path = shadow_root
+        launch_game = None
+        log_fn(f"Pandora: using the deployed profile VFS directly: {game_path}")
+
+    # Seed the Bethesda registry key in the fresh prefix so tools that look
+    # the game path up via the registry keep working (idempotent).
+    maybe_register_for_game(
+        prefix_dir=compat_data,
+        proton_script=proton_script,
+        env=env,
+        game=game,
+        log_fn=log_fn,
+    )
+
+    # The output folder (<staging>/Pandora_output) is configured by rewriting
+    # Pandora's Settings.json - newer Pandora builds ignore the --output: CLI
+    # flag. Written to the prefix and beside the exe: 4.4 seeds from the
+    # prefix copy but thereafter reads the one in its own folder.
+    from Utils.wabbajack.runtime import output_directory
+    output = output_directory(game, exe) or staging / "Pandora_output"
+    _bootstrap_pandora_settings(
+        getattr(game, "game_id", None),
+        game_path,
+        staging,
+        compat_data,
+        log_fn,
+        exe_path=exe,
+        output_mod=output,
+    )
+    from Utils.mods.install_as_mod import register_output_mod
+    register_output_mod(profile_dir, staging, output.name, log_fn=log_fn)
+
+    pfx = Path(compat_data) / "pfx"
+    game_arg = f"--tesv:{to_wine_path(game_path, pfx)}"
+
+    env = dict(env)
+    # Unset .NET environment variables that can prevent Pandora from launching
+    # when the host has a .NET runtime installed (e.g. via Bottles/MO2).
+    env.pop("DOTNET_ROOT", None)
+    env.pop("DOTNET_BUNDLE_EXTRACT_BASE_DIR", None)
+    if rendering_workaround:
+        env["PROTON_USE_WINED3D"] = "1"
+        env["WINE_D3D_CONFIG"] = "renderer=gdi"
+        overrides = env.get("WINEDLLOVERRIDES", "").rstrip(";")
+        env["WINEDLLOVERRIDES"] = ";".join(filter(None, (
+            overrides, "dxgi=b,n", "d3d11=b,n")))
+
+    from Utils.executables.launch import run_tool_logged, run_tool_winetricks_style
+    log_fn(f"launching {exe} via Proton")
+    log_fn(f"rendering workaround: {'enabled' if rendering_workaround else 'disabled'}")
+    log_fn(
+        "  env: "
+        f"PROTON_USE_WINED3D={env.get('PROTON_USE_WINED3D', '<unset>')} "
+        f"WINE_D3D_CONFIG={env.get('WINE_D3D_CONFIG', '<unset>')} "
+        f"WINEDLLOVERRIDES={env.get('WINEDLLOVERRIDES', '<unset>')} "
+        f"STEAM_COMPAT_DATA_PATH={env.get('STEAM_COMPAT_DATA_PATH', '<unset>')}"
+    )
+    if on_started is not None:
+        on_started()
+    try:
+        if env.get("AMM_WINETRICKS_STYLE") == "1":
+            extra_env = {
+                "DOTNET_ROOT": None,
+                "DOTNET_BUNDLE_EXTRACT_BASE_DIR": None,
+            }
+            if rendering_workaround:
+                extra_env["WINE_D3D_CONFIG"] = "renderer=gdi"
+                extra_env["WINEDLLOVERRIDES"] = env["WINEDLLOVERRIDES"]
+            rc = run_tool_winetricks_style(
+                proton_script, exe, compat_data, log_fn=log_fn,
+                extra_args=[game_arg] if game_arg else None,
+                extra_env=extra_env,
+                label="Pandora", game=launch_game, owner=owner)
+        else:
+            rc = run_tool_logged(proton_script, exe, env, log_fn=log_fn,
+                                 extra_args=[game_arg] if game_arg else None,
+                                 label="Pandora", game=launch_game, owner=owner)
+    finally:
+        # In finally: a tool that crashed is exactly when Proton sidecars are
+        # most likely to be left holding the prefix.
+        shutdown_prefix_wineserver(proton_script, compat_data, log_fn=log_fn)
+    log_fn(f"Pandora exited (code {rc}).")
+    return rc

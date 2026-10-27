@@ -7,7 +7,7 @@ arch=('x86_64')
 url="https://github.com/dodo986"
 license=('GPL-3.0-or-later')
 depends=()
-makedepends=('go')
+makedepends=('go' 'rust' 'cc')
 optdepends=('quickshell: the UI runtime (qs)'
             'ryoku-desktop: the Ryoku.Ui QML module the UI is themed with'
             'umu-launcher: run Proton games through umu'
@@ -17,13 +17,15 @@ optdepends=('quickshell: the UI runtime (qs)'
             'nile: Amazon Games store engine'
             'comet: GOG achievements overlay (no package; build from source)'
             'p7zip: extracting OptiScaler releases'
-            'steam: launching Steam library games (always through Steam)')
+            'steam: launching Steam library games (always through Steam)'
+            'python: drive the Amethyst modding backend (Mods page)')
 source=()
 _repo="$startdir/.."
 build() {
   cd "$_repo"
   CGO_ENABLED=0 go build -trimpath -mod=vendor -o "$srcdir/hikarid" ./cmd/hikarid
   CGO_ENABLED=0 go build -trimpath -mod=vendor -o "$srcdir/hikari" ./cmd/hikari
+  "$_repo/scripts/build-backend.sh" "$srcdir/amethyst_filegraph.abi3.so"
 }
 package() {
   install -Dm755 "$srcdir/hikarid" "$pkgdir/usr/bin/hikarid"
@@ -36,6 +38,8 @@ package() {
     "$pkgdir/usr/share/applications/hikari.desktop"
   install -Dm644 "$_repo/packaging/hikari.svg" \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/hikari.svg"
+  install -Dm755 "$srcdir/amethyst_filegraph.abi3.so" \
+    "$pkgdir/usr/lib/hikari/amethyst_filegraph.abi3.so"
   install -d "$pkgdir/etc/xdg/quickshell/hikari"
   cp -r "$_repo"/quickshell/. "$pkgdir/etc/xdg/quickshell/hikari/"
   install -Dm644 "$_repo/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

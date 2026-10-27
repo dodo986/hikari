@@ -8,6 +8,7 @@ mkdir -p "$bin" "$config/quickshell"
 for f in hikarid hikari hikari-app hikari-update; do
 	install -m755 "$here/$f" "$bin/$f"
 done
+install -Dm755 "$here/amethyst_filegraph.abi3.so" "$data/hikari/amethyst_filegraph.abi3.so"
 rm -rf "$config/quickshell/hikari"
 cp -a "$here/quickshell" "$config/quickshell/hikari"
 install -Dm644 "$here/hikari.svg" "$data/icons/hicolor/scalable/apps/hikari.svg"
@@ -20,6 +21,7 @@ fi
 cat <<MSG
 installed $( "$bin/hikarid" --version )
   $bin/hikarid, $bin/hikari, $bin/hikari-app, $bin/hikari-update
+  $data/hikari/amethyst_filegraph.abi3.so (the mods catalog extension)
   $config/quickshell/hikari
   $data/applications/hikari.desktop
 

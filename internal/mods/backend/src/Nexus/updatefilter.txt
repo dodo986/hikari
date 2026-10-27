@@ -1,0 +1,50 @@
+#Used to filter false positives in missing requirements by modid. Often mods have requirements of external tools or redundant mods that are picked up by the update checker, this filters them out.
+#Ids separated by # makes the script check for other mods first for example 33746#92109 Dynamic animation replacer is satisfied if Open animation replacer is installed
+#Ids separated by > swap a requirement for a different mod, for example 60033>133232 reports Pandora instead of Nemesis (which does not run under Proton). An optional |Name after the id sets the name shown until the mod page is read.
+#This list is saved to .config and can be added to manually. The saved list is appended to with updates so no redownloading of the mod manager is required
+
+skyrimspecialedition:30379
+skyrimspecialedition:120946
+skyrimspecialedition:58101
+skyrimspecialedition:62089
+skyrimspecialedition:135822
+skyrimspecialedition:33746#92109
+skyrimspecialedition:30457
+skyrimspecialedition:201
+skyrimspecialedition:106441
+skyrimspecialedition:60033#133232
+skyrimspecialedition:60033>133232|Pandora Behaviour Engine+
+skyrimspecialedition:59596
+# Core/Depracated Community shaders mods
+skyrimspecialedition:99548
+skyrimspecialedition:153542
+skyrimspecialedition:139185
+skyrimspecialedition:153543
+
+fallout4:2737
+fallout4:42147
+fallout4:42159
+oblivion:37952
+newvegas:67883
+starfield:106
+stardewvalley:2400
+subnautica:1108
+subnautica:16
+subnautica:201
+subnauticabelowzero:344
+subnautica2:34
+baldursgate3:141
+dragonage:971
+devilmaycry5:64
+dragonsdogma2:1
+residentevil42023:14
+residentevil22019:119
+residentevil32020:8
+residentevilvillage:18
+streetfighter6:14
+mechwarrior5mercenaries:592#1109
+mechwarrior5mercenaries:592>1109|Yet Another Equipment Collection Revived
+
+#Hades mod importer - Built into the manager
+hades:26
+hades2:1

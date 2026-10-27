@@ -1,0 +1,870 @@
+"""
+witcher_3.py
+Game handler for The Witcher 3: Wild Hunt.
+
+Mod structure and routing
+--------------------------
+Mods ship in the format  <modname>/content/…
+The first path segment (<modname>) determines the game-root destination.
+Routing is applied at *deploy time*, not install time:
+
+  modname starts with "mod" (case-insensitive)
+      → deployed under  <game_root>/mods/<modname>/…
+        e.g. modBetterElvesAllInOne/content/foo.xml
+             → <game>/mods/modBetterElvesAllInOne/content/foo.xml
+
+  modname starts with "dlc" (case-insensitive)
+      → deployed under  <game_root>/dlc/<modname>/…
+        e.g. dlcBetterElvesAllInOne/content/foo.xml
+             → <game>/dlc/dlcBetterElvesAllInOne/content/foo.xml
+
+  First segment is "bin" (or any other unrecognised name)
+      → deployed directly at  <game_root>/<path>
+
+Mods with no mod*/dlc*/bin structure are installed as-is and land at the
+game root (mod_install_as_is_if_no_match = True).
+
+Deploy writes a manifest (tw3_deployed.txt) so restore() knows exactly
+what to remove.  Vanilla files displaced by mods are backed up in
+Amethyst_vanilla_files/ and moved back on restore.
+"""
+
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+from Games.base_game import BaseGame
+from Utils.vfs import ProfileVFSGameMixin
+from Utils.deployment import LinkMode, cleanup_custom_deploy_dirs, load_per_mod_strip_prefixes, load_separator_deploy_paths, expand_separator_deploy_paths, expand_separator_raw_deploy, _resolve_nocase, _resolve_root_path, _write_deploy_snapshot, _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
+from Utils.mods.modlist import ensure_mod_preserving_position, read_modlist
+from Utils.config_paths import get_profiles_dir
+from Utils.witcher3.menu_filelists import update_menu_filelists
+
+_PROFILES_DIR = get_profiles_dir()
+
+# Manifest written next to filemap.txt so restore knows exactly what to remove
+_DEPLOYED_MANIFEST = "tw3_deployed.txt"
+
+# Vanilla files displaced by mod files are backed up here (inside the game root)
+_VANILLA_BACKUP_DIR = "Amethyst_vanilla_files"
+
+
+def _merge_tree_into(src: Path, dest: Path) -> int:
+    """Recursively copy every file under *src* into *dest*, overwriting on
+    collision and keeping *dest*-only files.  Returns the number of files
+    copied.  Used to rescue Script Merger output into the staged Merged_Mods
+    mod without discarding merges made in earlier sessions.
+    """
+    copied = 0
+    for entry in src.rglob("*"):
+        if not entry.is_file():
+            continue
+        target = dest / entry.relative_to(src)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() and entry.samefile(target):
+            continue
+        shutil.copy2(entry, target)
+        copied += 1
+    return copied
+
+
+# ---------------------------------------------------------------------------
+# Routing helper
+# ---------------------------------------------------------------------------
+
+_CONTAINER_SEGMENTS = {"mods": "mods", "dlc": "dlc", "dlcs": "dlc"}
+
+
+def _route_path(staged_rel: str) -> tuple[str, str]:
+    """Prefer explicit game folders over archive-wrapper naming guesses."""
+    norm     = staged_rel.replace("\\", "/")
+    segments = norm.split("/")
+
+    directories = [segment.lower() for segment in segments[:-1]]
+    if "content" in directories:
+        directories = directories[:directories.index("content")]
+    for i, low in enumerate(directories):
+        if low == "bin":
+            return "", "/".join(segments[i:])
+        if low in _CONTAINER_SEGMENTS:
+            return _CONTAINER_SEGMENTS[low], "/".join(segments[i + 1:])
+
+    for i in reversed(range(len(directories))):
+        low = directories[i]
+        if low.startswith("mod"):
+            return "mods", "/".join(segments[i:])
+        if low.startswith("dlc"):
+            return "dlc", "/".join(segments[i:])
+
+    # No recognised folder found - deploy to game root as-is
+    return "", norm
+
+
+# ---------------------------------------------------------------------------
+# Game handler
+# ---------------------------------------------------------------------------
+
+class Witcher3(ProfileVFSGameMixin, BaseGame):
+    filegraph_routing_revision = 1
+    post_deploy_failure_is_fatal = True
+    profile_overridable_paths_extras = (*BaseGame.profile_overridable_paths_extras, "profile_ini_files")
+
+    profile_overridable_settings = (
+        *BaseGame.profile_overridable_settings,
+        *ProfileVFSGameMixin.vfs_profile_setting_keys,
+        "preserve_mod_load_order",
+    )
+
+    @staticmethod
+    def filegraph_route_path(staged_rel: str) -> tuple[str, str]:
+        """Canonical conflict/deployment route used during candidate build."""
+        return _route_path(staged_rel)
+
+    @property
+    def vortex_mod_types(self) -> dict:
+        return {
+            "witcher3menumodroot": {"dest": ""},
+            "witcher3tl": {"dest": ""},
+            "w3modlimitpatcher": {"dest": ""},
+            "witcher3dlc": {"dest": "DLC"},
+            "witcher3menumoddocuments": {
+                "dest": "drive_c/users/steamuser/Documents/The Witcher 3",
+                "to_prefix": True,
+            },
+        }
+
+    def __init__(self):
+        self._game_path: Path | None = None
+        self._prefix_path: Path | None = None
+        self._deploy_mode: LinkMode = LinkMode.HARDLINK
+        self._staging_path: Path | None = None
+        self.load_paths()
+
+    # -----------------------------------------------------------------------
+    # Identity
+    # -----------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        return "The Witcher 3"
+
+    @property
+    def game_id(self) -> str:
+        return "witcher_3"
+
+    @property
+    def exe_name(self) -> str:
+        return "bin/x64_dx12/witcher3.exe"
+
+    @property
+    def exe_name_alts(self) -> list[str]:
+        return ["bin/x64/witcher3.exe"]
+
+    @property
+    def steam_id(self) -> str:
+        return "292030"
+
+    @property
+    def alt_steam_ids(self) -> list[str]:
+        return ["499450"]  # The Witcher 3: Wild Hunt – Game of the Year Edition
+
+    @property
+    def conflict_ignore_filenames(self) -> set[str]:
+        return {"info.xml","*read*.txt","*.md","*.url","*.zip"}
+
+    @property
+    def nexus_game_domain(self) -> str:
+        return "witcher3"
+
+    @property
+    def mod_install_prefix(self) -> str:
+        """No install-time prefix - routing is resolved at deploy time."""
+        return ""
+
+    @property
+    def mod_install_as_is_if_no_match(self) -> bool:
+        """Install mods with any structure; deploy-time routing handles placement."""
+        return True
+
+    @property
+    def reshade_dll(self) -> str:
+        return "dxgi.dll"
+
+    def reshade_install_subdir(self, game_path: Path) -> Path:
+        from Utils.executables.launch import resolve_game_exe
+        executable = resolve_game_exe(self)
+        return (executable.relative_to(game_path).parent if executable
+                else Path(self.exe_name).parent)
+    
+    @property
+    def filemap_casing(self) -> str:
+        return "lower"
+
+    # -----------------------------------------------------------------------
+    # Paths
+    # -----------------------------------------------------------------------
+
+    def get_game_path(self) -> Path | None:
+        return self._game_path
+
+    def get_mod_data_path(self) -> Path | None:
+        """Mods deploy into the game root (mods/, dlc/, bin/, etc.)."""
+        return self._game_path
+
+    def get_mod_staging_path(self) -> Path:
+        if self._staging_path is not None:
+            return self._staging_path / "mods"
+        return _PROFILES_DIR / self.name / "mods"
+
+    def set_staging_path(self, path: "Path | str | None") -> None:
+        self._staging_path = Path(path) if path else None
+        self.save_paths()
+
+    def get_prefix_path(self) -> Path | None:
+        return self._prefix_path
+
+    def get_deploy_mode(self) -> LinkMode:
+        return self._deploy_mode
+
+    def set_deploy_mode(self, mode: LinkMode) -> None:
+        self._deploy_mode = mode
+        self.save_paths()
+
+    def set_prefix_path(self, path: Path | str | None) -> None:
+        self._prefix_path = Path(path) if path else None
+        self.save_paths()
+
+    # -----------------------------------------------------------------------
+    # Wizard tools
+    # -----------------------------------------------------------------------
+
+    @property
+    def wizard_tools(self):
+        from Games.base_game import WizardTool
+        return self._base_wizard_tools() + [
+            WizardTool(
+                id="run_script_merger",
+                label="Run Script Merger",
+                description="Deploy mods, install Script Merger, and run WitcherScriptMerger.exe.",
+                dialog_class_path="wizards.script_merger_tw3.ScriptMergerWizard",
+            ),
+        ]
+
+    # -----------------------------------------------------------------------
+    # Deployment
+    # -----------------------------------------------------------------------
+
+    def deploy(self, log_fn=None, mode: LinkMode = LinkMode.HARDLINK,
+               profile: str = "default", progress_fn=None) -> None:
+        """Deploy staged mods into their correct game-root subdirectories.
+
+        Each staged filemap entry is routed by _route_path():
+          mod*  → <game_root>/mods/<path>
+          dlc*  → <game_root>/dlc/<path>
+          bin/  → <game_root>/bin/<path>
+          other → <game_root>/<path>
+
+        Vanilla files displaced by mods are backed up in Amethyst_vanilla_files/
+        so restore() can put them back.  Every placed file is recorded in
+        tw3_deployed.txt (next to filemap.txt).
+        """
+        _log = log_fn or (lambda _: None)
+
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+
+        game_path = self._game_path
+        filemap   = self.get_effective_filemap_path()
+        staging   = self.get_effective_mod_staging_path()
+
+        from Utils.filegraph.deploy import input_ready
+        if not input_ready():
+            raise RuntimeError(
+                f"filemap.txt not found: {filemap}\n"
+                "Run 'Build Filemap' before deploying."
+            )
+
+        if self.vfs_launch_enabled:
+            return self._deploy_vfs(
+                profile=profile,
+                filemap=filemap,
+                staging=staging,
+                log_fn=_log,
+                progress_fn=progress_fn,
+            )
+
+        custom_exclude = self._deploy_custom_routing_rules(mode, log_fn)
+
+        profile_dir        = self.get_profile_root() / "profiles" / profile
+        per_mod_strip      = load_per_mod_strip_prefixes(profile_dir)
+        _sep_deploy = load_separator_deploy_paths(profile_dir)
+        _sep_entries = read_modlist(profile_dir / "modlist.txt") if _sep_deploy else []
+        per_mod_deploy = expand_separator_deploy_paths(_sep_deploy, _sep_entries)
+        per_mod_raw = expand_separator_raw_deploy(_sep_deploy, _sep_entries)
+        overwrite_dir      = staging.parent / "overwrite"
+        vanilla_backup_dir = game_path / _VANILLA_BACKUP_DIR
+
+        # Load any existing manifest so we can distinguish previously-deployed
+        # mod files (hardlinks that look like regular files) from real vanilla
+        # files.  Without this, a re-deploy without a prior restore would
+        # incorrectly back up its own hardlinks as "vanilla files".
+        manifest_path = self.get_profile_root() / _DEPLOYED_MANIFEST
+        _already_deployed: set[str] = set()
+        if manifest_path.is_file():
+            try:
+                _already_deployed = {
+                    ln.strip().lower()
+                    for ln in manifest_path.read_text(encoding="utf-8").splitlines()
+                    if ln.strip()
+                }
+            except OSError:
+                pass
+
+        manifest:  list[str] = []
+        linked    = 0
+        skipped   = 0
+        backed_up = 0
+        nocase_cache: dict[Path, dict[str, list[Path]]] = {}
+        _dst_dir_cache: dict[str, dict[str, "str | list[str]"]] = {}
+        # Track files placed in THIS deploy run so that duplicate filemap
+        # entries routing to the same destination don't back each other up.
+        # (e.g. Full/mods/modBrutalBlood/… and Lite/mods/modBrutalBlood/…
+        # both route to mods/modBrutalBlood/… - the second placement must not
+        # treat the first hardlink as a vanilla file.)
+        _placed_this_run: set[str] = set()
+
+        from Utils.filegraph.deploy import entries as filegraph_entries, legacy_lines
+        lines = list(legacy_lines())
+        filegraph_sources = {
+            (entry.legacy_rel.lower(), entry.mod_name): entry.source_path
+            for entry in filegraph_entries()
+            if entry.legacy_rel and entry.source_path is not None
+        }
+        total = len(lines)
+
+        for i, line in enumerate(lines):
+            staged_rel, mod_name = line.split("\t", 1)
+            if staged_rel.lower() in custom_exclude:
+                if progress_fn:
+                    progress_fn(i + 1, total)
+                continue
+
+            base_dir = per_mod_deploy.get(mod_name, game_path)
+            in_custom_dir = base_dir != game_path
+
+            if mod_name in per_mod_raw:
+                # Raw deploy: skip routing rules, place file as-is
+                final_rel = staged_rel.replace("\\", "/")
+                dest_dir  = base_dir
+                dest_file = dest_dir / final_rel
+            else:
+                dest_prefix, final_rel = _route_path(staged_rel)
+                dest_dir  = (base_dir / dest_prefix) if dest_prefix else base_dir
+                dest_file = dest_dir / final_rel
+
+            src = filegraph_sources.get((staged_rel.lower(), mod_name))
+            if src is None:
+                _log(f"  WARN: source not found for {staged_rel} ({mod_name})")
+                skipped += 1
+                if progress_fn:
+                    progress_fn(i + 1, total)
+                continue
+
+            try:
+                # Full case-insensitive resolution from the game root so that
+                # intermediate directories with different casing
+                # (e.g. the mod stages "Content/" but "content/" already
+                # exists on disk) are matched at every path segment, not just
+                # at the filename level.
+                if in_custom_dir:
+                    actual_dest = dest_file
+                else:
+                    rel_from_game = dest_file.relative_to(game_path)
+                    actual_dest = _resolve_root_path(
+                        game_path, rel_from_game, dir_cache=_dst_dir_cache
+                    )
+
+                # If this logical destination was already placed in this deploy
+                # run, skip it entirely - a later same-dest entry (e.g. a
+                # lowercase "content/" folder that's the mod-author's vanilla
+                # backup sitting next to an uppercase "Content/" mod folder)
+                # must NOT overwrite the already-placed modded file.
+                # Do this BEFORE mkdir so the duplicate-cased directory is
+                # never created in the game folder.
+                # For custom-dir files use the absolute path as the dedup key.
+                if in_custom_dir:
+                    game_rel_lower = str(actual_dest).lower()
+                else:
+                    game_rel       = actual_dest.relative_to(game_path)
+                    game_rel_lower = game_rel.as_posix().lower()
+                if game_rel_lower in _placed_this_run:
+                    skipped += 1
+                    if progress_fn:
+                        progress_fn(i + 1, total)
+                    continue
+
+                # Place at actual_dest (existing on-disk casing) so we don't
+                # create a duplicate-cased sibling directory.
+                actual_dest.parent.mkdir(parents=True, exist_ok=True)
+
+                # Back up any real vanilla file before overwriting it.
+                # Skip if:
+                #  - it's a symlink (our own previous deploy)
+                #  - it's already listed in the prior manifest (previous deploy
+                #    that wasn't restored - hardlinks look like regular files)
+                #  - its inode matches the source (hardlink from a previous
+                #    deploy not captured by the manifest)
+                if actual_dest.is_file() and not actual_dest.is_symlink() and not in_custom_dir:
+                    if game_rel_lower not in _already_deployed:
+                        try:
+                            is_our_hardlink = (
+                                actual_dest.stat().st_ino == src.stat().st_ino
+                            )
+                        except OSError:
+                            is_our_hardlink = False
+                        if not is_our_hardlink:
+                            backup_target = vanilla_backup_dir / game_rel
+                            if not backup_target.exists():
+                                backup_target.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(actual_dest, backup_target)
+                                backed_up += 1
+
+                if actual_dest.exists() or actual_dest.is_symlink():
+                    actual_dest.unlink()
+
+                if mode == LinkMode.SYMLINK:
+                    actual_dest.symlink_to(src)
+                elif mode == LinkMode.COPY:
+                    shutil.copy2(src, actual_dest)
+                else:
+                    try:
+                        actual_dest.hardlink_to(src)
+                    except (OSError, NotImplementedError):
+                        shutil.copy2(src, actual_dest)
+
+                # Record in manifest: absolute path for custom dirs, game-root-relative otherwise
+                if in_custom_dir:
+                    manifest.append(str(actual_dest))
+                else:
+                    game_file_rel = actual_dest.relative_to(game_path).as_posix()
+                    manifest.append(game_file_rel)
+                _placed_this_run.add(game_rel_lower)
+                linked += 1
+            except OSError as exc:
+                _log(f"  ERROR placing {final_rel}: {exc}")
+                skipped += 1
+
+            if progress_fn:
+                progress_fn(i + 1, total)
+
+        # Write manifest so restore() knows exactly what to remove
+        manifest_path = self.get_profile_root() / _DEPLOYED_MANIFEST
+        manifest_path.write_text("\n".join(manifest), encoding="utf-8")
+
+        backed_msg = f", {backed_up} vanilla file(s) backed up" if backed_up else ""
+        _log(f"Deploy complete. {linked} file(s) placed{backed_msg}, {skipped} skipped.")
+
+        # Snapshot game root so restore can identify runtime-generated files.
+        snapshot_path = self.get_profile_root() / _FILEMAP_SNAPSHOT_NAME
+        try:
+            _write_deploy_snapshot(game_path, snapshot_path, log_fn=_log)
+        except Exception as exc:
+            _log(f"  WARN: could not write deploy snapshot: {exc}")
+
+        update_menu_filelists(game_path, log_fn=_log)
+        self._symlink_profile_ini_files(profile, _log)
+
+    def _symlink_profile_ini_files(self, profile, log_fn):
+        from Utils.wabbajack.profile_config import link_settings
+        link_settings(self, profile, log_fn)
+
+    def _remove_profile_ini_symlinks(self, profile, log_fn):
+        from Utils.wabbajack.profile_config import restore_settings
+        if (self.get_profile_root() / "wabbajack-settings-links.json").is_file():
+            restore_settings(self, log_fn)
+
+    @property
+    def preserve_mod_load_order(self) -> bool:
+        return bool(self._load_settings().get("preserve_mod_load_order", True))
+
+    @preserve_mod_load_order.setter
+    def preserve_mod_load_order(self, value: bool) -> None:
+        data = self._load_settings()
+        data["preserve_mod_load_order"] = bool(value)
+        self._save_settings(data)
+
+    def post_deploy(self, log_fn=None) -> None:
+        from Utils.witcher3.load_order import sync_mod_settings
+        sync_mod_settings(self, log_fn=log_fn)
+
+    def _find_staged_file(
+        self,
+        staging: Path,
+        mod_name: str,
+        staged_rel: str,
+        mod_strips: list[str],
+        overwrite_dir: Path,
+        cache: dict,
+    ) -> Path | None:
+        """Locate the physical source file for a filemap entry.
+
+        The filemap stores *routed* paths (e.g. ``mods/modFoo/content/x``)
+        rather than raw staging paths.  We therefore have to reverse the
+        routing to find the file in staging:
+
+          1. Overwrite dir - check first, always wins.
+          2. Direct match under staging/<mod>/  (handles mods whose archive
+             already has the right structure, e.g. mods/modFoo/content/…).
+          3. Strip leading dest-prefix ("mods/", "dlc/") and try again -
+             covers mods where the archive root IS the mod-name folder,
+             e.g. staging contains modFoo/content/… directly.
+          4. One-level deep search in staging/<mod>/ - covers mods whose
+             archive wraps the mod-name folder in an extra directory,
+             e.g. TrueFires_v1.01_part_1/modFoo/content/…
+          5. Per-mod strip prefixes (user-configured overrides).
+        """
+        ow = overwrite_dir / staged_rel
+        if ow.is_file():
+            return ow
+
+        mod_root = staging / mod_name
+        norm     = staged_rel.replace("\\", "/")
+
+        # 2. Direct match (handles archives already structured as mods/modFoo/…)
+        src = _resolve_nocase(mod_root, norm, cache=cache)
+        if src is not None:
+            return src
+
+        # 3. Strip leading dest-prefix and try again
+        inner = norm
+        for dest_prefix in ("mods/", "dlc/"):
+            if norm.lower().startswith(dest_prefix):
+                inner = norm[len(dest_prefix):]
+                break
+        if inner != norm:
+            src = _resolve_nocase(mod_root, inner, cache=cache)
+            if src is not None:
+                return src
+
+        # 4. One-level deep scan - the archive may have an extra wrapper folder
+        #    (e.g. TrueFires_v1.01_part_1/, Full/, Lite/) between the staging
+        #    root and the mod content.  Try both:
+        #      a) inner (dest-prefix stripped) - e.g. modFoo/content/x inside Full/
+        #      b) norm  (full routed path)     - e.g. mods/modFoo/content/x inside Full/
+        #    The second form handles archives like Full/mods/modFoo/content/x
+        #    where the mods/ container is inside the wrapper directory.
+        try:
+            for sub in mod_root.iterdir():
+                if sub.is_dir():
+                    src = _resolve_nocase(sub, inner, cache=cache)
+                    if src is not None:
+                        return src
+                    if inner != norm:
+                        src = _resolve_nocase(sub, norm, cache=cache)
+                        if src is not None:
+                            return src
+        except OSError:
+            pass
+
+        # 5. Per-mod strip prefixes (user-configured ignore folders)
+        for prefix in sorted(mod_strips, key=len, reverse=True):
+            src = _resolve_nocase(mod_root, prefix + "/" + norm, cache=cache)
+            if src is not None:
+                return src
+
+        return None
+
+    def _vfs_resolve_staged_file(
+        self, *, staging_root: Path, mod_name: str, relative: str,
+        strip_prefixes: list[str], overwrite_dir: Path, cache: dict,
+    ) -> Path | None:
+        """Reverse Witcher's displayed deploy route back into staging."""
+        return self._find_staged_file(
+            staging_root,
+            mod_name,
+            relative,
+            strip_prefixes,
+            overwrite_dir,
+            cache,
+        )
+
+    def _vfs_pre_root_payload_build(self, *, view_root: Path, profile: str,
+                                    filemap: Path, staging: Path,
+                                    log_fn) -> None:
+        """Generate Next-Gen menu metadata only in the private game view."""
+        update_menu_filelists(view_root, log_fn=log_fn)
+
+    # -----------------------------------------------------------------------
+    # Filemap post-processing
+    # -----------------------------------------------------------------------
+
+    def post_build_filemap(self, filemap_path: Path, staging_path: Path) -> None:
+        """Rewrite filemap.txt so every path reflects the deployed game-root
+        structure rather than the raw staging structure.
+
+        Staging paths such as  ``TrueFires_v1.01_part_1/modTrueFires/content/x``
+        become the routed paths  ``mods/modTrueFires/content/x``  by applying
+        ``_route_path`` to each line.  This makes the treeview and conflict
+        display match the actual layout of the game root.
+
+        Mods with "ignore deployment rules" set are left as-is since their
+        staged paths are already their final destinations.
+        """
+        # Kept as a compatibility hook for callers outside this branch. The
+        # filegraph adapter applies `_route_path` before conflict/deploy
+        # identities are published, so runtime map rewriting is obsolete.
+        return None
+
+    # -----------------------------------------------------------------------
+    # Restore
+    # -----------------------------------------------------------------------
+
+    def merged_mods_staging_dir(self) -> Path:
+        """Staging folder of the Merged_Mods mod that preserves Script Merger
+        output (and its MergeInventory.xml snapshot) across restores.
+        Lives in the profile when it uses profile-specific mods, otherwise
+        in the shared mods folder.
+        """
+        profile_specific = False
+        if self._active_profile_dir is not None:
+            try:
+                from Utils.profiles.state import profile_uses_specific_mods
+                profile_specific = profile_uses_specific_mods(self._active_profile_dir)
+            except Exception:
+                pass
+
+        if profile_specific:
+            merged_base = self._active_profile_dir
+        else:
+            merged_base = self.get_profile_root()
+        return merged_base / "mods" / "Merged_Mods"
+
+    def _invalidate_merged_mods_index(self, log_fn=None) -> None:
+        """Re-scan the Merged_Mods mod into modindex.bin after its file set
+        changed on disk, so the next build_filemap deploys the FULL merge set
+        rather than the previously-cached subset.
+        """
+        _log = log_fn or (lambda _: None)
+        try:
+            from Utils.mods.install_as_mod import index_installed_mod
+            index_installed_mod(self, "Merged_Mods", log_fn=_log)
+        except Exception as exc:
+            _log(f"WARN: could not re-index Merged_Mods: {exc}")
+
+    def _enable_merged_mods(self, *, preserve_existing_state: bool = False) -> None:
+        from Utils.deployment.shared import RestoreIncompleteError
+
+        profile = self._active_profile_dir or self.get_profile_root() / "profiles/default"
+        modlist = profile / "modlist.txt"
+        try:
+            ensure_mod_preserving_position(
+                modlist, "Merged_Mods", enabled=True,
+                preserve_existing_state=preserve_existing_state)
+        except OSError as exc:
+            raise RestoreIncompleteError(
+                f"Could not enable rescued Script Merger output in {modlist}: {exc}"
+            ) from exc
+
+    def prepare_mod_staging(self, staging: Path, log_fn=None) -> bool:
+        from Utils.profiles.state import profile_uses_specific_mods
+
+        profile = self._active_profile_dir
+        if profile is None or not profile_uses_specific_mods(profile):
+            return False
+        if any(entry.name == "Merged_Mods"
+               for entry in read_modlist(profile / "modlist.txt")):
+            return False
+        merged_dir = staging / "Merged_Mods" / "mods"
+        if not merged_dir.is_dir():
+            return False
+        if not any(path.is_file()
+                   for folder in merged_dir.iterdir()
+                   if folder.is_dir() and "_mergedfiles" in folder.name.casefold()
+                   for path in folder.rglob("*")):
+            return False
+        self._enable_merged_mods(preserve_existing_state=True)
+        if log_fn:
+            log_fn("Recovered unlisted Script Merger output as Merged_Mods.")
+        return True
+
+    def _rescue_merged_files(self, game_root: Path, log_fn=None) -> int:
+        """Merge Script Merger output into the staged Merged_Mods mod.
+
+        ``game_root`` may be either the physical install or a published VFS
+        view. Removal is intentionally strict: if copied output cannot be
+        removed from the view, Restore aborts before generic VFS cleanup can
+        capture a second copy into Overwrite or discard the only copy.
+        """
+        _log = log_fn or (lambda _: None)
+        mods_dir = game_root / "mods"
+        if not mods_dir.is_dir():
+            return 0
+
+        merged_dir = self.merged_mods_staging_dir() / "mods"
+        merged_changed = False
+        rescued_total = 0
+        for folder in mods_dir.iterdir():
+            if not folder.is_dir() or "_mergedfiles" not in folder.name.lower():
+                continue
+            dest = merged_dir / folder.name
+            rescued = _merge_tree_into(folder, dest)
+            if not merged_changed:
+                self._enable_merged_mods()
+            shutil.rmtree(folder)
+            merged_changed = True
+            rescued_total += rescued
+            _log(f"Rescued {rescued} merged file(s) from "
+                 f"'{folder.name}' into {merged_dir}.")
+
+        if merged_changed:
+            self._invalidate_merged_mods_index(log_fn=_log)
+        return rescued_total
+
+    def capture_script_merger_output(self, log_fn=None) -> int:
+        from Utils.vfs import effective_tool_game_root
+        return self._rescue_merged_files(
+            effective_tool_game_root(self), log_fn=log_fn)
+
+    def restore(self, log_fn=None, progress_fn=None) -> None:
+        """Remove every deployed mod file, restore displaced vanilla files,
+        prune empty directories, and preserve _MergedFiles folders.
+        """
+        _log = log_fn or (lambda _: None)
+
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+
+        self._restore_custom_routing_rules(log_fn)
+
+        game_path     = self._game_path
+        manifest_path = self.get_profile_root() / _DEPLOYED_MANIFEST
+        from Utils.witcher3.load_order import restore_mod_settings
+        restore_mod_settings(self, log_fn=_log)
+        self._remove_profile_ini_symlinks("", _log)
+
+        # Separator targets outside the install remain physical under the
+        # generic VFS builder and have their own transactional journal.
+        profile_dir = self._active_profile_dir
+        entries = (
+            read_modlist(profile_dir / "modlist.txt")
+            if profile_dir is not None else []
+        )
+        cleanup_custom_deploy_dirs(
+            profile_dir, entries, log_fn=_log,
+            filemap_path=self.get_effective_filemap_path(),
+            game=self,
+        )
+
+        # Restore follows the deployment state that exists, not today's VFS
+        # toggle. Script Merger writes into the bound private view, so rescue
+        # its output before shared cleanup removes that view.
+        from Utils.vfs import (
+            cleanup_deployment,
+            effective_shadow_root,
+            has_deployment_state,
+            manifest_path as vfs_manifest_path,
+        )
+        if has_deployment_state(self):
+            if vfs_manifest_path(self).is_file():
+                try:
+                    view_root = effective_shadow_root(self)
+                except RuntimeError as exc:
+                    _log(f"  WARN: could not inspect Witcher VFS view: {exc}")
+                else:
+                    _log("Restore: preserving Script Merger output from the "
+                         "private game view ...")
+                    self._rescue_merged_files(view_root, log_fn=_log)
+            cleanup_deployment(self, preserve_upper=True, log_fn=_log)
+            physical_state = (
+                manifest_path.is_file()
+                or (game_path / _VANILLA_BACKUP_DIR).exists()
+            )
+            if not physical_state:
+                _log("Restore complete.")
+                return
+            _log("Restore: a physical deployment also remains; restoring it now ...")
+
+        if not manifest_path.is_file():
+            _log("Restore: no deployed manifest found - nothing to remove.")
+        else:
+            lines = [
+                ln.strip()
+                for ln in manifest_path.read_text(encoding="utf-8").splitlines()
+                if ln.strip()
+            ]
+            removed = 0
+            dirs_to_check: set[Path] = set()
+
+            for rel in lines:
+                # Absolute paths are custom-dir files; relative paths are game-root-relative
+                is_abs = Path(rel).is_absolute()
+                target = Path(rel) if is_abs else game_path / rel
+                if not is_abs:
+                    p = target.parent
+                    while p != game_path and p.is_relative_to(game_path):
+                        dirs_to_check.add(p)
+                        p = p.parent
+                if target.is_file() or target.is_symlink():
+                    try:
+                        target.unlink()
+                        removed += 1
+                        if is_abs:
+                            dirs_to_check.add(target.parent)
+                    except OSError as exc:
+                        _log(f"  WARN: could not remove {rel}: {exc}")
+
+            # Restore vanilla files that were displaced during deploy
+            vanilla_backup_dir = game_path / _VANILLA_BACKUP_DIR
+            restored_vanilla = 0
+            if vanilla_backup_dir.is_dir():
+                for backup_file in vanilla_backup_dir.rglob("*"):
+                    if not backup_file.is_file():
+                        continue
+                    rel  = backup_file.relative_to(vanilla_backup_dir)
+                    dest = game_path / rel
+                    try:
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(backup_file), dest)
+                        restored_vanilla += 1
+                    except OSError as exc:
+                        _log(f"  WARN: could not restore vanilla {rel}: {exc}")
+                try:
+                    shutil.rmtree(vanilla_backup_dir)
+                except OSError as exc:
+                    _log(f"  WARN: could not remove vanilla backup dir: {exc}")
+
+            # Prune directories that became empty, deepest first
+            for d in sorted(dirs_to_check, key=lambda p: len(p.parts), reverse=True):
+                try:
+                    if d.is_dir() and not any(d.iterdir()):
+                        d.rmdir()
+                except OSError:
+                    pass
+
+            manifest_path.unlink(missing_ok=True)
+            vanilla_msg = (
+                f", {restored_vanilla} vanilla file(s) restored"
+                if restored_vanilla else ""
+            )
+            _log(f"Restore complete. {removed} file(s) removed{vanilla_msg}.")
+
+        # Physical Script Merger runs use the same preservation path.
+        self._rescue_merged_files(game_path, log_fn=_log)
+
+        # Move runtime-generated files to overwrite/ so they persist across
+        # redeploys.  Runs after _MergedFiles preservation so those folders
+        # are already gone from the game root and won't be duplicated.
+        snapshot_path = self.get_profile_root() / _FILEMAP_SNAPSHOT_NAME
+        if snapshot_path.is_file():
+            overwrite_dir = self.get_effective_mod_staging_path().parent / "overwrite"
+            _log("  Scanning game root for runtime-generated files ...")
+            moved = _move_runtime_files(game_path, snapshot_path, overwrite_dir, log_fn=_log,
+                                        restore_whitelist=self.restore_whitelist_matcher())
+            _log(f"  Moved {moved} runtime-generated file(s) to overwrite/.")
+            try:
+                snapshot_path.unlink()
+            except OSError:
+                pass
+
+        update_menu_filelists(game_path, log_fn=_log)

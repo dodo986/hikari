@@ -1,0 +1,766 @@
+"""
+cyberpunk_2077.py
+Game handler for Cyberpunk 2077.
+
+Mod structure:
+  Mods install directly into the game root (archive/, bin/, r6/, red4ext/, etc.)
+  Staged mods live in Profiles/Cyberpunk 2077/mods/
+
+Archive load order:
+  REDengine loads archive/pc/mod ASCII-alphabetically and the FIRST loaded
+  archive wins conflicts (opposite of Bethesda).  An optional modlist.txt in
+  that folder overrides the alphabetical order. Generating it from profile
+  priority is opt-in; existing custom files are preserved.
+"""
+
+import os
+import shutil
+from pathlib import Path
+
+from Games.base_game import BaseGame, MODERN_DIRECTX_DEPS
+from Utils.vfs import ProfileVFSGameMixin
+from Utils.deployment import (
+    CustomRule,
+    LinkMode,
+    deploy_custom_rules,
+    deploy_filemap_to_root,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+    expand_separator_deploy_paths,
+    expand_separator_link_modes,
+    expand_separator_raw_deploy,
+    _prune_empty_dirs,
+    _resolve_root_path,
+    restore_custom_rules,
+    restore_filemap_from_root,
+)
+from Utils.mods.modlist import read_modlist
+from Utils.config_paths import get_profiles_dir
+
+_PROFILES_DIR = get_profiles_dir()
+
+
+class Cyberpunk2077(ProfileVFSGameMixin, BaseGame):
+
+    post_deploy_failure_is_fatal = True
+
+    profile_overridable_settings = (
+        *BaseGame.profile_overridable_settings,
+        *ProfileVFSGameMixin.vfs_profile_setting_keys,
+        "manage_archive_load_order",
+    )
+
+    # Many script/ENB-style Cyberpunk mods need the VC++ x64 runtime + fxc2
+    # d3dcompiler_47; auto-install them on add/save like the modern Bethesda
+    # titles. Installed via the Proton-menu installers, not winetricks.
+    auto_install_deps = MODERN_DIRECTX_DEPS
+
+    def __init__(self):
+        self._game_path: Path | None = None
+        self._prefix_path: Path | None = None
+        self._deploy_mode: LinkMode = LinkMode.HARDLINK
+        self._staging_path: Path | None = None
+        self.load_paths()
+
+    # -----------------------------------------------------------------------
+    # Identity
+    # -----------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        return "Cyberpunk 2077"
+
+    @property
+    def game_id(self) -> str:
+        return "cyberpunk_2077"
+
+    @property
+    def exe_name(self) -> str:
+        return "bin/x64/Cyberpunk2077.exe"
+
+    @property
+    def steam_id(self) -> str:
+        return "1091500"
+    
+    @property
+    def default_deploy_mode(self) -> str:
+        return "hardlink"
+
+    @property
+    def nexus_game_domain(self) -> str:
+        return "cyberpunk2077"
+
+    @property
+    def reshade_dll(self) -> str:
+        return "dxgi.dll"
+
+    @property
+    def mod_required_top_level_folders(self) -> set[str]:
+        return {"bin", "r6", "archive", "red4ext","engine","mods","tools"}
+
+    @property
+    def mod_required_file_types(self) -> set[str]:
+        return {".archive"}
+
+    @property
+    def wine_dll_overrides(self) -> dict[str, str]:
+        return {
+            "winmm": "native,builtin",
+            "version": "native,builtin"
+            }
+
+    @property
+    def conflict_ignore_filenames(self) -> set[str]:
+        return {
+            "*read*.txt",
+            "*.png",
+            "*.jpg",
+            "*.jpeg"
+            }
+
+    @property
+    def excluded_loose_filenames(self) -> set[str]:
+        return {"*.txt"}
+
+    @property
+    def filemap_exclude_unknown_top_level(self) -> bool:
+        # Authors often ship extra top-level folders (screenshots, "aboutMods",
+        # source dumps, etc.) that must not be deployed into the game root.
+        # Drop any foldered entry whose top level isn't a required folder.
+        return True
+
+    @property
+    def mod_auto_strip_until_required(self) -> bool:
+        return True
+
+    @property
+    def mod_deploy_path_remap(self) -> dict[str, str]:
+        return {"archive/pc/patch/": "archive/pc/mod/"}
+
+    @property
+    def custom_routing_rules(self) -> list[CustomRule]:
+        return [
+            CustomRule(rule_id='cyberpunk_2077:9608abbaf6a4',
+                dest="archive/pc/mod",
+                extensions=[".archive"],
+                companion_extensions=[".xl"],
+                loose_only=True,
+            ),
+            CustomRule(rule_id='cyberpunk_2077:9dfbd499fa02',
+                dest="archive/pc/mod",
+                extensions=[".xl"],
+                loose_only=True,
+            ),
+        ]
+
+    @property
+    def filemap_casing(self) -> str:
+        # REDengine consistently uses lowercase ``archive/pc/mod`` on disk;
+        # if even one mod ships ``Mod`` (uppercase) the default upper-wins
+        # picker would force every other mod into a non-existent directory
+        # on case-sensitive Linux filesystems.  Prefer lowercase canonicals.
+        return "lower"
+
+    @property
+    def filemap_casing_pins(self) -> dict[str, str]:
+        # The engine reads these skeleton folders by lowercase literal paths;
+        # pin them so the filemap says e.g. ``archive/pc/mod`` even when the
+        # only enabled mod ships ``archive/PC/Mod`` (the "lower" strategy can
+        # only pick among casings that mods actually ship).  Deploy then
+        # exact-matches the vanilla dirs instead of guessing between
+        # case-variant duplicates left by manual installs.
+        return {
+            "archive": "archive", "pc": "pc", "mod": "mod", "ep1": "ep1",
+            "bin": "bin", "x64": "x64", "plugins": "plugins",
+            "cyber_engine_tweaks": "cyber_engine_tweaks", "mods": "mods",
+            "r6": "r6", "scripts": "scripts", "tweaks": "tweaks",
+            "config": "config", "input": "input",
+            "red4ext": "red4ext", "engine": "engine", "tools": "tools",
+        }
+
+
+    @property
+    def default_launch_args(self) -> list[str]:
+        return ["-modded"]
+
+    @property
+    def framework_launch_exes(self) -> dict[str, str]:
+        return {"REDLauncher": "REDprelauncher.exe"}
+
+    @property
+    def frameworks(self) -> dict[str, str]:
+        return {"Cyber Engine Tweaks": "bin/x64/plugins/cyber_engine_tweaks.asi",
+                "RED4ext": "red4ext/RED4ext.dll",
+                "ArchiveXL":"red4ext/plugins/ArchiveXL/ArchiveXL.dll",
+                "Redscript":"engine/tools/scc.exe",
+                "TweakXL":"red4ext/plugins/TweakXL/TweakXL.dll",
+                "Codeware":"red4ext/plugins/Codeware/Codeware.dll"
+                }
+
+    # -----------------------------------------------------------------------
+    # Paths
+    # -----------------------------------------------------------------------
+
+    def get_game_path(self) -> Path | None:
+        return self._game_path
+
+    def get_mod_data_path(self) -> Path | None:
+        """Mods deploy directly into the game root (archive/, r6/, bin/, red4ext/, etc.)."""
+        return self._game_path
+
+    def get_mod_staging_path(self) -> Path:
+        if self._staging_path is not None:
+            return self._staging_path / "mods"
+        return _PROFILES_DIR / self.name / "mods"
+
+    def set_staging_path(self, path: "Path | str | None") -> None:
+        self._staging_path = Path(path) if path else None
+        self.save_paths()
+
+    def get_prefix_path(self) -> Path | None:
+        return self._prefix_path
+
+    def get_deploy_mode(self) -> LinkMode:
+        return self._deploy_mode
+
+    def set_deploy_mode(self, mode: LinkMode) -> None:
+        self._deploy_mode = mode
+        self.save_paths()
+
+    def set_prefix_path(self, path: Path | str | None) -> None:
+        self._prefix_path = Path(path) if path else None
+        self.save_paths()
+
+    # -----------------------------------------------------------------------
+    # Deployment
+    # -----------------------------------------------------------------------
+
+    @property
+    def manage_archive_load_order(self) -> bool:
+        return bool(self._load_settings().get("manage_archive_load_order", False))
+
+    @manage_archive_load_order.setter
+    def manage_archive_load_order(self, value: bool) -> None:
+        data = self._load_settings()
+        data["manage_archive_load_order"] = bool(value)
+        self._save_settings(data)
+
+    @property
+    def _archive_modlist_enabled(self) -> bool:
+        return (self.manage_archive_load_order
+                and os.environ.get("AMM_CP2077_ARCHIVE_MODLIST") != "0")
+
+    def deploy(self, log_fn=None, mode: LinkMode = LinkMode.HARDLINK,
+               profile: str = "default", progress_fn=None) -> None:
+        """Deploy staged mods directly into the game root.
+
+        Workflow:
+          1. Back up any vanilla files that mod files will overwrite
+          2. Transfer mod files listed in filemap.txt into the game root
+        (Root Folder deployment is handled by the GUI after this returns.)
+        """
+        _log = log_fn or (lambda _: None)
+
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+
+        game_root = self._game_path
+        filemap   = self.get_effective_filemap_path()
+        staging   = self.get_effective_mod_staging_path()
+
+        from Utils.filegraph.deploy import input_ready
+        if not input_ready():
+            raise RuntimeError(
+                f"filemap.txt not found: {filemap}\n"
+                "Run 'Build Filemap' before deploying."
+            )
+
+        self._cleanup_archive_modlist(filemap, game_root, log_fn=_log)
+
+        if self.vfs_launch_enabled:
+            return self._deploy_vfs(
+                profile=profile,
+                filemap=filemap,
+                staging=staging,
+                log_fn=_log,
+                progress_fn=progress_fn,
+            )
+
+        profile_dir = self.get_profile_root() / "profiles" / profile
+        per_mod_strip = load_per_mod_strip_prefixes(profile_dir)
+
+        # Separator overrides - loaded from the real profile_dir so custom-routed
+        # files honour a separator's File Transfer Method (shared-staging safe).
+        _sep_deploy = load_separator_deploy_paths(profile_dir)
+        _sep_entries = read_modlist(profile_dir / "modlist.txt") if _sep_deploy else []
+        per_mod_modes = expand_separator_link_modes(_sep_deploy, _sep_entries) or None
+        per_mod_raw = expand_separator_raw_deploy(_sep_deploy, _sep_entries) or None
+
+        custom_rules = self.effective_custom_routing_rules
+        custom_exclude: set[str] = set()
+        if custom_rules:
+            _log("Routing loose .archive/.xl files to archive/pc/mod/ ...")
+            custom_exclude = deploy_custom_rules(
+                filemap, game_root, staging,
+                rules=custom_rules,
+                mode=mode,
+                strip_prefixes=self.mod_folder_strip_prefixes,
+                per_mod_strip_prefixes=per_mod_strip,
+                per_mod_link_modes=per_mod_modes,
+                raw_mods=per_mod_raw,
+                log_fn=_log,
+                prefix_root=self.get_prefix_path(),
+            )
+
+        _log(f"Transferring mod files into game root ({mode.name}) ...")
+        linked_mod, _ = deploy_filemap_to_root(filemap, game_root, staging,
+                                               mode=mode,
+                                               strip_prefixes=self.mod_folder_strip_prefixes,
+                                               per_mod_strip_prefixes=per_mod_strip,
+                                               log_fn=_log,
+                                               progress_fn=progress_fn,
+                                               exclude=custom_exclude or None,
+                                               path_remap=self.mod_deploy_path_remap or None)
+
+        if self._archive_modlist_enabled:
+            try:
+                # Raw-deploy mods and custom-location separator mods never
+                # land in archive/pc/mod - keep them out of the load order.
+                _excl: set[str] = set(per_mod_raw or ())
+                if _sep_deploy:
+                    _excl |= set(expand_separator_deploy_paths(
+                        _sep_deploy, _sep_entries))
+                self._write_archive_modlist(
+                    filemap, game_root, profile_dir,
+                    exclude_mods=_excl or None, log_fn=_log)
+            except Exception as exc:
+                _log(f"WARN: archive modlist.txt not written: {exc}")
+
+        _log(f"Deploy complete. {linked_mod} mod file(s) placed in game root.")
+
+    # -----------------------------------------------------------------------
+    # Archive load order (archive/pc/mod/modlist.txt)
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _archive_modlist_dest(game_root: Path) -> Path:
+        # The ordinary and custom-rule deploy paths merge case-insensitively
+        # into existing game directories.  Keep the generated load-order file
+        # on that same physical path too; otherwise an existing ``Mod`` folder
+        # receives the archives while this writer creates a sibling ``mod``.
+        return _resolve_root_path(
+            game_root, Path("archive/pc/mod/modlist.txt"))
+
+    def _ordered_mod_archives(self, filemap: Path, profile_dir: Path,
+                              exclude_mods: "set[str] | None" = None) -> list[str]:
+        """Deployed .archive filenames in game load order (winner first).
+
+        The game loads modlist.txt top to bottom and the first archive that
+        touches a resource wins, so the order is Overwrite first (it beats
+        everything in the filemap merge), then mods by profile priority
+        (modlist index 0 = highest).  Only flat archive/pc/mod entries count -
+        subfolders there aren't reliably scanned by the engine.  exclude_mods
+        (raw-deploy / custom-location separator mods) never land in
+        archive/pc/mod, so their archives are dropped entirely.
+        """
+        from Utils.filegraph.deploy import legacy_rows
+
+        mods = [e.name for e in read_modlist(profile_dir / "modlist.txt")
+                if e.enabled and not e.is_separator]
+        # "[Overwrite]" is filemap.OVERWRITE_NAME; -1 ranks it above index 0.
+        rank = {name: i for i, name in enumerate(mods)}
+        rank["[Overwrite]"] = -1
+        unranked = len(mods)
+
+        prefix = "archive/pc/mod/"
+        excluded = exclude_mods or set()
+        # Deploy remaps these prefixes (archive/pc/patch → archive/pc/mod), so
+        # apply the same substitution before deciding what lands in the dir.
+        remap = [(k.lower(), v) for k, v in (self.mod_deploy_path_remap or {}).items()]
+        best: dict[str, tuple[int, str]] = {}  # filename_lower → (rank, filename)
+        for rel, mod in legacy_rows():
+            rl = rel.lower()
+            if not rl.endswith(".archive") or mod in excluded:
+                continue
+            for old_p, new_p in remap:
+                if rl.startswith(old_p):
+                    rel = new_p + rel[len(old_p):]
+                    rl = rel.lower()
+                    break
+            if "/" not in rel:
+                # Loose archive - routed to archive/pc/mod by the custom rule.
+                name = rel
+            elif rl.startswith(prefix) and "/" not in rel[len(prefix):]:
+                name = rel[len(prefix):]
+            else:
+                continue
+            r = rank.get(mod, unranked)
+            cur = best.get(name.lower())
+            if cur is None or r < cur[0]:
+                best[name.lower()] = (r, name)
+        return [name for _r, name in
+                sorted(best.values(), key=lambda t: (t[0], t[1]))]
+
+    def _write_archive_modlist(self, filemap: Path, game_root: Path,
+                               profile_dir: Path,
+                               exclude_mods: "set[str] | None" = None,
+                               log_fn=None) -> None:
+        """Write profile priority without replacing a custom archive order."""
+        _log = log_fn or (lambda _m: None)
+        dest = self._archive_modlist_dest(game_root)
+        state = filemap.parent / "archive_modlist.state"
+        names = self._ordered_mod_archives(filemap, profile_dir, exclude_mods)
+
+        if not names:
+            self._cleanup_archive_modlist(filemap, game_root, log_fn=_log)
+            return
+
+        if os.path.lexists(dest):
+            ours = (not dest.is_symlink() and dest.is_file()
+                    and state.is_file() and dest.read_bytes() == state.read_bytes())
+            if not ours:
+                _log("Archive load order: preserving existing custom modlist.txt.")
+                return
+            dest.unlink()
+
+        # CRLF: the game is a Windows binary; MO2 writes the file the same way.
+        content = ("\r\n".join(names) + "\r\n").encode("utf-8")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+        state.write_bytes(content)
+        _log(f"Archive load order: wrote modlist.txt with {len(names)} "
+             "archive(s) - highest-priority mod loads first (first wins).")
+
+    def _write_vfs_archive_modlist(self, filemap: Path, view_root: Path,
+                                   profile_dir: Path,
+                                   exclude_mods: "set[str] | None" = None,
+                                   log_fn=None) -> None:
+        """Generate archive order only when the private view has no custom file."""
+        _log = log_fn or (lambda _m: None)
+        names = self._ordered_mod_archives(filemap, profile_dir, exclude_mods)
+        if not names:
+            return
+
+        dest = self._archive_modlist_dest(view_root)
+        try:
+            dest.resolve(strict=False).relative_to(view_root.resolve())
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Unsafe private archive modlist path: {dest}"
+            ) from exc
+        if os.path.lexists(dest):
+            _log("Archive load order: preserving existing custom modlist.txt.")
+            return
+        content = ("\r\n".join(names) + "\r\n").encode("utf-8")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+        _log(f"Archive load order: wrote private modlist.txt with {len(names)} "
+             "archive(s) - highest-priority mod loads first (first wins).")
+
+    def _vfs_post_view_build(self, *, view_root: Path, profile: str,
+                             filemap: Path, staging: Path, log_fn) -> None:
+        """Create Cyberpunk's generated files in the resolved view."""
+        _log = log_fn or (lambda _m: None)
+        self._vfs_write_archive_modlist(
+            view_root=view_root, profile=profile, filemap=filemap,
+            staging=staging, log_fn=_log)
+        self._run_redmod_deploy(view_root, private=True, log_fn=_log)
+        dest = self._archive_modlist_dest(view_root)
+        state = view_root.parent / "archive_modlist.state"
+        if dest.is_file():
+            state.write_bytes(dest.read_bytes())
+        else:
+            state.unlink(missing_ok=True)
+
+    def _vfs_write_archive_modlist(self, *, view_root: Path, profile: str,
+                                   filemap: Path, staging: Path, log_fn) -> None:
+        _log = log_fn or (lambda _m: None)
+        if not self._archive_modlist_enabled:
+            return
+        try:
+            profile_dir = self.get_profile_root() / "profiles" / profile
+            sep_deploy = load_separator_deploy_paths(profile_dir)
+            sep_entries = (
+                read_modlist(profile_dir / "modlist.txt")
+                if sep_deploy else []
+            )
+            raw_mods = expand_separator_raw_deploy(
+                sep_deploy, sep_entries) or set()
+            excluded = set(raw_mods)
+            if sep_deploy:
+                excluded.update(expand_separator_deploy_paths(
+                    sep_deploy, sep_entries))
+            self._write_vfs_archive_modlist(
+                filemap,
+                view_root,
+                profile_dir,
+                exclude_mods=excluded or None,
+                log_fn=_log,
+            )
+        except Exception as exc:
+            _log(f"WARN: private archive modlist.txt not written: {exc}")
+
+    def _preserve_vfs_archive_modlist(self, view_root: Path, log_fn) -> None:
+        state = view_root.parent / "archive_modlist.state"
+        dest = self._archive_modlist_dest(view_root)
+        if not state.is_file() or not dest.is_file():
+            return
+        content = dest.read_bytes()
+        if content == state.read_bytes():
+            return
+        saved = self.get_effective_overwrite_path() / "archive/pc/mod/modlist.txt"
+        if os.path.lexists(saved):
+            if saved.is_file() and saved.read_bytes() == content:
+                return
+            from Utils.deployment import RestoreIncompleteError
+            raise RestoreIncompleteError(
+                f"Archive load order was edited in both {dest} and {saved}. "
+                "Preserve the desired order before restoring again.")
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dest, saved)
+        log_fn(f"Archive load order: saved edited private modlist.txt to {saved}")
+
+    def _cleanup_archive_modlist(self, filemap: Path, game_root: Path,
+                                 log_fn=None) -> None:
+        """Retire generated orders and legacy backups without replacing edits."""
+        _log = log_fn or (lambda _m: None)
+        dest = self._archive_modlist_dest(game_root)
+        state = filemap.parent / "archive_modlist.state"
+        backup = filemap.parent / "archive_modlist_backup.txt"
+        if not state.is_file() and not backup.is_file():
+            return
+        removed_generated = state.is_file()
+        if os.path.lexists(dest):
+            ours = (not dest.is_symlink() and dest.is_file()
+                    and state.is_file() and dest.read_bytes() == state.read_bytes())
+            if not ours:
+                state.unlink(missing_ok=True)
+                _log("Archive load order: preserving externally modified modlist.txt.")
+                if backup.is_file():
+                    _log(f"Archive load order: original backup retained at {backup}")
+                return
+            dest.unlink()
+        state.unlink(missing_ok=True)
+        if backup.is_file():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(backup), str(dest))
+            _log("Archive load order: original modlist.txt restored.")
+        elif removed_generated:
+            _prune_empty_dirs({dest.parent}, stop_dirs={game_root})
+
+    def _deployed_redmods(self) -> list[str]:
+        """Names of REDmods deployed in the game root (mods/<name>/info.json)."""
+        if self._game_path is None:
+            return []
+        root = self._game_path
+        if self.vfs_launch_enabled:
+            try:
+                from Utils.vfs import effective_shadow_root
+                root = effective_shadow_root(self)
+            except RuntimeError:
+                # A failed/unpublished VFS build has no effective REDmod set;
+                # do not accidentally report files from the untouched install.
+                return []
+        try:
+            return sorted(p.parent.name
+                          for p in (root / "mods").glob("*/info.json"))
+        except OSError:
+            return []
+
+    def _run_redmod_deploy(self, root: Path, *, private: bool,
+                           log_fn) -> None:
+        mods = sorted(p.parent.name for p in (root / "mods").glob("*/info.json"))
+        cache = root / "r6" / "cache" / "modded"
+        if not mods and not os.path.lexists(cache):
+            return
+
+        from Utils.games.frameworks import resolve_file_ci
+        tool = resolve_file_ci(root, Path("tools/redmod/bin/redMod.exe"))
+        if tool is None:
+            raise RuntimeError(
+                "REDmod DLC is missing (tools/redmod/bin/redMod.exe). "
+                "Install Cyberpunk 2077 REDmod before deploying REDmods."
+            )
+
+        from Utils.wine.protontricks import (
+            build_proton_env_for_game, prefix_downgrade_warning,
+            run_prefix_installer,
+        )
+        proton, env = build_proton_env_for_game(self)
+        if proton is None or env is None:
+            raise RuntimeError(
+                "REDmod could not find the game's Proton prefix and runner. "
+                "Launch Cyberpunk once through its launcher, then deploy again."
+            )
+        mismatch = prefix_downgrade_warning(
+            proton, env.get("STEAM_COMPAT_DATA_PATH"))
+        if mismatch:
+            raise RuntimeError(f"REDmod cannot use this Proton prefix: {mismatch}")
+
+        if private:
+            for path in (root / "r6", root / "r6" / "cache", cache):
+                if path.is_symlink():
+                    raise RuntimeError(
+                        f"REDmod private cache path is a symlink: {path}")
+            if cache.is_dir():
+                shutil.rmtree(cache)
+            elif os.path.lexists(cache):
+                cache.unlink()
+            cache.mkdir(parents=True, exist_ok=True)
+            env["STEAM_COMPAT_INSTALL_PATH"] = str(root)
+
+        from Utils.launchers.steam import proton_run_command
+        from Utils.wine.paths import to_wine_path
+        from Utils.wine.registry import normalize_pfx
+        windows_root = to_wine_path(
+            root.resolve(), normalize_pfx(self.get_prefix_path()))
+        cmd = proton_run_command(
+            proton, "runinprefix", str(tool), "deploy",
+            f"-root={windows_root}", env=env, host_cwd=root,
+        )
+        log_fn(f"REDmod: deploying {len(mods)} mod(s) in {root} ...")
+        rc, output = run_prefix_installer(
+            cmd, env, root, label="REDmod deploy", log_fn=log_fn,
+            timeout=600, proton_script=proton,
+            compat_data=env.get("STEAM_COMPAT_DATA_PATH"),
+        )
+        if rc != 0:
+            detail = f" {output}" if output else ""
+            raise RuntimeError(f"REDmod deploy failed (exit {rc}).{detail}")
+        log_fn("REDmod: deployment complete.")
+
+    def post_deploy(self, log_fn=None) -> None:
+        """Stage REDmods and check external launch arguments."""
+        _log = log_fn or (lambda _m: None)
+        if not self.vfs_launch_enabled and self._game_path is not None:
+            self._run_redmod_deploy(self._game_path, private=False, log_fn=_log)
+        redmods = self._deployed_redmods()
+        if redmods:
+            _log(f"REDmod: {len(redmods)} mod(s) deployed under mods/ - the game "
+                 "only loads them when launched with -modded (the Play button "
+                 "passes it automatically).")
+        warn = self._external_launch_missing_modded(_log)
+        if warn:
+            _log(f"Cyberpunk 2077: {warn}")
+            # Only toast it when no manager launch follows: the Play button
+            # passes -modded itself, so the advice would be noise there. It
+            # matters for a later launch from Steam/Heroic directly, and the
+            # log line above records it either way.
+            if not self.deploy_launch_pending:
+                self.add_deploy_warning(warn)
+
+    def _external_launch_missing_modded(self, _log) -> str | None:
+        """Make sure the game's external launcher passes -modded.
+
+        Tries to write the option into the launcher's own config first -
+        Steam's localconfig.vdf (only safe while Steam is closed: it rewrites
+        the file from memory on exit) or Heroic's GamesConfig json (safe any
+        time, re-read per launch).  Returns a user-facing warning only when
+        the option couldn't be added automatically."""
+        try:
+            from Utils.executables.launch import (
+                effective_steam_id, game_is_steam_install,
+                game_is_heroic_install, heroic_app_names_for_launch,
+            )
+            if game_is_steam_install(self):
+                from Utils.launchers.steam import (
+                    add_steam_launch_option, steam_launch_options,
+                )
+                sid = effective_steam_id(self) or self.steam_id
+                missing = [a for a in self.default_launch_args
+                           if a not in steam_launch_options(sid).split()]
+                if not missing:
+                    return None
+                results = {a: add_steam_launch_option(sid, a) for a in missing}
+                added = [a for a in missing if results[a] == "added"]
+                if added:
+                    _log(f"Cyberpunk 2077: added {' '.join(added)} to the game's "
+                         "Steam Launch Options - applies the next time Steam "
+                         "starts.")
+                modded = results.get("-modded")
+                if modded in (None, "added", "already"):
+                    return None
+                if modded == "steam_running":
+                    return (
+                        "Launch Cyberpunk 2077 with -modded to enable mods. "
+                        "Steam is running and would undo the Launch Options change "
+                        "- add it in Properties → Launch Options, or close "
+                        "Steam and deploy again.")
+                return (
+                    "Launch Cyberpunk 2077 with -modded to enable mods. "
+                    "Add it to the game's Steam Launch Options "
+                    "(Properties → Launch Options) - it couldn't be added "
+                    "automatically.")
+            elif game_is_heroic_install(self):
+                from Utils.launchers.heroic import (
+                    add_heroic_launcher_arg, heroic_launcher_args,
+                )
+                names = heroic_app_names_for_launch(self)
+                have = (heroic_launcher_args(names) or "").split()
+                missing = [a for a in self.default_launch_args
+                           if a not in have]
+                if not missing:
+                    return None
+                results = {a: add_heroic_launcher_arg(names, a)
+                           for a in missing}
+                added = [a for a in missing if results[a]]
+                if added:
+                    _log(f"Cyberpunk 2077: added {' '.join(added)} to the game's "
+                         "launch arguments in Heroic.")
+                if results.get("-modded", True):
+                    return None
+                return (
+                    "Launch Cyberpunk 2077 with -modded to enable mods. "
+                    "Add it to Heroic's Game Arguments "
+                    "(game settings → Advanced) - it couldn't be added "
+                    "automatically.")
+        except Exception as exc:
+            _log(f"Cyberpunk 2077: launch-options check skipped ({exc})")
+        return None
+
+    def restore(self, log_fn=None, progress_fn=None) -> None:
+        """Remove deployed mod files from the game root and restore any vanilla files."""
+        _log = log_fn or (lambda _: None)
+
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+
+        filemap   = self.get_effective_filemap_path()
+        game_root = self._game_path
+
+        _log("Restore: removing custom-routed .archive files ...")
+        restore_custom_rules(filemap, game_root, rules=[], log_fn=_log, prefix_root=self.get_prefix_path())
+
+        # Restore follows the state that actually exists rather than the
+        # current toggle. A user can turn VFS off after deploying, and an older
+        # physical deployment can coexist with a profile view during migration.
+        from Utils.vfs import cleanup_deployment, has_deployment_state
+        if has_deployment_state(self):
+            from Utils.vfs import effective_shadow_root
+            try:
+                shadow_root = effective_shadow_root(self)
+            except RuntimeError:
+                shadow_root = None
+            if shadow_root is not None:
+                self._preserve_vfs_archive_modlist(shadow_root, _log)
+            cleanup_deployment(self, preserve_upper=True, log_fn=_log)
+            if shadow_root is not None:
+                (shadow_root.parent / "archive_modlist.state").unlink(missing_ok=True)
+            physical_state = any((
+                (filemap.parent / "filemap_deployed.txt").is_file(),
+                (filemap.parent / "filemap_backup").exists(),
+                (filemap.parent / "archive_modlist.state").is_file(),
+                (filemap.parent / "archive_modlist_backup.txt").is_file(),
+            ))
+            if not physical_state:
+                _log("Restore complete.")
+                return
+            _log("Restore: a physical deployment also remains; restoring it now ...")
+
+        _log("Restore: removing mod files and restoring vanilla files ...")
+        self._cleanup_archive_modlist(filemap, game_root, log_fn=_log)
+        removed = restore_filemap_from_root(
+            filemap, game_root, log_fn=_log,
+            restore_whitelist=self.restore_whitelist_matcher())
+
+        _log(f"Restore complete. {removed} mod file(s) removed from game root.")

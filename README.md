@@ -28,6 +28,13 @@ pipeline; the Quickshell UI is its face. No webview, **no Electron**.
   verified downloads, backup of replaced DLLs and INI profiles.
 - Adds your own games (local executables) with cover search and a native
   file picker.
+- Mods games through the Amethyst Mod Manager's own backend: sign in to
+  Nexus in your browser (Amethyst's own login, shared with it), browse and
+  search its mods, see a profile's modlist, and install from the Nexus site
+  in priority order, pick a profile and deploy it, restore the game to
+  vanilla, install mod archives (FOMOD installers included), browsed files
+  or `nxm://` downloads. Amethyst owns the mod state and Hikari never keeps
+  a second copy of it.
 - Stores the library and pins locally; a UI store view shows what you own
   but have not installed.
 - Keeps diagnostics the user can reach: a rotating daemon log, per-game last
@@ -42,6 +49,9 @@ pipeline; the Quickshell UI is its face. No webview, **no Electron**.
 - Store engines on `PATH`: `legendary`, `gogdl`, `nile` (optional: `comet`
   for GOG achievements).
 - `umu-launcher` and/or Wine/Proton builds for Windows titles.
+- For the Mods page: `python3` and an Amethyst Mod Manager install
+  (`hikari mods setup` fetches the backend's Python packages into Hikari's
+  own data directory; Amethyst itself is not bundled).
 - `7z`/`7zz` for release archives (Proton, OptiScaler).
 
 ## Install

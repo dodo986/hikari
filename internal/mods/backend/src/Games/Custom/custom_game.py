@@ -1,0 +1,1180 @@
+"""
+custom_game.py
+Dynamic game handler loaded from a user-supplied JSON definition.
+
+JSON format (~/.config/AmethystModManager/custom_games/<game_id>.json):
+{
+  "name":              "My Game",
+  "game_id":           "my_game",
+  "exe_name":          "MyGame.exe",
+  "exe_name_alts":     ["MyGame.x86_64"], // optional alternate executable paths
+  "deploy_type":       "standard",   // "standard" | "root" | "ue5"
+  "mod_data_path":     "Data",       // relative path (standard only; ignored for root/ue5)
+  "steam_id":          "",           // optional Steam App ID
+  "nexus_game_domain": "",           // optional Nexus domain slug
+  "additional_nexus_domains": [],     // optional extra Nexus domain slugs
+  "thunderstore_community": "",      // optional Thunderstore community slug
+  "image_url":         "",           // optional banner image URL
+  "auto_install_deps": ["vcredist", "dotnet6"], // optional prefix dependencies
+  "vortex_mod_types": {"mygame-loader": {"dest": "bin/plugins"}},
+  "editable":          true          // false = skip definition editor on reconfigure (for repo handlers);
+                                     // dev mode ignores this so repo handlers stay editable
+}
+
+Deploy types
+------------
+standard - mods go into a single subdirectory (mod_data_path) inside the
+           game root, same pattern as Bethesda games and BepInEx.
+           Uses the Core backup + filemap deploy approach.
+
+root     - mods are deployed directly to the game's root folder,
+           same pattern as The Witcher 3 and Cyberpunk 2077.
+           Uses the root filemap deploy approach (backed-up log).
+
+ue5      - uses the UE5 multi-target manifest deploy; with no routing
+           rules everything lands in the game root via the deployed.txt
+           manifest, same as Oblivion Remastered / Hogwarts Legacy.
+"""
+
+from __future__ import annotations
+
+import base64
+import io
+import json
+import threading
+import zlib
+from pathlib import Path
+
+from Games.base_game import BaseGame
+from Games.ue5_game import UE5Game, UE5Rule
+from Utils.vfs import ProfileVFSGameMixin
+from Utils.deployment import (
+    CustomRule,
+    LinkMode,
+    RestoreWhitelistRule,
+    deploy_core,
+    deploy_custom_rules,
+    deploy_filemap,
+    deploy_filemap_to_root,
+    load_per_mod_strip_prefixes,
+    load_separator_deploy_paths,
+    expand_separator_deploy_paths,
+    expand_separator_link_modes,
+    expand_separator_raw_deploy,
+    cleanup_custom_deploy_dirs,
+    move_to_core,
+    restore_custom_rules,
+    restore_data_core,
+    restore_filemap_from_root,
+)
+from Utils.mods.modlist import read_modlist
+from Utils.config_paths import get_profiles_dir, get_custom_games_dir, get_custom_game_images_dir
+
+_PROFILES_DIR = get_profiles_dir()
+
+
+# ---------------------------------------------------------------------------
+# Definition → Python type helpers
+# ---------------------------------------------------------------------------
+
+def _defn_to_set(defn: dict, key: str) -> set[str]:
+    """Return a set[str] from a JSON field that may be a list or comma string."""
+    raw = defn.get(key, [])
+    if isinstance(raw, list):
+        return {s.strip().lower() for s in raw if s.strip()}
+    if isinstance(raw, str):
+        return {s.strip().lower() for s in raw.split(",") if s.strip()}
+    return set()
+
+
+def _defn_to_list(defn: dict, key: str) -> list[str]:
+    """Return a list[str] from a JSON field that may be a list or comma string."""
+    raw = defn.get(key, [])
+    if isinstance(raw, list):
+        return [s.strip() for s in raw if s.strip()]
+    if isinstance(raw, str):
+        return [s.strip() for s in raw.split(",") if s.strip()]
+    return []
+
+
+def _defn_to_dll_overrides(defn: dict) -> dict[str, str]:
+    """Return a dict[str, str] from wine_dll_overrides.
+
+    Accepts either a JSON object ({"winhttp": "native,builtin"}) or a
+    newline/comma-separated string ("winhttp=native,builtin").
+    """
+    raw = defn.get("wine_dll_overrides", {})
+    if isinstance(raw, dict):
+        return {k.strip(): v.strip() for k, v in raw.items() if k.strip()}
+    if isinstance(raw, str):
+        result: dict[str, str] = {}
+        for entry in raw.replace(",", "\n").splitlines():
+            if "=" in entry:
+                k, _, v = entry.partition("=")
+                result[k.strip()] = v.strip()
+        return result
+    return {}
+
+
+def _defn_to_custom_rules(defn: dict) -> list[CustomRule]:
+    """Return a list[CustomRule] from the JSON ``custom_routing_rules`` field.
+
+    Each entry is a dict with keys ``dest``, and optionally ``extensions``,
+    ``folders``, and/or ``filenames``.
+
+    ``folders`` keeps the casing the definition spelled - matching lowercases
+    it everywhere, but the deploy uses it as the canonical casing for the
+    folder it names, so mods shipping ``~Mods`` and ``~mods`` land in one
+    folder (see ``canonicalize_declared_folders``).
+    """
+    raw = defn.get("custom_routing_rules", [])
+    if not isinstance(raw, list):
+        return []
+    from Utils.games.routing_rules import definition_rule_ids
+    raw = [entry for entry in raw if isinstance(entry, dict)]
+    rules: list[CustomRule] = []
+    for entry, rule_id in zip(raw, definition_rule_ids(raw)):
+        dest = entry.get("dest", "")
+        extensions = [s.strip().lower() for s in entry.get("extensions", []) if s.strip()]
+        folders = [s.strip() for s in entry.get("folders", []) if s.strip()]
+        filenames = [s.strip().lower() for s in entry.get("filenames", []) if s.strip()]
+        loose_only = bool(entry.get("loose_only", False))
+        flatten = bool(entry.get("flatten", False))
+        include_siblings = bool(entry.get("include_siblings", False))
+        to_prefix = bool(entry.get("to_prefix", False))
+        companion_extensions = [
+            s.strip().lower() for s in entry.get("companion_extensions", []) if s.strip()
+        ]
+        if dest or extensions or folders or filenames:
+            rules.append(CustomRule(dest=dest, extensions=extensions, folders=folders,
+                                    filenames=filenames, loose_only=loose_only,
+                                    companion_extensions=companion_extensions,
+                                    flatten=flatten,
+                                    flatten_contents=bool(entry.get("flatten_contents", False)),
+                                    include_siblings=include_siblings,
+                                    to_prefix=to_prefix,
+                                    mirror_dests=list(entry.get("mirror_dests", [])),
+                                    exclude_extensions=list(entry.get("exclude_extensions", [])),
+                                    rule_id=rule_id))
+    return rules
+
+
+def _defn_to_restore_whitelist(defn: dict) -> list[RestoreWhitelistRule]:
+    """Parse the JSON ``restore_whitelist`` field into RestoreWhitelistRules.
+
+    Each entry: a ``path`` plus one of ``extensions``/``folders``/``filenames``.
+    """
+    raw = defn.get("restore_whitelist", [])
+    if not isinstance(raw, list):
+        return []
+    rules: list[RestoreWhitelistRule] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        path = str(entry.get("path", "") or "")
+        extensions = [s.strip().lower() for s in entry.get("extensions", []) if s.strip()]
+        folders = [s.strip().lower() for s in entry.get("folders", []) if s.strip()]
+        filenames = [s.strip().lower() for s in entry.get("filenames", []) if s.strip()]
+        if extensions or folders or filenames:
+            rules.append(RestoreWhitelistRule(path=path, extensions=extensions,
+                                              folders=folders, filenames=filenames))
+    return rules
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def load_custom_game_definitions() -> list[dict]:
+    """Return all valid custom game definition dicts from the custom_games dir."""
+    defs: list[dict] = []
+    folder = get_custom_games_dir()
+    for f in sorted(folder.glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("name") and data.get("exe_name"):
+                data["_source_file"] = str(f)
+                defs.append(data)
+        except Exception:
+            pass
+    return defs
+
+
+# ---------------------------------------------------------------------------
+# Built-in presets - ready-made starting templates offered in the define-custom-
+# game editor's "Load Preset" dropdown (alongside the user's own definitions).
+# These are never written to disk on their own; selecting one just prefills the
+# form.  The user still supplies a unique name and executable path.
+# ---------------------------------------------------------------------------
+
+BUILTIN_GAME_TEMPLATES: list[dict] = [
+    {
+        "name": "BepInEx",
+        "game_id": "",
+        "exe_name": "",
+        "exe_name_alts": [],
+        "deploy_type": "standard",
+        "mod_data_path": "BepInEx/plugins",
+        "steam_id": "",
+        "nexus_game_domain": "",
+        "additional_nexus_domains": [],
+        "thunderstore_community": "",
+        "image_url": "",
+        "mod_folder_strip_prefixes": ["BepInEx", "plugins"],
+        "conflict_ignore_filenames": [],
+        "conflict_ignore_foldernames": [],
+        "mod_folder_strip_prefixes_post": [],
+        "mod_install_prefix": "",
+        "mod_required_top_level_folders": [],
+        "mod_auto_strip_until_required": False,
+        "mod_required_file_types": [],
+        "mod_install_as_is_if_no_match": False,
+        "restore_before_deploy": True,
+        "normalize_folder_case": True,
+        "filemap_casing": "upper",
+        "wine_dll_overrides": {"winhttp": "native,builtin"},
+        "custom_routing_rules": [
+            {"dest": "", "filenames": ["winhttp.dll"], "flatten": True},
+            {"dest": "", "filenames": ["version.dll"], "flatten": True},
+            {"dest": "", "filenames": ["run_bepinex.sh"], "flatten": True},
+            {"dest": "", "filenames": ["libdoorstop.dylib"], "flatten": True},
+            {"dest": "", "filenames": ["doorstop_config.ini"], "flatten": True},
+            {"dest": "BepInEx", "folders": ["config"], "loose_only": True, "flatten": True},
+            {"dest": "BepInEx", "folders": ["core"], "loose_only": True, "flatten": True},
+            {"dest": "BepInEx", "folders": ["patchers"], "loose_only": True, "flatten": True},
+            {"dest": "BepInEx", "folders": ["plugins"], "loose_only": True, "flatten": True},
+        ],
+        "restore_whitelist": [],
+        "custom_frameworks": {"BepInEx": "winhttp.dll"},
+    },
+    {
+        "name": "UE5 (ue4ss)",
+        "game_id": "",
+        "exe_name": "GAMEID/Binaries/Win64/EXENAME.exe",
+        "exe_name_alts": [],
+        "deploy_type": "ue5",
+        "mod_data_path": "GAMEID",
+        "steam_id": "",
+        "nexus_game_domain": "",
+        "additional_nexus_domains": [],
+        "image_url": "",
+        "mod_folder_strip_prefixes": [
+            "GAMEID", "Content", "Paks", "~mods", "Binaries", "Win64",
+        ],
+        "conflict_ignore_filenames": ["LICENSE", "*.md"],
+        "conflict_ignore_foldernames": [],
+        "mod_folder_strip_prefixes_post": [],
+        "mod_install_prefix": "",
+        "mod_required_top_level_folders": [],
+        "mod_auto_strip_until_required": False,
+        "mod_required_file_types": [],
+        "mod_install_as_is_if_no_match": False,
+        "restore_before_deploy": True,
+        "normalize_folder_case": True,
+        "filemap_casing": "upper",
+        "wine_dll_overrides": {"dwmpapi": "native,builtin"},
+        "custom_routing_rules": [
+            {"dest": "Content/Splash", "filenames": ["Splash.bmp"], "flatten": True},
+            {"dest": "Content/Movies", "extensions": [".mp4"], "include_siblings": True},
+            {"dest": "Mods", "folders": ["VTSpectator"], "flatten": True},
+            {"dest": "Content/Paks", "folders": ["LogicMods"], "flatten": True},
+            {"dest": "Binaries/Win64", "folders": ["ue4ss"], "flatten": True},
+            {"dest": "Content/Paks/~mods", "extensions": [".pak"],
+             "companion_extensions": [".ucas", ".utoc"], "include_siblings": True},
+            {"dest": "Binaries/Win64", "extensions": [".asi"],
+             "companion_extensions": [".ini"]},
+            {"dest": "Binaries/Win64/ue4ss/Mods", "folders": ["scripts"], "include_siblings": True},
+            {"dest": "Binaries/Win64/ue4ss/Mods", "filenames": ["enabled.txt"], "include_siblings": True},
+            {"dest": "Binaries/Win64/ue4ss/Mods", "folders": ["dlls"], "include_siblings": True},
+            {"dest": "Binaries/Win64/ue4ss/Mods", "filenames": ["mods.txt"], "flatten": True},
+        ],
+        "restore_whitelist": [],
+        "custom_frameworks": {"UE4SS": "Binaries/Win64/dwmapi.dll"},
+    },
+]
+
+
+def load_builtin_game_templates() -> list[dict]:
+    """Return deep copies of the built-in preset templates (safe to mutate)."""
+    import copy
+    return [copy.deepcopy(t) for t in BUILTIN_GAME_TEMPLATES]
+
+
+def save_custom_game_definition(defn: dict) -> Path:
+    """Write a custom game definition to JSON.  Returns the file path."""
+    folder = get_custom_games_dir()
+    game_id = defn.get("game_id") or _make_game_id(defn.get("name", "custom_game"))
+    defn["game_id"] = game_id
+    dest = folder / f"{game_id}.json"
+    clean = {k: v for k, v in defn.items() if not k.startswith("_")}
+    dest.write_text(json.dumps(clean, indent=2, ensure_ascii=False), encoding="utf-8")
+    return dest
+
+
+def delete_custom_game_definition(game_id: str) -> None:
+    """Delete the JSON file for a custom game."""
+    folder = get_custom_games_dir()
+    target = folder / f"{game_id}.json"
+    target.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Share codes - pack a custom game definition into a compact, copy-pasteable
+# string (same scheme as the profile share code: JSON → zlib → urlsafe base64
+# with a version prefix) so a definition can be shared and re-applied as a
+# preset in the define-custom-game editor.
+# ---------------------------------------------------------------------------
+
+CUSTOM_GAME_CODE_PREFIX = "AMMGAME1:"
+
+
+def encode_custom_game_definition(defn: dict) -> str:
+    """Serialise a custom game definition into a compact share code.
+
+    Internal (``_``-prefixed) keys are stripped, and ``game_id`` is dropped so
+    the importer generates a fresh id from the (possibly edited) name.
+    """
+    clean = {
+        k: v for k, v in defn.items()
+        if not k.startswith("_") and k != "game_id"
+    }
+    raw = json.dumps(clean, separators=(",", ":")).encode("utf-8")
+    packed = zlib.compress(raw, 9)
+    b64 = base64.urlsafe_b64encode(packed).decode("ascii")
+    return CUSTOM_GAME_CODE_PREFIX + b64
+
+
+def decode_custom_game_definition(code: str) -> dict:
+    """Reverse :func:`encode_custom_game_definition`. Accepts a code with or
+    without the ``AMMGAME1:`` prefix and tolerates surrounding whitespace.
+    Raises ``ValueError`` on a malformed code."""
+    if not code:
+        raise ValueError("Empty code.")
+    text = "".join(code.split())   # strip all whitespace / newlines
+    if text.startswith(CUSTOM_GAME_CODE_PREFIX):
+        text = text[len(CUSTOM_GAME_CODE_PREFIX):]
+    try:
+        packed = base64.urlsafe_b64decode(text.encode("ascii"))
+        raw = zlib.decompress(packed)
+        defn = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Not a valid Amethyst game code: {exc}") from exc
+    if not isinstance(defn, dict) or not defn.get("name") or not defn.get("exe_name"):
+        raise ValueError("Code does not contain a valid game definition.")
+    defn.pop("game_id", None)
+    for key in list(defn):
+        if isinstance(key, str) and key.startswith("_"):
+            defn.pop(key)
+    return defn
+
+
+def download_missing_custom_game_images(
+    on_done: "callable[[str], None] | None" = None,
+) -> None:
+    """
+    For every custom game definition that has an ``image_url`` but no
+    cached banner image yet, download and cache the image in a background
+    thread.  Safe to call at any time; games that already have a cached
+    image are skipped.
+
+    Parameters
+    ----------
+    on_done:
+        Optional callback invoked with the *game_id* after each image is
+        successfully saved.  It is called from the worker thread - if you
+        need to update the UI, use ``widget.after(0, ...)`` inside the
+        callback.
+    """
+    images_dir = get_custom_game_images_dir()
+
+    def _download_one(game_id: str, url: str) -> None:
+        try:
+            import requests
+            from PIL import Image as _PilImage
+
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            img = _PilImage.open(io.BytesIO(resp.content)).convert("RGBA")
+            out = images_dir / f"{game_id}.png"
+            img.save(out, "PNG")
+            if on_done is not None:
+                on_done(game_id)
+        except Exception:
+            pass  # silent – don't crash on missing images
+
+    for defn in load_custom_game_definitions():
+        game_id = defn.get("game_id") or _make_game_id(defn.get("name", ""))
+        url = defn.get("image_url", "").strip()
+        if not url:
+            continue
+        cached = images_dir / f"{game_id}.png"
+        if cached.is_file():
+            continue  # already cached
+        threading.Thread(
+            target=_download_one, args=(game_id, url), daemon=True
+        ).start()
+
+
+def _make_game_id(name: str) -> str:
+    """Turn a display name into a filesystem-safe game_id."""
+    safe = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in name)
+    return safe.strip("_") or "custom_game"
+
+
+# ---------------------------------------------------------------------------
+# Standard-deploy custom game
+# ---------------------------------------------------------------------------
+
+class StandardCustomGame(ProfileVFSGameMixin, BaseGame):
+    """Custom game that deploys mods into a single subdirectory ('standard' mode)."""
+
+    profile_overridable_settings = (
+        *BaseGame.profile_overridable_settings,
+        *ProfileVFSGameMixin.vfs_profile_setting_keys,
+    )
+
+    def __init__(self, defn: dict) -> None:
+        self._defn = defn
+        self._game_path: Path | None = None
+        self._prefix_path: Path | None = None
+        self._deploy_mode: LinkMode = LinkMode.HARDLINK
+        self._staging_path: Path | None = None
+        self.load_paths()
+
+    # ------------------------------------------------------------------
+    # Identity
+    # ------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        return self._defn["name"]
+
+    @property
+    def game_id(self) -> str:
+        return self._defn.get("game_id") or _make_game_id(self.name)
+
+    @property
+    def exe_name(self) -> str:
+        # Normalise Windows-style separators so game_path / exe_name resolves
+        # correctly on Linux (e.g. "Binaries\\NMS.exe" → "Binaries/NMS.exe").
+        return self._defn.get("exe_name", "").replace("\\", "/")
+
+    @property
+    def exe_name_alts(self) -> list[str]:
+        return [name.replace("\\", "/")
+                for name in _defn_to_list(self._defn, "exe_name_alts")]
+
+    @property
+    def steam_id(self) -> str:
+        return self._defn.get("steam_id", "")
+
+    @property
+    def nexus_game_domain(self) -> str:
+        return self._defn.get("nexus_game_domain", "")
+
+    @property
+    def additional_nexus_domains(self) -> list[str]:
+        value = self._defn.get("additional_nexus_domains", [])
+        return list(value) if isinstance(value, (list, tuple, set)) else []
+
+    @property
+    def thunderstore_community(self) -> str:
+        return self._defn.get("thunderstore_community", "")
+
+    @property
+    def image_url(self) -> str:
+        return self._defn.get("image_url", "")
+
+    @property
+    def is_custom(self) -> bool:
+        return True
+
+    @property
+    def editable(self) -> bool:
+        return self._defn.get("editable", True)
+
+    # ------------------------------------------------------------------
+    # Advanced mod-handling properties (read from JSON definition)
+    # ------------------------------------------------------------------
+
+    @property
+    def mod_folder_strip_prefixes(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_folder_strip_prefixes")
+
+    @property
+    def conflict_ignore_filenames(self) -> set[str]:
+        return _defn_to_set(self._defn, "conflict_ignore_filenames")
+
+    @property
+    def conflict_ignore_foldernames(self) -> set[str]:
+        return _defn_to_set(self._defn, "conflict_ignore_foldernames")
+
+    @property
+    def normalize_folder_case(self) -> bool:
+        return bool(self._defn.get("normalize_folder_case", True))
+
+    @property
+    def filemap_casing(self) -> str:
+        v = self._defn.get("filemap_casing", "upper")
+        return v if v in ("upper", "lower", "force_lower", "force_upper") else "upper"
+
+    @property
+    def filemap_casing_pins(self) -> dict[str, str]:
+        # Start from any base-class defaults (BaseGame -> none; UE5Game ->
+        # scripts -> Scripts for UE4SS), then let user-defined pins in the
+        # definition override on conflict.
+        pins = dict(super().filemap_casing_pins)
+        raw = self._defn.get("filemap_casing_pins")
+        if isinstance(raw, dict):
+            pins.update({
+                str(k).lower(): str(v)
+                for k, v in raw.items() if isinstance(v, str) and v
+            })
+        return pins
+
+    @property
+    def mod_folder_strip_prefixes_post(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_folder_strip_prefixes_post")
+
+    @property
+    def mod_install_prefix(self) -> str:
+        return self._defn.get("mod_install_prefix", "")
+
+    @property
+    def mod_required_top_level_folders(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_required_top_level_folders")
+
+    @property
+    def mod_auto_strip_until_required(self) -> bool:
+        return bool(self._defn.get("mod_auto_strip_until_required", False))
+
+    @property
+    def mod_required_file_types(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_required_file_types")
+
+    @property
+    def mod_install_as_is_if_no_match(self) -> bool:
+        return bool(self._defn.get("mod_install_as_is_if_no_match", False))
+
+    @property
+    def wine_dll_overrides(self) -> dict[str, str]:
+        return _defn_to_dll_overrides(self._defn)
+
+    @property
+    def auto_install_deps(self) -> list[str]:
+        if "auto_install_deps" not in self._defn:
+            return list(super().auto_install_deps)
+        return _defn_to_list(self._defn, "auto_install_deps")
+
+    @property
+    def restore_before_deploy(self) -> bool:
+        return bool(self._defn.get("restore_before_deploy", True))
+
+    @property
+    def vortex_mod_types(self) -> dict:
+        return self._defn.get("vortex_mod_types", {})
+
+    @property
+    def custom_routing_rules(self) -> list[CustomRule]:
+        return _defn_to_custom_rules(self._defn)
+
+    @property
+    def restore_whitelist(self) -> list[RestoreWhitelistRule]:
+        return _defn_to_restore_whitelist(self._defn)
+
+    @property
+    def frameworks(self) -> dict[str, str]:
+        raw = self._defn.get("custom_frameworks", {})
+        if isinstance(raw, dict):
+            return {k: v for k, v in raw.items() if k and v}
+        return {}
+
+    # ------------------------------------------------------------------
+    # Paths
+    # ------------------------------------------------------------------
+
+    def get_game_path(self) -> Path | None:
+        return self._game_path
+
+    def get_mod_data_path(self) -> Path | None:
+        if self._game_path is None:
+            return None
+        rel = self._defn.get("mod_data_path", "").strip("/\\").replace("\\", "/")
+        if rel:
+            return self._game_path / rel
+        return self._game_path
+
+    def runtime_snapshot_exclude_dirs(self) -> set[str] | None:
+        # Exclude the configured deploy subfolder. No subfolder = deploy target
+        # is the game root, so there is nothing to snapshot around - None.
+        rel = self._defn.get("mod_data_path", "").strip("/\\").replace("\\", "/")
+        if not rel:
+            return None
+        top = rel.split("/")[0]
+        return {top} if top else None
+
+    @property
+    def vfs_direct_shadow_launch(self) -> bool:
+        # Native custom games need their executable and cwd inside the complete
+        # materialized view. Resolve first so a native alternative is honoured.
+        from Utils.executables.launch import resolve_game_exe
+        executable = resolve_game_exe(self) or Path(self.exe_name)
+        return executable.suffix.lower() not in (".exe", ".bat")
+
+    def get_mod_staging_path(self) -> Path:
+        if self._staging_path is not None:
+            return self._staging_path / "mods"
+        return _PROFILES_DIR / self.name / "mods"
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    # load_paths / save_paths are inherited from BaseGame (profile-aware).
+
+    def set_staging_path(self, path: Path | str | None) -> None:
+        self._staging_path = Path(path) if path else None
+        self.save_paths()
+
+    def get_prefix_path(self) -> Path | None:
+        return self._prefix_path
+
+    def get_deploy_mode(self) -> LinkMode:
+        return self._deploy_mode
+
+    def set_deploy_mode(self, mode: LinkMode) -> None:
+        self._deploy_mode = mode
+        self.save_paths()
+
+    def set_prefix_path(self, path: Path | str | None) -> None:
+        self._prefix_path = Path(path) if path else None
+        self.save_paths()
+
+    # ------------------------------------------------------------------
+    # Deployment
+    # ------------------------------------------------------------------
+
+    def deploy(self, log_fn=None, mode: LinkMode = LinkMode.HARDLINK,
+               profile: str = "default", progress_fn=None) -> None:
+        _log = log_fn or (lambda _: None)
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+
+        data_dir = self.get_mod_data_path()
+        filemap  = self.get_effective_filemap_path()
+        staging  = self.get_effective_mod_staging_path()
+
+        if data_dir is None:
+            raise RuntimeError("Mod data path could not be resolved.")
+        from Utils.filegraph.deploy import input_ready
+        if not input_ready():
+            raise RuntimeError(f"filemap.txt not found: {filemap}\nRun 'Build Filemap' before deploying.")
+
+        if self.vfs_launch_enabled:
+            return self._deploy_vfs(
+                profile=profile,
+                filemap=filemap,
+                staging=staging,
+                log_fn=_log,
+                progress_fn=progress_fn,
+            )
+
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        profile_dir = self.get_profile_root() / "profiles" / profile
+        per_mod_strip = load_per_mod_strip_prefixes(profile_dir)
+
+        # Separator overrides - loaded from the real profile_dir and passed
+        # explicitly so shared-staging layouts get the right link modes.
+        _sep_deploy = load_separator_deploy_paths(profile_dir)
+        _sep_entries = read_modlist(profile_dir / "modlist.txt") if _sep_deploy else []
+        per_mod_deploy = expand_separator_deploy_paths(_sep_deploy, _sep_entries) or None
+        per_mod_modes = expand_separator_link_modes(_sep_deploy, _sep_entries) or None
+        per_mod_raw = expand_separator_raw_deploy(_sep_deploy, _sep_entries) or None
+
+        custom_rules = self.effective_custom_routing_rules
+        custom_exclude: set[str] = set()
+        if custom_rules:
+            _log("Step 1: Routing files via custom rules ...")
+            custom_exclude = deploy_custom_rules(
+                filemap, self._game_path, staging,
+                rules=custom_rules,
+                mode=mode,
+                strip_prefixes=self.mod_folder_strip_prefixes,
+                per_mod_strip_prefixes=per_mod_strip,
+                per_mod_link_modes=per_mod_modes,
+                raw_mods=per_mod_raw,
+                log_fn=_log,
+                prefix_root=self.get_prefix_path(),
+            )
+
+            _log(f"Step 2: Moving {data_dir.name}/ → {data_dir.name}_Core/ ...")
+        else:
+            _log(f"Step 1: Moving {data_dir.name}/ → {data_dir.name}_Core/ ...")
+        move_to_core(data_dir, log_fn=_log)
+        _log(f"  Backed up existing files → {data_dir.name}_Core/.")
+
+        _log(f"{'Step 3' if custom_rules else 'Step 2'}: Transferring mod files into {data_dir.name}/ ({mode.name}) ...")
+        linked_mod, placed = deploy_filemap(
+            filemap, data_dir, staging,
+            mode=mode,
+            strip_prefixes=self.mod_folder_strip_prefixes,
+            per_mod_strip_prefixes=per_mod_strip,
+            per_mod_deploy_dirs=per_mod_deploy,
+            per_mod_link_modes=per_mod_modes,
+            log_fn=_log,
+            progress_fn=progress_fn,
+            exclude=custom_exclude or None,
+            core_dir=data_dir.parent / (data_dir.name + "_Core"),
+        )
+        _log(f"  Transferred {linked_mod} mod file(s).")
+
+        _log(f"Step 3: Filling gaps with vanilla files from {data_dir.name}_Core/ ...")
+        linked_core = deploy_core(data_dir, placed, mode=mode, log_fn=_log)
+        _log(f"  Transferred {linked_core} vanilla file(s).")
+        _log(f"Deploy complete. {linked_mod} mod + {linked_core} vanilla = {linked_mod + linked_core} total file(s).")
+
+        # Capture runtime files on next restore (only if mods deploy to a subfolder).
+        if self.runtime_snapshot_exclude_dirs():
+            self.snapshot_root_for_runtime_capture(log_fn=_log)
+
+    def restore(self, log_fn=None, progress_fn=None) -> None:
+        _log = log_fn or (lambda _: None)
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+        data_dir = self.get_mod_data_path()
+        if data_dir is None:
+            raise RuntimeError("Mod data path could not be resolved.")
+        _profile_dir = self._active_profile_dir
+        _entries = read_modlist(_profile_dir / "modlist.txt") if _profile_dir else []
+        cleanup_custom_deploy_dirs(_profile_dir, _entries, log_fn=_log, game=self)
+
+        _log("Restore: removing custom-routed files ...")
+        # The deployment log is authoritative and may outlive a definition
+        # edit that removed its rules, so always give restore a chance to
+        # consume both the log and backup-only interrupted state.
+        restore_custom_rules(
+            self.get_effective_filemap_path(), self._game_path,
+            rules=[], log_fn=_log,
+            prefix_root=self.get_prefix_path(),
+        )
+
+        from Utils.vfs import cleanup_deployment, has_deployment_state
+        if has_deployment_state(self):
+            cleanup_deployment(self, preserve_upper=True, log_fn=_log)
+            core_dir = data_dir.parent / (data_dir.name + "_Core")
+            if not core_dir.is_dir():
+                _log("Restore complete.")
+                return
+            _log("Restore: a physical deployment also remains; restoring it now ...")
+
+        _log(f"Restore: clearing {data_dir.name}/ and moving {data_dir.name}_Core/ back ...")
+        _data_rel = self._defn.get("mod_data_path", "").strip("/\\")
+        _prefix = _data_rel.replace("\\", "/").lower() + "/" if _data_rel else ""
+        restored = restore_data_core(
+            data_dir,
+            overwrite_dir=self.get_effective_overwrite_path(),
+            log_fn=_log,
+            restore_whitelist=self.restore_whitelist_matcher(rel_prefix=_prefix),
+            game=self, profile_dir=self._active_profile_dir,
+        )
+        _log(f"  Restored {restored} file(s). {data_dir.name}_Core/ removed.")
+
+        if self.runtime_snapshot_exclude_dirs():
+            moved = self.capture_runtime_files_to_root_folder(log_fn=_log)
+            if moved:
+                _log(f"  Moved {moved} runtime file(s) to Root_Folder/.")
+
+        _log("Restore complete.")
+
+
+# ---------------------------------------------------------------------------
+# Root-deploy custom game
+# ---------------------------------------------------------------------------
+
+class RootCustomGame(StandardCustomGame):
+    """Custom game that deploys mods directly to the game root ('root' mode)."""
+
+    def get_mod_data_path(self) -> Path | None:
+        """Root deploy: the 'data' path is the game root itself."""
+        return self._game_path
+
+    def runtime_snapshot_exclude_dirs(self) -> set[str] | None:
+        # Mods deploy to the game root - no subfolder, so capture does not apply.
+        return None
+
+    def deploy(self, log_fn=None, mode: LinkMode = LinkMode.HARDLINK,
+               profile: str = "default", progress_fn=None) -> None:
+        _log = log_fn or (lambda _: None)
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+
+        game_root = self._game_path
+        filemap   = self.get_effective_filemap_path()
+        staging   = self.get_effective_mod_staging_path()
+
+        from Utils.filegraph.deploy import input_ready
+        if not input_ready():
+            raise RuntimeError(f"filemap.txt not found: {filemap}\nRun 'Build Filemap' before deploying.")
+
+        if self.vfs_launch_enabled:
+            return self._deploy_vfs(
+                profile=profile,
+                filemap=filemap,
+                staging=staging,
+                log_fn=_log,
+                progress_fn=progress_fn,
+            )
+
+        profile_dir = self.get_profile_root() / "profiles" / profile
+        per_mod_strip = load_per_mod_strip_prefixes(profile_dir)
+
+        # Separator overrides - loaded from the real profile_dir so custom-routed
+        # files honour a separator's File Transfer Method (shared-staging safe).
+        _sep_deploy = load_separator_deploy_paths(profile_dir)
+        _sep_entries = read_modlist(profile_dir / "modlist.txt") if _sep_deploy else []
+        per_mod_modes = expand_separator_link_modes(_sep_deploy, _sep_entries) or None
+        per_mod_raw = expand_separator_raw_deploy(_sep_deploy, _sep_entries) or None
+
+        projected = bool(getattr(
+            self, "root_deploy_uses_filegraph_destinations", False))
+        custom_rules = [] if projected else self.effective_custom_routing_rules
+        custom_exclude: set[str] = set()
+        if custom_rules:
+            _log("Routing files via custom rules ...")
+            custom_exclude = deploy_custom_rules(
+                filemap, game_root, staging,
+                rules=custom_rules,
+                mode=mode,
+                strip_prefixes=self.mod_folder_strip_prefixes,
+                per_mod_strip_prefixes=per_mod_strip,
+                per_mod_link_modes=per_mod_modes,
+                raw_mods=per_mod_raw,
+                log_fn=_log,
+                prefix_root=self.get_prefix_path(),
+            )
+
+        _log(f"Transferring mod files into game root ({mode.name}) ...")
+        linked_mod, _ = deploy_filemap_to_root(
+            filemap, game_root, staging,
+            mode=mode,
+            strip_prefixes=self.mod_folder_strip_prefixes,
+            per_mod_strip_prefixes=per_mod_strip,
+            log_fn=_log,
+            progress_fn=progress_fn,
+            exclude=custom_exclude or None,
+            game=self,
+            projected_destinations=projected,
+        )
+        _log(f"Deploy complete. {linked_mod} mod file(s) placed in game root.")
+
+    def restore(self, log_fn=None, progress_fn=None) -> None:
+        _log = log_fn or (lambda _: None)
+        if self._game_path is None:
+            raise RuntimeError("Game path is not configured.")
+        filemap   = self.get_effective_filemap_path()
+        game_root = self._game_path
+
+        _profile_dir = self._active_profile_dir
+        _entries = read_modlist(_profile_dir / "modlist.txt") if _profile_dir else []
+        cleanup_custom_deploy_dirs(_profile_dir, _entries, log_fn=_log, game=self)
+
+        _log("Restore: removing custom-routed files ...")
+        restore_custom_rules(
+            filemap, game_root, rules=[], log_fn=_log,
+            prefix_root=self.get_prefix_path())
+
+        from Utils.vfs import cleanup_deployment, has_deployment_state
+        if has_deployment_state(self):
+            cleanup_deployment(self, preserve_upper=True, log_fn=_log)
+            physical_state = (
+                filemap.parent / "filemap_deployed.txt"
+            ).is_file() or (
+                filemap.parent / "filemap_backup"
+            ).is_dir()
+            if not physical_state:
+                _log("Restore complete.")
+                return
+            _log("Restore: a physical deployment also remains; restoring it now ...")
+
+        _log("Restore: removing mod files and restoring vanilla files ...")
+        removed = restore_filemap_from_root(
+            filemap, game_root, log_fn=_log,
+            restore_whitelist=self.restore_whitelist_matcher())
+        _log(f"Restore complete. {removed} mod file(s) removed from game root.")
+
+
+# ---------------------------------------------------------------------------
+# UE5-deploy custom game
+# ---------------------------------------------------------------------------
+
+class Ue5CustomGame(UE5Game):
+    """Custom game that uses the UE5 manifest deploy ('ue5' mode).
+
+    No routing rules are defined, so every file goes to the game root and is
+    tracked via ue5_deployed.txt - identical to how Oblivion Remastered works
+    when all rules fall through to the default destination.
+    """
+
+    def __init__(self, defn: dict) -> None:
+        self._defn = defn
+        # UE5Game.__init__ calls load_paths() - run after setting _defn
+        super().__init__()
+
+    # ------------------------------------------------------------------
+    # Identity
+    # ------------------------------------------------------------------
+
+    @property
+    def name(self) -> str:
+        return self._defn["name"]
+
+    @property
+    def game_id(self) -> str:
+        return self._defn.get("game_id") or _make_game_id(self.name)
+
+    @property
+    def exe_name(self) -> str:
+        # Normalise Windows-style separators so game_path / exe_name resolves
+        # correctly on Linux (e.g. "Binaries\\NMS.exe" → "Binaries/NMS.exe").
+        return self._defn.get("exe_name", "").replace("\\", "/")
+
+    @property
+    def exe_name_alts(self) -> list[str]:
+        return [name.replace("\\", "/")
+                for name in _defn_to_list(self._defn, "exe_name_alts")]
+
+    @property
+    def steam_id(self) -> str:
+        return self._defn.get("steam_id", "")
+
+    @property
+    def nexus_game_domain(self) -> str:
+        return self._defn.get("nexus_game_domain", "")
+
+    @property
+    def additional_nexus_domains(self) -> list[str]:
+        value = self._defn.get("additional_nexus_domains", [])
+        return list(value) if isinstance(value, (list, tuple, set)) else []
+
+    @property
+    def thunderstore_community(self) -> str:
+        return self._defn.get("thunderstore_community", "")
+
+    @property
+    def image_url(self) -> str:
+        return self._defn.get("image_url", "")
+
+    @property
+    def is_custom(self) -> bool:
+        return True
+
+    @property
+    def editable(self) -> bool:
+        return self._defn.get("editable", True)
+
+    # ------------------------------------------------------------------
+    # Paths
+    # ------------------------------------------------------------------
+
+    def get_game_path(self) -> Path | None:
+        """If mod_data_path names a subfolder of the install dir, resolve it.
+
+        Mirrors how OblivionRemastered / HogwartsLegacy work: the user sets
+        their Steam install directory as the game path, and we automatically
+        descend into the named subfolder (e.g. 'OblivionRemastered' or
+        'Phoenix') to find the actual game root.  Case-insensitive so it
+        works on both Proton/Windows and Linux.
+        """
+        if self._game_path is None:
+            return None
+        subdir = self._defn.get("mod_data_path", "").strip("/\\")
+        if not subdir:
+            return self._game_path
+        # Exact match first
+        sub = self._game_path / subdir
+        if sub.is_dir():
+            return sub
+        # Case-insensitive scan
+        needle = subdir.lower()
+        try:
+            for child in self._game_path.iterdir():
+                if child.is_dir() and child.name.lower() == needle:
+                    return child
+        except OSError:
+            pass
+        # Fallback: user may have pointed directly at the subfolder already
+        return self._game_path
+
+    # ------------------------------------------------------------------
+    # Advanced mod-handling properties (read from JSON definition)
+    # ------------------------------------------------------------------
+
+    @property
+    def mod_folder_strip_prefixes(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_folder_strip_prefixes")
+
+    @property
+    def conflict_ignore_filenames(self) -> set[str]:
+        return _defn_to_set(self._defn, "conflict_ignore_filenames")
+
+    @property
+    def conflict_ignore_foldernames(self) -> set[str]:
+        return _defn_to_set(self._defn, "conflict_ignore_foldernames")
+
+    @property
+    def normalize_folder_case(self) -> bool:
+        return bool(self._defn.get("normalize_folder_case", True))
+
+    @property
+    def filemap_casing(self) -> str:
+        v = self._defn.get("filemap_casing", "upper")
+        return v if v in ("upper", "lower", "force_lower", "force_upper") else "upper"
+
+    @property
+    def filemap_casing_pins(self) -> dict[str, str]:
+        # Start from any base-class defaults (BaseGame -> none; UE5Game ->
+        # scripts -> Scripts for UE4SS), then let user-defined pins in the
+        # definition override on conflict.
+        pins = dict(super().filemap_casing_pins)
+        raw = self._defn.get("filemap_casing_pins")
+        if isinstance(raw, dict):
+            pins.update({
+                str(k).lower(): str(v)
+                for k, v in raw.items() if isinstance(v, str) and v
+            })
+        return pins
+
+    @property
+    def mod_folder_strip_prefixes_post(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_folder_strip_prefixes_post")
+
+    @property
+    def mod_install_prefix(self) -> str:
+        return self._defn.get("mod_install_prefix", "")
+
+    @property
+    def mod_required_top_level_folders(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_required_top_level_folders")
+
+    @property
+    def mod_auto_strip_until_required(self) -> bool:
+        return bool(self._defn.get("mod_auto_strip_until_required", False))
+
+    @property
+    def mod_required_file_types(self) -> set[str]:
+        return _defn_to_set(self._defn, "mod_required_file_types")
+
+    @property
+    def mod_install_as_is_if_no_match(self) -> bool:
+        return bool(self._defn.get("mod_install_as_is_if_no_match", False))
+
+    @property
+    def wine_dll_overrides(self) -> dict[str, str]:
+        return _defn_to_dll_overrides(self._defn)
+
+    @property
+    def auto_install_deps(self) -> list[str]:
+        if "auto_install_deps" not in self._defn:
+            return list(super().auto_install_deps)
+        return _defn_to_list(self._defn, "auto_install_deps")
+
+    @property
+    def restore_before_deploy(self) -> bool:
+        return bool(self._defn.get("restore_before_deploy", True))
+
+    @property
+    def vortex_mod_types(self) -> dict:
+        return self._defn.get("vortex_mod_types", {})
+
+    @property
+    def custom_routing_rules(self) -> list[CustomRule]:
+        return _defn_to_custom_rules(self._defn)
+
+    @property
+    def restore_whitelist(self) -> list[RestoreWhitelistRule]:
+        return _defn_to_restore_whitelist(self._defn)
+
+    @property
+    def frameworks(self) -> dict[str, str]:
+        raw = self._defn.get("custom_frameworks", {})
+        if isinstance(raw, dict):
+            return {k: v for k, v in raw.items() if k and v}
+        return {}
+
+    # ------------------------------------------------------------------
+    # UE5 routing - the user's custom_routing_rules are converted to
+    # UE5Rules and prepended by UE5Game.ue5_routing_rules; the built-in
+    # defaults below act as fallbacks when no custom rule matched.
+    # ------------------------------------------------------------------
+
+    @property
+    def _ue5_post_passthrough_rules(self) -> list[UE5Rule]:
+        return [
+            # Lua UE4SS scripts and companion files (config.ini, data .json)
+            # → Binaries/Win64/ue4ss/Mods/  (custom games include the legacy
+            # Binaries/Win64/Mods strip entry too, since user mods may ship
+            # either layout)
+            UE5Rule(
+                dest="Binaries/Win64/ue4ss/Mods",
+                extensions=[".lua", ".ini", ".json"],
+                filenames=["enabled.txt"],
+                strip=[
+                    "Binaries/Win64/ue4ss/Mods",
+                    "Binaries/Win64/Mods",
+                    "Binaries/Win64/ue4ss",
+                    "ue4ss/Mods",
+                    "UE4SS/Mods",
+                    "UE4SS",
+                    "ue4ss",
+                    "Mods",
+                ],
+                flatten=True,
+            ),
+            # Loose UE4SS proxy/runtime files (dwmapi.dll, UE4SS.dll, etc.) → Binaries/Win64/
+            UE5Rule(
+                dest="Binaries/Win64",
+                extensions=[".dll", ".pdb"],
+            ),
+            # Bink video replacers → Content/Movies/
+            UE5Rule(
+                dest="Content/Movies",
+                extensions=[".bk2"],
+                strip=["Content/Movies"],
+                flatten=True,
+            ),
+        ]
+
+    @property
+    def ue5_default_dest(self) -> str:
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+
+_DEPLOY_CLASSES = {
+    "standard": StandardCustomGame,
+    "root":     RootCustomGame,
+    "ue5":      Ue5CustomGame,
+}
+
+
+def make_custom_game(defn: dict) -> BaseGame:
+    """Instantiate the correct handler class for the given definition dict."""
+    deploy_type = defn.get("deploy_type", "standard").lower()
+    cls = _DEPLOY_CLASSES.get(deploy_type, StandardCustomGame)
+    return cls(defn)
+
+
+def load_all_custom_games() -> dict[str, BaseGame]:
+    """Load every custom game definition and return {game.name: instance}."""
+    games: dict[str, BaseGame] = {}
+    for defn in load_custom_game_definitions():
+        try:
+            instance = make_custom_game(defn)
+            games[instance.name] = instance
+        except Exception:
+            pass
+    return games

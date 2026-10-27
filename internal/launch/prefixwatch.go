@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const environLimit = 1 << 20
@@ -57,4 +58,52 @@ func envMatchesPrefix(env []byte, want map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// PrefixStart is when a prefix process was started, or the zero time when
+// /proc does not say.
+func PrefixStart(pid int) time.Time {
+	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return time.Time{}
+	}
+	// Field 22 counts clock ticks since boot; the command name in field 2 may
+	// hold spaces, so count from the closing parenthesis instead.
+	close := strings.LastIndexByte(string(stat), ')')
+	if close < 0 {
+		return time.Time{}
+	}
+	fields := strings.Fields(string(stat)[close+1:])
+	if len(fields) < 20 {
+		return time.Time{}
+	}
+	ticks, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	boot, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return time.Time{}
+	}
+	for _, line := range strings.Split(string(boot), "\n") {
+		rest, ok := strings.CutPrefix(line, "btime ")
+		if !ok {
+			continue
+		}
+		secs, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+		if err != nil {
+			return time.Time{}
+		}
+		return time.Unix(secs, 0).Add(time.Duration(ticks) * time.Second / 100)
+	}
+	return time.Time{}
+}
+
+// PrefixCmdline is a process command line with its arguments joined by spaces.
+func PrefixCmdline(pid int) string {
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil {
+		return ""
+	}
+	return strings.Join(strings.Split(string(raw), "\x00"), " ")
 }

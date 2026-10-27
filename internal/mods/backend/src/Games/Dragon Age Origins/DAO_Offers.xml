@@ -1,0 +1,1967 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<OfferList>
+  <OfferItem UID="DAO_PRC_DRK_O" Name="DAO_PRC_DRK_O" ExtendedModuleUID="Single Player" Priority="503" Presentation="32" Format="1" BioWare="1">
+    <Title DefaultText="The Darkspawn Chronicles">
+      <en-us><![CDATA[The Darkspawn Chronicles]]></en-us>
+      <fr-fr><![CDATA[Les Chroniques des engeances]]></fr-fr>
+      <it-it><![CDATA[Cronache della Prole Oscura]]></it-it>
+      <de-de><![CDATA[Die Chroniken der Dunklen Brut]]></de-de>
+      <es-es><![CDATA[Crónicas de los engendros]]></es-es>
+      <pl-pl><![CDATA[Kroniki Mrocznych Pomiotów]]></pl-pl>
+      <ru-ru><![CDATA[Хроники порождений тьмы]]></ru-ru>
+      <pseudo><![CDATA[The Darkspawn Chronicles]]></pseudo>
+      <cs-cz><![CDATA[Kroniky zplozenců]]></cs-cz>
+      <hu-hu><![CDATA[Éjfattyú krónikák]]></hu-hu>
+    </Title>
+    <Description DefaultText="The city of Denerim, jewel of Ferelden, girds itself for war. As a hurlock vanguard, you alone hold the power to make thralls of your fellow darkspawn and drive them into the heat of battle. Heed the archdemon's call--Denerim must burn!  Includes: * A standalone adventure in which you command genlocks, hurlocks, shrieks, and even the mighty ogres. * A look at an alternate history: what if your character had died in the Joining ceremony, and the Grey Wardens marched under Alistair's command instead?  To begin this dark new tale: * From the main menu, select Other Campaigns, then select The Darkspawn Chronicles.">
+      <en-us><![CDATA[The city of Denerim, jewel of Ferelden, girds itself for war. As a hurlock vanguard, you alone hold the power to make thralls of your fellow darkspawn and drive them into the heat of battle. Heed the archdemon's call--Denerim must burn!
+
+Includes:
+* A standalone adventure in which you command genlocks, hurlocks, shrieks, and even the mighty ogres.
+* A look at an alternate history: what if your character had died in the Joining ceremony, and the Grey Wardens marched under Alistair's command instead?
+
+To begin this dark new tale:
+* From the main menu, select Other Campaigns, then select The Darkspawn Chronicles.]]></en-us>
+      <fr-fr><![CDATA[La cité de Dénérim, joyau de Férelden, se prépare à la guerre. Vous incarnez un porte-étendard hurlock qui est le seul à détenir le pouvoir d'asservir des engeances et de les mener au coeur de la bataille. Respectez le voeu de l'archidémon et mettez Dénérim à feu et à sang ! Contient :* Une aventure en solitaire où vous commandez des genlocks, des hurlocks, des hurleurs et même de puissants ogres.* Un aperçu d'une histoire alternative : que se serait-il passé si votre personnage était mort lors de la cérémonie de l'Union et si les Gardes des ombres avaient été sous la coupe d'Alistair ? Pour découvrir cette sombre histoire inédite :* dans le menu principal, sélectionnez Autres campagnes, puis Les Chroniques des engeances.]]></fr-fr>
+      <it-it><![CDATA[La città di Denerim, gioiello del Ferelden, si prepara alla guerra. Nei panni di un'avanguardia hurlock, avrai il potere di reclutare diversi prole oscura tra i tuoi servitori e di guidarli nel cuore della battaglia. Rispondi al richiamo dell'arcidemone: Denerim deve bruciare!
+
+Include:
+* Un'avventura indipendente, nella quale comanderai genlock, hurlock, shriek e persino possenti ogre.
+* Una storia alternativa: cosa sarebbe successo se il tuo personaggio fosse morto durante il rituale dell'Unione, e i Custodi Grigi avessero marciato sotto il comando di Alistair?
+
+Per iniziare questa nuova avventura oscura:
+* Dal menu principale, seleziona Nuova partita, e poi Cronache della Prole Oscura.]]></it-it>
+      <de-de><![CDATA[Die Stadt Denerim, das Juwel Fereldens, rüstet sich für den Krieg. Als Hurlock-Vorhut hast allein du die Macht, andere der Dunklen Brut zu deinen Knechten zu machen und sie in die Schlacht zu führen. Folge dem Ruf des Erzdämons - Denerim muss brennen!
+
+Umfasst:
+* Ein eigenständiges Abenteuer, bei dem du Genlocks, Hurlocks, Kreischer und sogar die mächtigen Oger befehligst.
+* Einen Ausblick auf einen alternativen Verlauf der Geschichte: Was wäre geschehen, wenn dein Charakter das Beitrittsritual nicht überlebt hätte und die Grauen Wächter stattdessen unter Alistairs Führung gekämpft hätten?
+
+So beginnst du diese düstere neue Geschichte:
+* Wähle im Hauptmenü die Option "Andere Kampagnen" und dann "Die Chroniken der Dunklen Brut".]]></de-de>
+      <es-es><![CDATA[La ciudad de Denerim, la joya de Ferelden, se prepara para la guerra. Como vanguardia hurlock que eres, solo tú tienes el poder de convertir en siervos a tus compañeros engendros y conducirlos al fragor de la batalla. Escucha la llamada del archidemonio: ¡Denerim debe arder por los cuatro costados!
+
+Incluye:
+* Una aventura independiente en la que puedes dar órdenes a genlocks, hurlocks, chillidos e incluso a los poderosos ogros.
+* Una mirada a la historia alternativa: ¿qué habría pasado si tu personaje hubiera muerto durante la Iniciación y los guardas grises hubieran seguido a Alistair en vez de a ti?
+
+Para empezar esta nueva historia tenebrosa:
+* En el menú principal, selecciona Nueva partida y a continuación Crónicas de los engendros.]]></es-es>
+      <pl-pl><![CDATA[Denerim, klejnot Fereldenu, szykuje się do wojny. Jako przodownik ze straży przedniej hurloków, masz możliwość uczynienia sług z innych mrocznych pomiotów i skierować ich w samo serce walki. Wysłuchaj wołania arcydemona--Denerim musi spłonąć!
+
+
+
+Zawiera:
+
+* Samodzielną przygodę, w której dowodzisz genlokami, hurlokami, wrzeszczotami, a nawet potężnymi ogrami.
+
+* Spojrzenie na historię alternatywną: co by się stało, gdyby Twoja postać zginęła podczas ceremonii Dołączenia, a dowódcą Szarej Straży został Alistair?
+
+
+
+Aby rozpocząć tę nową, mroczną opowieść:
+
+* Z głównego menu wybierz Inne kampanie, a następnie zaznacz Kroniki Mrocznych Pomiotów.]]></pl-pl>
+      <ru-ru><![CDATA[Город Денерим, жемчужина Ферелдена, готовится к войне. Будучи авангардом гарлоков, вы обладаете уникальной властью порабощать других порождений тьмы и отправлять их в гущу битвы. Следуйте зову архидемона: Денерим должен сгореть дотла!
+
+Включает:
+* Отдельное приключение, в котором вы можете командовать генлоками, гарлоками, крикунами и даже грозными ограми.
+* Альтернативная история: что было бы, если бы ваш персонаж умер при Посвящении и Серыми Стражами командовал бы Алистер?
+
+Чтобы начать игру за темную сторону
+* Выберите в главном меню "Другие кампании", а затем выберите пункт Хроники порождений тьмы.]]></ru-ru>
+      <pseudo><![CDATA[The city of Denerim, jewel of Ferelden, girds itself for war. As a hurlock vanguard, you alone hold the power to make thralls of your fellow darkspawn and drive them into the heat of battle. Heed the archdemon's call--Denerim must burn!
+
+Includes:
+* A standalone adventure in which you command genlocks, hurlocks, shrieks, and even the mighty ogres.
+* A look at an alternate history: what if your character had died in the Joining ceremony, and the Grey Wardens marched under Alistair's command instead?
+
+To begin this dark new tale:
+* From the main menu, select Other Campaigns, then select The Darkspawn Chronicles.]]></pseudo>
+      <cs-cz><![CDATA[Město Denerim, perla Fereldenu, se připravuje na válku. Ty, vířivec průzkumník, máš jako jediný moc učinit s ostatních zplozenců své otroky a vést je do bitevní vřavy. Poslechni výzvu arcidémona – Denerim musí lehnout popelem! 
+
+Obsahuje:
+* Samostatnou dobrodružnou hru, ve které povedeš svíječe, vířivce, křiklouny a všemocné zlobry. 
+* Pohled do alternativní historie: Co by se stalo, kdyby tvá postava zahynula při obřadu Přijímání a Šedé strážce by místo tebe vedl Alistair?
+
+Chceš-li zahájit tento nový temný příběh:
+* Vyber v hlavní nabídce možnost Ostatní kampaně a následně Kroniky zplozenců.]]></cs-cz>
+      <hu-hu><![CDATA[Denerim városa, a fereldeni korona ékköve, csatára készül. Csorlák élharcosként csak te vagy képes magad köré gyűjteni éjfattyú társaidat, hogy harcba vezesd őket. Halld a vezérdémon parancsát: Denerimnek égnie kell!
+
+Tartalom:
+* Önálló küldetés, melyben csorlákokat, csesznyéket, süvöltőket és nagyerejű ogarakat irányíthatsz.
+* Pillantás egy sosemvolt jelenbe: mi lett volna, ha karaktered nem éli túl a Csatlakozást, és a szürke kamarások Alistair parancsnoksága alatt küzdenek? 
+
+Az új, sötét fejezet eléréséhez:
+* Válaszd a főmenüben az Egyéb hadjáratok, majd az Éjfattyú krónikák opciót.]]></hu-hu>
+    </Description>
+    <Image>dao_prc_drk</Image>
+    <Rating DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[M come Maturo]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[PEGI 18+]]></pl-pl>
+      <ru-ru><![CDATA["В" значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtteknek)]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="(For Mature Audiences)">
+      <en-us><![CDATA[(For Mature Audiences)]]></en-us>
+      <fr-fr><![CDATA[(Pour joueurs matures)]]></fr-fr>
+      <it-it><![CDATA[(Per un pubblico maturo)]]></it-it>
+      <de-de><![CDATA[(For Mature Audiences)]]></de-de>
+      <es-es><![CDATA[(Para público adulto)]]></es-es>
+      <pl-pl><![CDATA[(Dla dorosłych odbiorców)]]></pl-pl>
+      <ru-ru><![CDATA[(Для взрослой аудитории)]]></ru-ru>
+      <pseudo><![CDATA[(For Mature Audiences)]]></pseudo>
+      <cs-cz><![CDATA[(Pro dospělé uživatele)]]></cs-cz>
+      <hu-hu><![CDATA[(csak felnőtteknek)]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/darkspawn">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/darkspawn]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/darkspawn]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/it-it/darkspawn]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de-de/darkspawn]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/es-es/darkspawn]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/darkspawn]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-ru/darkspawn]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/darkspawn]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/cs-cz/darkspawn]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/hu-hu/darkspawn]]></hu-hu>
+    </URL>
+    <ReleaseDate>18/5/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.03</GameVersion>
+    <Type>1</Type>
+    <Price>400</Price>
+    <Size>410</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="20873" microContentID="DAO_PRC_DRK" Version="1.0">
+        <Title DefaultText="The Darkspawn Chronicles">
+          <en-us><![CDATA[The Darkspawn Chronicles]]></en-us>
+          <fr-fr><![CDATA[Les Chroniques des engeances]]></fr-fr>
+          <it-it><![CDATA[Cronache della Prole Oscura]]></it-it>
+          <de-de><![CDATA[Die Chroniken der Dunklen Brut]]></de-de>
+          <es-es><![CDATA[Crónicas de los engendros]]></es-es>
+          <pl-pl><![CDATA[Kroniki Mrocznych Pomiotów]]></pl-pl>
+          <ru-ru><![CDATA[Хроники порождений тьмы]]></ru-ru>
+          <pseudo><![CDATA[The Darkspawn Chronicles]]></pseudo>
+          <cs-cz><![CDATA[Kroniky zplozenců]]></cs-cz>
+          <hu-hu><![CDATA[Éjfattyú krónikák]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_GIB_O" Name="DAO_PRC_GIB_O" ExtendedModuleUID="Single Player" Priority="100" Presentation="32" Format="1" BioWare="1">
+    <Title DefaultText="The Golems of Amgarrak">
+      <en-us><![CDATA[The Golems of Amgarrak]]></en-us>
+      <fr-fr><![CDATA[Les Golems d'Amgarrak]]></fr-fr>
+      <it-it><![CDATA[I Golem di Amgarrak]]></it-it>
+      <de-de><![CDATA[Die Golems von Amgarrak]]></de-de>
+      <es-es><![CDATA[Los golems de Amgarrak]]></es-es>
+      <pl-pl><![CDATA[The Golems of Amgarrak]]></pl-pl>
+      <ru-ru><![CDATA[The Golems of Amgarrak]]></ru-ru>
+      <pseudo><![CDATA[The Golems of Amgarrak]]></pseudo>
+      <cs-cz><![CDATA[The Golems of Amgarrak]]></cs-cz>
+      <hu-hu><![CDATA[The Golems of Amgarrak]]></hu-hu>
+    </Title>
+    <Description DefaultText="NOTE: This adventure is extremely challenging. Recommended for experienced players.  The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.  Includes: * Powerful rewards that transfer into your Awakening and Origins campaigns.  To begin this horrific tale: * From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!  This content is not available in Russian, Polish, Czech, or Hungarian.">
+      <en-us><![CDATA[NOTE: This adventure is extremely challenging. Recommended for experienced players.
+
+The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this horrific tale:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></en-us>
+      <fr-fr><![CDATA[REMARQUE : cette aventure est un défi de taille, et s'adresse donc aux joueurs expérimentés.
+
+Les thaigs perdus des nains, oubliés pendant un millénaire, sont finalement accessibles. Parmi eux se trouve Amgarrak, autrefois lieu privilégié des érudits qui tentaient de redécouvrir l'art de Caridin pour la fabrication de golems. Mais un groupe parti en expédition jusqu'aux ruines a disparu. Vous seul pouvez découvrir les événements terribles qui ont pu leur arriver.
+
+Comprend :
+* De puissantes récompenses à utiliser dans les campagnes Awakening et Origins.
+
+Pour découvrir cette histoire d'horreur :
+* Dans le menu principal, sélectionnez Autres campagnes. Ensuite, soit vous importez votre personnage de Origins ou Awakening, soit vous créez un nouveau héros de haut niveau !
+
+Ce contenu n'est pas disponible en russe, polonais, tchèque ou hongrois.]]></fr-fr>
+      <it-it><![CDATA[NOTA: Questa avventura è estremamente impegnativa, ed è consigliata ai giocatori esperti.
+
+I thaig perduti dei nani, dimenticati da mille anni, sono finalmente a portata di mano. Tra questi vi è Amgarrak, un tempo patria degli studiosi delle arti di Caridin sulla creazione dei golem. Ora però, una spedizione alle rovine è scomparsa. Solo tu potrai scoprire il terribile destino che l'ha colpita.
+
+Include:
+* Potenti ricompense, che potrai trasferire nelle campagne di Origins e Awakening
+
+Per iniziare questa temibile avventura:
+* Nel menu principale seleziona Altra campagna e poi importa il tuo personaggio da Origins o Awakening, oppure crea un nuovo eroe di alto livello!
+
+Questo contenuto non è disponibile in russo, polacco, ceco o ungherese.]]></it-it>
+      <de-de><![CDATA[HINWEIS: Dieses Abenteuer ist extrem herausfordernd und für erfahrene Spieler empfohlen.
+
+Tausend Jahre waren die verlorenen Thaigs der Zwerge vergessen, doch nun sind sie endlich wieder erreichbar. Einer von ihnen ist Amgarrak, in dem einst Gelehrte versucht hatten, Caridins Kunst der Golemerschaffung wiederaufleben zu lassen. Nun ist eine zu den Ruinen entsandte Expedition verschollen, und nur du kannst herausfinden, welch grausames Schicksal ihren Mitgliedern widerfahren ist.
+
+Umfasst:
+* Mächtige Belohnungen, die in deine Awakening- und Origins-Kampagnen übertragen werden.
+
+So beginnst du diese entsetzliche Geschichte:
+* Wähle im Hauptmenü die Option "Andere Kampagnen". Importiere anschließend entweder deinen Charakter aus Origins oder Awakening oder erstelle einen neuen, hochstufigen Helden!
+
+Dieser Inhalt ist nicht auf Russisch, Polnisch, Tschechisch oder Ungarisch verfügbar.]]></de-de>
+      <es-es><![CDATA[NOTA: esta aventura es extremadamente difícil. Se recomienda solo para los jugadores experimentados.
+
+Por fin se puede llegar a los thaigs perdidos de los enanos, olvidados durante mil años. Entre ellos está Amgarrak, que antaño acogió a los estudiosos que intentaban redescubrir el arte de la creación de golems de Caridin. Pero ha desaparecido una expedición que fue a las ruinas. Solo tú puedes descubrir el horrible destino que han corrido.
+
+Incluye:
+* Premios poderosos que transferir a tus campañas de El Despertar y de Origins.
+
+Para empezar esta terrorífica historia:
+* En el menú principal, selecciona "Otras campañas" e importa tu personaje de Dragon Age: Origins o El Despertar, o crea directamente un nuevo héroe de nivel alto.
+
+Este contenido no está disponible en ruso, polaco, checo ni húngaro.]]></es-es>
+      <pl-pl><![CDATA[NOTE: This adventure is extremely challenging. Recommended for experienced players.
+
+The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this horrific tale:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></pl-pl>
+      <ru-ru><![CDATA[NOTE: This adventure is extremely challenging. Recommended for experienced players.
+
+The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this horrific tale:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></ru-ru>
+      <pseudo><![CDATA[NOTE: This adventure is extremely challenging. Recommended for experienced players.
+
+The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this horrific tale:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></pseudo>
+      <cs-cz><![CDATA[NOTE: This adventure is extremely challenging. Recommended for experienced players.
+
+The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this horrific tale:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></cs-cz>
+      <hu-hu><![CDATA[NOTE: This adventure is extremely challenging. Recommended for experienced players.
+
+The dwarves' lost thaigs, forgotten for a thousand years, are finally within reach. Among them is Amgarrak, once home to scholars intent on rediscovering Caridin's art of golemcraft. But an expedition to the ruins has gone missing. Only you can uncover the gruesome fate that befell them.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this horrific tale:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins or Awakening or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></hu-hu>
+    </Description>
+    <Image>gib_module</Image>
+    <Rating DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/amgarrak">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/amgarrak]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/amgarrak]]></hu-hu>
+    </URL>
+    <ReleaseDate>10/8/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.04</GameVersion>
+    <Type>1</Type>
+    <Price>400</Price>
+    <Size>310</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="22859" microContentID="DAO_PRC_GIB" Version="1.0">
+        <Title DefaultText="The Golems of Amgarrak">
+          <en-us><![CDATA[The Golems of Amgarrak]]></en-us>
+          <fr-fr><![CDATA[Les Golems d'Amgarrak]]></fr-fr>
+          <it-it><![CDATA[I Golem di Amgarrak]]></it-it>
+          <de-de><![CDATA[Die Golems von Amgarrak]]></de-de>
+          <es-es><![CDATA[Los golems de Amgarrak]]></es-es>
+          <pl-pl><![CDATA[The Golems of Amgarrak]]></pl-pl>
+          <ru-ru><![CDATA[The Golems of Amgarrak]]></ru-ru>
+          <pseudo><![CDATA[The Golems of Amgarrak]]></pseudo>
+          <cs-cz><![CDATA[The Golems of Amgarrak]]></cs-cz>
+          <hu-hu><![CDATA[The Golems of Amgarrak]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_LEL_O" Name="DAO_PRC_LEL_O" ExtendedModuleUID="Single Player" Priority="513" Presentation="32" Format="1" BioWare="1">
+    <Title DefaultText="Leliana's Song">
+      <en-us><![CDATA[Leliana's Song]]></en-us>
+      <fr-fr><![CDATA[Le chant de Léliana]]></fr-fr>
+      <it-it><![CDATA[Il canto di Leliana]]></it-it>
+      <de-de><![CDATA[Lelianas Lied]]></de-de>
+      <es-es><![CDATA[La canción de Leliana]]></es-es>
+      <pl-pl><![CDATA[Pieśń Leliany]]></pl-pl>
+      <ru-ru><![CDATA[Песнь Лелианы]]></ru-ru>
+      <pseudo><![CDATA[Leliana's Song]]></pseudo>
+      <cs-cz><![CDATA[Leliana's Song]]></cs-cz>
+      <hu-hu><![CDATA[Leliana's Song]]></hu-hu>
+    </Title>
+    <Description DefaultText="A standalone adventure in which you play as Leliana during the mission--and betrayal--that changed her forever.  It is years before the Blight, and Leliana is a young bard whose curiosities run more to passion than to the Chant of Light. Her mentor, Marjolaine, is determined to inflict the Orlesian game of intrigue on Ferelden, and Leliana is eager to please. It is a time of adventure and excitement. And it cannot last.  Includes: * Unique rewards that transfer into your Awakening and Origins campaigns.  To begin this spirited new tale: * From the main menu, select Other Campaigns, then select Leliana's Song.  This content is not available in Russian, Polish, Czech, or Hungarian.">
+      <en-us><![CDATA[A standalone adventure in which you play as Leliana during the mission--and betrayal--that changed her forever.
+
+It is years before the Blight, and Leliana is a young bard whose curiosities run more to passion than to the Chant of Light. Her mentor, Marjolaine, is determined to inflict the Orlesian game of intrigue on Ferelden, and Leliana is eager to please. It is a time of adventure and excitement. And it cannot last.
+
+Includes:
+* Unique rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this spirited new tale:
+* From the main menu, select Other Campaigns, then select Leliana's Song.
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></en-us>
+      <fr-fr><![CDATA[Une aventure dans laquelle vous incarnez Léliana sur le point de vivre la mission, et la trahison, qui la marqueront à vie.
+
+Des années avant l'Enclin, Léliana est une jeune barde dont l'esprit curieux l'entraîne plus vers le chemin de la passion que celui du Cantique de la Lumière. Marjolaine, son mentor, est bien déterminée à infliger le jeu orlésien de l'Intrigue à Férelden, et Léliana désire avant tout faire plaisir. Aventure et rebondissements sont au rendez-vous. Et tout a une fin..
+
+Comprend :
+* Des récompenses uniques à utiliser dans vos campagnes Awakening et Origins.
+
+Pour entamer cette nouvelle épopée trépidante :
+* Dans le menu principal, sélectionnez Autres campagnes, puis Le chant de Léliana.]]></fr-fr>
+      <it-it><![CDATA[Un'avventura indipendente, nella quale vestirai i panni di Leliana nella missione (e nel tradimento) che l'ha cambiata per sempre.
+
+Ci troviamo diversi anni prima del Flagello, e Leliana è una giovane barda la cui curiosità è rivolta più alla passione che al Canto della Luce. La sua mentore, Marjolaine, è determinata a portare nel Ferelden il gioco orlesiano degli intrighi, e Leliana è ansiosa di compiacerla. È un periodo di avventure ed emozioni. E non può durare.
+
+Include:
+* Ricompense uniche, che potrai trasferire nelle campagne di Origins e Awakening
+
+Per iniziare questa nuova avventura:
+* Dal menu principale, seleziona Altre campagne e poi Il canto di Leliana.]]></it-it>
+      <de-de><![CDATA[Ein eigenständiges Abenteuer, in dem du Leliana während der - von Verrat geprägten - Mission spielst, die sie für alle Zeiten verändern sollte. 
+
+Jahre vor der Bedrohung durch die Verderbnis ist Leliana eine junge Bardin, deren Hingabe eher der Leidenschaft als dem Gesang des Lichts gilt. Ihre Mentorin Marjolaine ist begierig darauf, das orlaisianische Spiel der Intrigen nach Ferelden zu bringen, und Leliana ist begierig darauf, ihr zu gefallen. Es ist eine Zeit voller Abenteuer und Aufregung, die jedoch nicht ewig andauern kann.
+
+Umfasst:
+* Einzigartige Belohnungen, die in deine Awakening- und Origins-Kampagnen übertragen werden.
+
+So beginnst du diese begeisternde neue Geschichte:
+* Wähle im Hauptmenü die Option "Andere Kampagnen" und dann "Lelianas Lied".]]></de-de>
+      <es-es><![CDATA[Una aventura independiente en la que juegas en el papel de Leliana durante la misión (y traición) que la cambió para siempre.
+
+Aún faltan años para la Ruina, y Leliana es una joven bardo más atraída por las pasiones que por el Cantar de la Luz. Su mentora, Marjolaine, está decidida a llevar el juego orlesiano de la intriga a Ferelden, y Leliana anhela complacerla. Es una época de aventuras y emociones, que no durará para siempre.
+
+Incluye:
+* Premios únicos que transferir a tus campañas de El Despertar y de Origins.
+
+Para empezar esta nueva historia de iluminación:
+* En el menú principal, selecciona "Otras campañas" y a continuación "La canción de Leliana".]]></es-es>
+      <pl-pl><![CDATA[Samodzielna przygoda, w której kierować będziesz poczynaniami Liliany i dowiesz się, jak została zdradzona, co na zawsze odmieniło jej życie.
+
+Nim pojawiła się Plaga, Leliana była młodą pieśniarką, która bardziej kierowała się nakazami namiętności niż przykazaniami Pieśni Światła. Jej mentorka, Marjolaine, zamierzała zarzucić sieć orlezjańskich intryg na Ferelden. Był to czas pełen przygód i emocji. Czas, który dobiega końca.
+
+Produkt ten dostępny jest w następujących językach: Dubbing: angielski, francuski, niemiecki; Napisy: angielskie, francuskie, niemieckie, włoskie, hiszpańskie.]]></pl-pl>
+      <ru-ru><![CDATA[В этой миссии, играя за юную Лелиану, вы пройдете испытания, которые изменят ее навсегда. Это время азарта и приключений. Но оно не длится вечно.
+
+Этот продукт поддерживает следующие языки. Речь в игре: английский, французский, немецкий. Текст в игре: английский, французский, немецкий, итальянский, испанский.]]></ru-ru>
+      <pseudo><![CDATA[A standalone adventure in which you play as Leliana during the mission--and betrayal--that changed her forever.
+
+It is years before the Blight, and Leliana is a young bard whose curiosities run more to passion than to the Chant of Light. Her mentor, Marjolaine, is determined to inflict the Orlesian game of intrigue on Ferelden, and Leliana is eager to please. It is a time of adventure and excitement. And it cannot last.
+
+Includes:
+* Unique rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this spirited new tale:
+* From the main menu, select Other Campaigns, then select Leliana's Song.
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></pseudo>
+      <cs-cz><![CDATA[A standalone adventure in which you play as Leliana during the mission--and betrayal--that changed her forever.
+
+It is years before the Blight, and Leliana is a young bard whose curiosities run more to passion than to the Chant of Light. Her mentor, Marjolaine, is determined to inflict the Orlesian game of intrigue on Ferelden, and Leliana is eager to please. It is a time of adventure and excitement. And it cannot last.
+
+Includes:
+* Unique rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this spirited new tale:
+* From the main menu, select Other Campaigns, then select Leliana's Song.
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></cs-cz>
+      <hu-hu><![CDATA[A standalone adventure in which you play as Leliana during the mission--and betrayal--that changed her forever.
+
+It is years before the Blight, and Leliana is a young bard whose curiosities run more to passion than to the Chant of Light. Her mentor, Marjolaine, is determined to inflict the Orlesian game of intrigue on Ferelden, and Leliana is eager to please. It is a time of adventure and excitement. And it cannot last.
+
+Includes:
+* Unique rewards that transfer into your Awakening and Origins campaigns.
+
+To begin this spirited new tale:
+* From the main menu, select Other Campaigns, then select Leliana's Song.
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></hu-hu>
+    </Description>
+    <Image>lel_module</Image>
+    <Rating DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/leliana">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/leliana]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/fr-fr/leliana]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/it-it/leliana]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/leliana]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/es-es/leliana]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/leliana]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-us/leliana]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/leliana]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/leliana]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/leliana]]></hu-hu>
+    </URL>
+    <ReleaseDate>06/07/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.03</GameVersion>
+    <Type>1</Type>
+    <Price>560</Price>
+    <Size>710</Size>
+    <Publisher DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="20876" microContentID="DAO_PRC_LEL" Version="1.0">
+        <Title DefaultText="Leliana's Song">
+          <en-us><![CDATA[Leliana's Song]]></en-us>
+          <fr-fr><![CDATA[Le chant de Léliana]]></fr-fr>
+          <it-it><![CDATA[Il canto di Leliana]]></it-it>
+          <de-de><![CDATA[Lelianas Lied]]></de-de>
+          <es-es><![CDATA[La canción de Leliana]]></es-es>
+          <pl-pl><![CDATA[Pieśń Leliany]]></pl-pl>
+          <ru-ru><![CDATA[Песнь Лелианы]]></ru-ru>
+          <pseudo><![CDATA[Leliana's Song]]></pseudo>
+          <cs-cz><![CDATA[Leliana's Song]]></cs-cz>
+          <hu-hu><![CDATA[Leliana's Song]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_OCP_1" Name="o_PRC_CP1_Cailan" ExtendedModuleUID="Single Player" Priority="199" Presentation="16" Format="1" BioWare="1">
+    <Title DefaultText="Return to Ostagar">
+      <en-us><![CDATA[Return to Ostagar]]></en-us>
+      <fr-fr><![CDATA[Retour à Ostagar]]></fr-fr>
+      <it-it><![CDATA[Ritorno a Ostagar]]></it-it>
+      <de-de><![CDATA[Rückkehr nach Ostagar]]></de-de>
+      <es-es><![CDATA[Retorno a Ostagar]]></es-es>
+      <pl-pl><![CDATA[Powrót do Ostagaru]]></pl-pl>
+      <ru-ru><![CDATA[Возвращение в Остагар]]></ru-ru>
+      <pseudo><![CDATA[Return to Ostagar]]></pseudo>
+      <cs-cz><![CDATA[Návrat do Ostagaru]]></cs-cz>
+      <hu-hu><![CDATA[Visszatérés Ostagarba]]></hu-hu>
+    </Title>
+    <Description DefaultText="Your memories of the battle of Ostagar will haunt you for years to come. It laid waste to your order and claimed the lives of many great men and women, including the brash young King Cailan and your mentor, Duncan. The time has come for the Grey Wardens to make their return to Ostagar and exact their revenge upon the darkspawn.  Includes: * A return to the battlefields of Ostagar, now thick with darkspawn encamped amidst the snow. * An opportunity to reclaim the lost arms and armor of a king. * A second chance to add Dog to your party.  There are rumors that a fellow survivor of the battle has escaped from captivity and is seeking the Grey Wardens' help. To find the survivor: * Play through Dragon Age: Origins until after the village of Lothering. * Journey to Bann Loren's Lands along the Bannorn's northwest border.">
+      <en-us><![CDATA[Your memories of the battle of Ostagar will haunt you for years to come. It laid waste to your order and claimed the lives of many great men and women, including the brash young King Cailan and your mentor, Duncan. The time has come for the Grey Wardens to make their return to Ostagar and exact their revenge upon the darkspawn.
+
+Includes:
+* A return to the battlefields of Ostagar, now thick with darkspawn encamped amidst the snow.
+* An opportunity to reclaim the lost arms and armor of a king.
+* A second chance to add Dog to your party.
+
+There are rumors that a fellow survivor of the battle has escaped from captivity and is seeking the Grey Wardens' help. To find the survivor:
+* Play through Dragon Age: Origins until after the village of Lothering.
+* Journey to Bann Loren's Lands along the Bannorn's northwest border.]]></en-us>
+      <fr-fr><![CDATA[Vos souvenirs de la bataille d'Ostagar vous hanteront plusieurs années encore. L'Ordre fut décimé, et nombre d'hommes et femmes de valeur y perdirent la vie, dont le jeune et téméraire roi Cailan, ainsi que votre mentor, Duncan. L'heure est venue pour les Gardes des ombres d'à nouveau fouler la plaine désolée d'Ostagar et d'assouvir leur vengeance.
+
+La rumeur court qu'un autre rescapé de la bataille a échappé à la captivité et recherche l'aide des Gardes des ombres. Pour trouver le survivant :
+* Jouez la campagne de Dragon Age: Origins jusqu'après les événements du village de Lothering.
+* Voyagez jusque dans les terres du bann Loren, non loin de la frontière nord-orientale des fiefs bannerets.
+
+Comprend :
+* Une redécouverte du champ de bataille d'Ostagar, désormais infesté d'engeances enfouies parmi les congères.
+* Les armes et armures perdues d'un roi.
+* Une seconde opportunité d'ajouter le Chien mabari à votre groupe.]]></fr-fr>
+      <it-it><![CDATA[I tuoi ricordi della battaglia di Ostagar ti perseguiteranno per anni. Ha annientato il tuo ordine e spezzato le vite di molti uomini e donne validi, incluso l'avventato e giovane Re Cailan e il tuo mentore, Duncan. È giunto il momento che i Custodi Grigi tornino a Ostagar per vendicarsi dei prole oscura.
+
+Si dice che un superstite della battaglia sia fuggito di prigione per cercare l'aiuto dei Custodi Grigi. Per trovare il superstite:
+* Gioca a Dragon Age: Origins fino a raggiungere e superare il villaggio di Lothering.
+* Raggiungi le terre di Bann Loren, lungo i confini nordorientali del bannorn.
+
+Include:
+* Il ritorno al campo di battaglia di Ostagar, ora occupato dai prole oscura e dalla neve.
+* Le armi e l'armatura perdute del re.
+* Una seconda occasione di aggiungere il mabari al tuo gruppo.]]></it-it>
+      <de-de><![CDATA[Deine Erinnerungen an die Schlacht von Ostagar werden dich noch jahrelang heimsuchen. In ihr wurde dein Orden zerschlagen, und viele große Männer und Frauen verloren ihr Leben, unter ihnen auch der ungestüme, junge König Cailan und dein Mentor Duncan. Für die Grauen Wächter ist die Zeit gekommen, nach Ostagar zurückzukehren und Rache an der Dunklen Brut zu üben.
+
+Es kursieren Gerüchte, dass ein Überlebender der Schlacht aus einem Kerker geflohen ist und nun die Hilfe der Grauen Wächter sucht. So findest du den Überlebenden:
+* Spiele Dragon Age: Origins, bis du das Dorf Lothering hinter dir gelassen hast.
+* Reise in Bann Lorens Ländereien an der nordöstlichen Grenze des Bannorn.
+
+Enthält:
+* Die Rückkehr zu den Schlachtfeldern Ostagars, die nun von Schnee und Lagern der Dunklen Brut bedeckt sind.
+* Die verlorenen Waffen und die Rüstung eines Königs.
+* Eine weitere Chance, den Hund in die Gruppe aufzunehmen.]]></de-de>
+      <es-es><![CDATA[Tus recuerdos de la batalla de Ostagar te perseguirán como un fantasma en los años venideros. Devastó a tu orden y arrebató las vidas de muchos grandes hombres y mujeres, incluyendo al joven e impetuoso rey Cailan y a tu mentor, Duncan. Ha llegado la hora de que los guardas grises vuelvan a Ostagar y se venguen de los engendros tenebrosos.
+
+Se rumorea que un compañero, superviviente de la batalla, ha escapado de su cautividad y busca la ayuda de los guardas grises. Para encontrar al superviviente:
+* Juega a Dragon Age: Origins hasta pasar el pueblo de Lothering.
+* Ve a las tierras del bann Loren por la frontera noreste del bannorn.
+
+Incluye:
+* Un regreso a los campos de batalla de Ostagar, ahora repletos de engendros tenebrosos que han acampado en medio de la nieve.
+* Las armas y la armadura perdidas de un rey.
+* Una segunda oportunidad de añadir un perro a tu grupo.]]></es-es>
+      <pl-pl><![CDATA[Wspomnienia bitwy pod Ostagarem długo jeszcze będą cię prześladować. W jej trakcie zadano potężny cios Twemu bractwu, zginęło wiele wspaniałych kobiet i mężczyzn, w tym młody, pewny siebie król Cailan  oraz twój mentor, Duncan. Pora już, by Szara Straż powróciła do Ostagaru i dokonała zemsty na mrocznych pomiotach.
+
+Krąży plotka, wedle której pewien uczestnik bitwy pod Ostagarem zdołał zbiec z lochów banna Lorena i szuka pomocy Szarej Straży. Aby go odszukać:
+* Graj w Dragon Age: Początek aż do wyjścia z wioski Lothering.
+* Udaj się na ziemie banna Lorena.
+
+Zawiera:
+* Szansę powrotu na pole bitwy pod Ostagarem, gdzie wprost roi się od obozujących pośród śniegu pomiotów.
+* Utraconą broń oraz pancerz króla.
+* Kolejną okazję na przyłączenie bojowego ogara do Twojej drużyny.]]></pl-pl>
+      <ru-ru><![CDATA[Воспоминания о битве при Остагаре будут преследовать вас годы спустя. Битва обескровила орден, отняв жизнь у многих великих людей, среди которых были отважный молодой король Кайлан и ваш наставник Дункан. Пришла пора Серым Стражам вернуться в Остагар и отомстить порождениям тьмы.
+
+
+
+Ходят слухи, что после боя в живых остался один человек, который избежал плена и просит о помощи Серых Стражей. Чтобы найти выжившего:
+
+* Запустите игру Dragon Age: Начало и доберитесь до деревни Лотеринг.
+
+* Вдоль северо-восточной границы баннорна доберитесь до земель банна Лорена.
+
+
+
+Вас ждет:
+
+* Возвращение на поле боя при Остагаре, где на снегу разбили лагерь порождения тьмы.
+
+* Потерянное оружие и доспехи короля.
+
+* Вторая возможность взять в отряд собаку.]]></ru-ru>
+      <pseudo><![CDATA[Your memories of the battle of Ostagar will haunt you for years to come. It laid waste to your order and claimed the lives of many great men and women, including the brash young King Cailan and your mentor, Duncan. The time has come for the Grey Wardens to make their return to Ostagar and exact their revenge upon the darkspawn.
+
+Includes:
+* A return to the battlefields of Ostagar, now thick with darkspawn encamped amidst the snow.
+* An opportunity to reclaim the lost arms and armor of a king.
+* A second chance to add Dog to your party.
+
+There are rumors that a fellow survivor of the battle has escaped from captivity and is seeking the Grey Wardens' help. To find the survivor:
+* Play through Dragon Age: Origins until after the village of Lothering.
+* Journey to Bann Loren's Lands along the Bannorn's northwest border.]]></pseudo>
+      <cs-cz><![CDATA[Vzpomínky na bitvu u Ostagaru vás budou pronásledovat ještě řadu let. Skoro zničila váš řád a připravila o život mnoho dobrých mužů i žen, včetně ukvapeného mladého krále Cailana a vašeho učitele Duncana. Nastal čas, aby se Šedí strážci navrátili do Ostagaru a vykonali pomstu na zplozencích.
+
+Kolují zvěsti, že jeden z přeživších bitvy unikl ze zajetí a hledá pomoc Šedých strážců. Abyste našli přeživšího:
+* Hrajte Dragon Age: Prameny, dokud neopustíte vesnici Lothering.
+* Vydejte se na území banna Lorena podél severovýchodní hranice Bannornu.
+
+Zahrnuje:
+* Návrat na bojiště Ostagaru, které je teď poseté zplozenci tábořícími ve sněhu.
+* Ztracenou výzbroj krále.
+* Druhou šanci, jak přidat do své družiny psa.]]></cs-cz>
+      <hu-hu><![CDATA[Az ostagari csata emlékei talán még évek múltán is kísérteni fognak. Megtizedelte rendedet, és más nagyszerű asszonyok és férfiak is meghaltak ott, beleértve királyodat, Cailant és mentorodat, Duncant is. Eljött az idő, hogy a szürke kamarások visszatérjenek Ostagarba, és bosszút álljanak az éjfattyakon.
+
+Pletykálnak róla, hogy a csata egy másik túlélője megszökött a fogságból és a szürke kamarások segítségét keresi. Ha meg akarod találni:
+* Játszd végig a Dragon Age: Vérvonalak játékot Lotheringig.
+* Utazz Loren bann földjéig Bannon északkeleti határa mentén.
+
+Benne:
+* Visszatérés Ostagar csatateréig, ahol most éjfattyak táboroznak.
+* Egy király elveszett fegyverei és páncélzata.
+* Második esély hogy kutya a csapatod tagja legyen.]]></hu-hu>
+    </Description>
+    <Image>cp1_module</Image>
+    <Rating DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[M come Maturo]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[PEGI 18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M jako pro dospělé (Mature)]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt)]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[M come Maturo]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[PEGI 18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M jako pro dospělé (Mature)]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt)]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/ostagar">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/ostagar]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/ostagar (site en anglais)]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/it/ostagar]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/ostagar]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/en-us/ostagar]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/ostagar]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/ru-ru/ostagar]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/ostagar]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/ostagar]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/shale]]></hu-hu>
+    </URL>
+    <ReleaseDate>29/01/2010</ReleaseDate>
+    <Version>1.1</Version>
+    <GameVersion>1.02</GameVersion>
+    <Type>1</Type>
+    <Price>400</Price>
+    <Size>266</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="18829" microContentID="DAO_PRC_CP_1" Version="1.1">
+        <Title DefaultText="Return to Ostagar">
+          <en-us><![CDATA[Return to Ostagar]]></en-us>
+          <fr-fr><![CDATA[Retour à Ostagar]]></fr-fr>
+          <it-it><![CDATA[Ritorno a Ostagar]]></it-it>
+          <de-de><![CDATA[Rückkehr nach Ostagar]]></de-de>
+          <es-es><![CDATA[Retorno a Ostagar]]></es-es>
+          <pl-pl><![CDATA[Powrót do Ostagaru]]></pl-pl>
+          <ru-ru><![CDATA[Возвращение в Остагар]]></ru-ru>
+          <pseudo><![CDATA[Return to Ostagar]]></pseudo>
+          <cs-cz><![CDATA[Návrat do Ostagaru]]></cs-cz>
+          <hu-hu><![CDATA[Visszatérés Ostagarba]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_OCP_2" Name="o_PRC_CP2_Shale" ExtendedModuleUID="Single Player" Priority="99" Presentation="8" Format="1" BioWare="1">
+    <Title DefaultText="The Stone Prisoner">
+      <en-us><![CDATA[The Stone Prisoner]]></en-us>
+      <fr-fr><![CDATA[Le prisonnier de la Pierre]]></fr-fr>
+      <it-it><![CDATA[Il prigioniero di pietra]]></it-it>
+      <de-de><![CDATA[In Stein gefangen]]></de-de>
+      <es-es><![CDATA[El prisionero de piedra]]></es-es>
+      <pl-pl><![CDATA[Kamienny więzień]]></pl-pl>
+      <ru-ru><![CDATA[Каменная пленница]]></ru-ru>
+      <pseudo><![CDATA[The Stone Prisoner]]></pseudo>
+      <cs-cz><![CDATA[Kamenný vězeň]]></cs-cz>
+      <hu-hu><![CDATA[Kőbe zárva]]></hu-hu>
+    </Title>
+    <Description DefaultText="Some copies of Dragon Age: Origins contain a redemption code for this content. Check your game's packaging before purchasing. Crafted by the ancient dwarves as their first line of defense against the darkspawn, the dread sentinels known as golems dwindled in number after the art of their creation was lost. Shale, one of the few golems remaining, was found in the Deep Roads, reactivated and brought to the surface, and may prove to be the Grey Wardens' most effective weapon against the onslaught of the Blight. Includes: (1) Shale, a unique and powerful golem, as a recruitable party member who is fully integrated into the main Dragon Age: Origins campaign. (2) Brand new plots and adventure areas. (3) Fantastic new items.">
+      <en-us><![CDATA[Some copies of Dragon Age: Origins contain a redemption code for this content. Check your game's packaging before purchasing. Crafted by the ancient dwarves as their first line of defense against the darkspawn, the dread sentinels known as golems dwindled in number after the art of their creation was lost. Shale, one of the few golems remaining, was found in the Deep Roads, reactivated and brought to the surface, and may prove to be the Grey Wardens' most effective weapon against the onslaught of the Blight. Includes: (1) Shale, a unique and powerful golem, as a recruitable party member who is fully integrated into the main Dragon Age: Origins campaign. (2) Brand new plots and adventure areas. (3) Fantastic new items.]]></en-us>
+      <fr-fr><![CDATA[Certains exemplaires de Dragon Age: Origins peuvent contenir un code d'accès gratuit pour ce contenu. Vérifiez l'emballage du jeu avant d'acheter. Forgées par les nains du temps jadis pour leur tenir lieu de premier rempart contre les engeances, les formidables sentinelles connues sous le nom de golems ont largement décru en nombre depuis que l'art de leur création s'est perdu. Shale, l'un des derniers golems qui aient subsisté, fut retrouvé dans les Tréfonds, réactivé puis ramené à la surface. Il pourrait représenter un inestimable atout pour les Gardes des ombres dans leur lutte contre l'Enclin.]]></fr-fr>
+      <it-it><![CDATA[Alcune copie di Dragon Age: Origins includono un codice da riscattare gratuito per questo contenuto. Controlla la confezione del gioco prima dell'acquisto. Realizzate dai nani come prima linea di difesa contro la Prole Oscura, le temibili sentinelle note come golem si fecero sempre meno numerose dopo che l'arte della loro creazione andò perduta. Shale, uno dei pochi golem rimasti, fu trovata nelle Vie Profonde, riattivata e portata in superficie. Potrebbe rivelarsi l'arma più potente dei Custodi Grigi contro il massacro provocato dal Flagello. Include: (1) Shale, un golem unico e potente, membro reclutabile del gruppo pienamente integrato nella campagna principale di Dragon Age: Origins. (2) Nuove missioni e zone da esplorare.]]></it-it>
+      <de-de><![CDATA[Einige Exemplare von Dragon Age: Origins enthalten einen Gutscheincode für diesen Inhalt. Sieh bitte vor dem Kauf des Spiels auf der Verpackung nach. Die Zwerge vergangener Zeiten erschufen gewaltige, als Golems bekannte, Wächter als erste Verteidigungslinie gegen die Dunkle Brut. Allerdings ging die Kunst ihrer Erschaffung verloren, sodass ihre Zahl im Laufe der Zeit sank. Einer der wenigen verbliebenen Golems namens Shale wurde in den Tiefen Wegen entdeckt, reaktiviert und an die Oberfläche gebracht. Hier könnte er sich als die effektivste Waffe der Grauen Wächter im Kampf gegen die Dunkle Brut erweisen.]]></de-de>
+      <es-es><![CDATA[Algunas copias de Dragon Age: Origins tienen un código de canje para este contenido. Comprueba el embalaje de tu juego antes de comprar. Los temibles centinelas llamados gólems fueron fabricados por los antiguos enanos para formar la primera línea de defensa contra los engendros tenebrosos. Ahora el secreto de su creación se ha perdido y su número se ha reducido drásticamente. Shale, uno de los pocos gólems restantes, fue descubierta en los Caminos de las Profundidades y, tras ser reactivada y llevada de vuelta a la superficie, podría convertirse en el arma más eficaz de los guardas grises contra el ataque de la Ruina.]]></es-es>
+      <pl-pl><![CDATA[Niektóre egzemplarze gry Dragon Age: Początek zawierają kod do odblokowania tego dodatku. Przed jego zakupem sprawdź opakowanie swojej gry. Budzący grozę strażnicy znani jako golemy zostali skonstruowani przez pradawne krasnoludy jako pierwsza linia obrony przed mrocznymi pomiotami. Ich liczba znacznie się zmniejszyła, kiedy utracono wiedzę o ich tworzeniu. Shale, jeden z niewielu pozostałych golemów, został znaleziony na Głębokich Ścieżkach, ponownie uaktywniony i sprowadzony na powierzchnię. Może okazać się jeszcze najskuteczniejszym orężem Szarej Straży w walce z nacierającą Plagą.]]></pl-pl>
+      <ru-ru><![CDATA[В вашей копии "Dragon Age: Начало" может оказаться бесплатный код выкупа для этого контента. Проверьте упаковку перед покупкой. Грозные стражи, известные как големы, созданы гномами древности как первая линия обороны от порождений тьмы. С годами их число уменьшилось, так как секрет их создания был утерян. Шейлу, одного из немногих оставшихся големов, нашли на Глубинных тропах, оживили и доставили на поверхность. Она может оказаться наиболее действенным оружием Серых Стражей в борьбе с нашествием порождений тьмы. Входят: (1) Шейла, уникальный и могущественный голем, который может стать вашим спутником и является неотъемлемой частью основной кампании "Dragon Age: Начало". (2) Совершенно новые сюжеты и территории.]]></ru-ru>
+      <pseudo><![CDATA[Some copies of Dragon Age: Origins contain a redemption code for this content. Check your game's packaging before purchasing. Crafted by the ancient dwarves as their first line of defense against the darkspawn, the dread sentinels known as golems dwindled in number after the art of their creation was lost. Shale, one of the few golems remaining, was found in the Deep Roads, reactivated and brought to the surface, and may prove to be the Grey Wardens' most effective weapon against the onslaught of the Blight. Includes: (1) Shale, a unique and powerful golem, as a recruitable party member who is fully integrated into the main Dragon Age: Origins campaign. (2) Brand new plots and adventure areas. (3) Fantastic new items.]]></pseudo>
+      <cs-cz><![CDATA[Obávaní hlídači zvaní golemové byli vyrobeni trpaslíky žijícími v dávných dobách a měli sloužit v první linii obrany proti zplozencům. Jakmile se však ztratilo tajemství jejich výroby, začalo golemů ubývat. Shale, jeden z posledních zbývajících golemů, byl nalezen v Hlubokých cestách, znovu aktivován a vyveden na povrch. Mohla by se tak z něj stát nejúčinnější zbraň šedého strážce v boji s Nákazou.
+
+Některé kopie hry Dragon Age: Prameny obsahují kód pro získání tohoto obsahu. Před nákupem si prohlédněte balení své hry.
+
+Jak najít Shale:
+* Dostaňte se během hraní hry Dragon Age: Prameny až za vesnici Lothering.
+* Vydejte se do Sulcherova průsmyku, který přibude na západní straně vaší mapy světa.
+* Najděte ustaraného obchodníka, který pro vás má nabídku snad až příliš dobrou na to, aby to byla pravda.
+
+Obsahuje:
+* Shale, jedinečného a mocného golema, kterého je možné vzít jako člena výpravy a který je plně integrován do hlavního válečného tažení hry Dragon Age: Prameny.
+* Úplně nové oblasti, v nichž se odehrává děj i dobrodružství.
+* Úžasné nové předměty.]]></cs-cz>
+      <hu-hu><![CDATA[A gólemek rettegett őrök, akiket készítőik, az ősi törpék, az éjfattyak elleni első védvonalnak szántak. Számuk erősen megcsappant, mióta létrehozásuk titka odaveszett. Palát, a fennmaradt gólemek egyikét a mélyutakon találták, s ott is aktiválták újra, mielőtt a felszínre hozták. Kiderülhet, hogy ő a szürke kamarások leghatékonyabb fegyvere a Veszedelem ellen.
+
+A Dragon Age: Vérvonalak egyes példányai beváltható kódokat tartalmaznak ehhez a tartalomhoz. A megvásárlás előtt ellenőrizd a játék csomagolását!
+
+Pala megtalálásához:
+* Játssz a Dragon Age: Vérvonalakkal, míg míg el nem jutsz Lotheringbe.
+* Vedd az irányt a világtérkép nyugati részén megjelenő Sulcher-hágó felé.
+* Keresd meg a zavart kalmárt, aki olyasmit ajánl, ami túl szép ahhoz, hogy igaz legyen.
+
+Tartalma:
+* Pala, az egyedi és nagyhatalmú gólem; felvehető csapattag, akit integráltunk a Dragon Age: Vérvonalak fő hadjáratába.
+* Teljesen új cselekményszálak és kalandterületek.
+* Fantasztikus új tárgyak.]]></hu-hu>
+    </Description>
+    <Image>shl_module</Image>
+    <Rating DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[M come Maturo]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M de maduro]]></es-es>
+      <pl-pl><![CDATA[Dla dorosłych]]></pl-pl>
+      <ru-ru><![CDATA[M - для игроков от 17 лет]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M jako Mature (Dospělí)]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt)]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[M come Maturo]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M de maduro]]></es-es>
+      <pl-pl><![CDATA[Dla dorosłych]]></pl-pl>
+      <ru-ru><![CDATA[M - для игроков от 17 лет]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M jako Mature (Dospělí)]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt)]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/shale">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/shale]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/fr-fr/shale]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/it-it/shale]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de-de/shale]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/es-es/shale]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/pl-pl/shale]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/ru-ru/shale]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/shale]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/cs-cz/shale]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/hu-hu/shale]]></hu-hu>
+    </URL>
+    <ReleaseDate>03/11/2009</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.0</GameVersion>
+    <Type>1</Type>
+    <Price>1200</Price>
+    <Size>515</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="17763" microContentID="DAO_PRC_CP_2" Version="1.0">
+        <Title DefaultText="The Stone Prisoner">
+          <en-us><![CDATA[The Stone Prisoner]]></en-us>
+          <fr-fr><![CDATA[Le prisonnier de la Pierre]]></fr-fr>
+          <it-it><![CDATA[Il prigioniero di pietra]]></it-it>
+          <de-de><![CDATA[In Stein gefangen]]></de-de>
+          <es-es><![CDATA[El prisionero de piedra]]></es-es>
+          <pl-pl><![CDATA[Kamienny więzień]]></pl-pl>
+          <ru-ru><![CDATA[Каменная пленница]]></ru-ru>
+          <pseudo><![CDATA[The Stone Prisoner]]></pseudo>
+          <cs-cz><![CDATA[Kamenný vězeň]]></cs-cz>
+          <hu-hu><![CDATA[Kőbe zárva]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_OCP_3" Name="o_PRC_CP3_Gift" ExtendedModuleUID="Single Player" Priority="299" Presentation="3" Format="1" BioWare="1">
+    <Title DefaultText="Feastday Gifts">
+      <en-us><![CDATA[Feastday Gifts]]></en-us>
+      <fr-fr><![CDATA[Présents de Satinalia]]></fr-fr>
+      <it-it><![CDATA[Regali della festa]]></it-it>
+      <de-de><![CDATA[Festtags-Geschenke]]></de-de>
+      <es-es><![CDATA[Regalos festivos]]></es-es>
+      <pl-pl><![CDATA[Świąteczne podarunki]]></pl-pl>
+      <ru-ru><![CDATA[Праздничные подарки]]></ru-ru>
+      <pseudo><![CDATA[Feastday Gifts]]></pseudo>
+      <cs-cz><![CDATA[Sváteční dárky]]></cs-cz>
+      <hu-hu><![CDATA[Lakoma-napi ajándékok]]></hu-hu>
+    </Title>
+    <Description DefaultText="NOTE: TO BUY BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS AT A DISCOUNT, PURCHASE THE FEASTDAY COMBO PACK INSTEAD!  Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts and wild celebration. Amid the feasting, it is customary for friends and lovers to exchange gifts.  To access this content, you will need to be able to visit the merchant Bodahn in the party camp.  Includes: * Ten unique feastday gifts that your party members are sure to love. Each gift is specific to one potential companion. * Two types of lousy gifts to let your companions know you weren't completely serious. * A chance to explore the approval system in Dragon Age: Origins at greater depth by making your companions adore you.  To find the gifts: * Bodahn stocks the gifts in his store at the party camp year-round.">
+      <en-us><![CDATA[NOTE: TO BUY BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS AT A DISCOUNT, PURCHASE THE FEASTDAY COMBO PACK INSTEAD!
+
+Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts and wild celebration. Amid the feasting, it is customary for friends and lovers to exchange gifts.
+
+To access this content, you will need to be able to visit the merchant Bodahn in the party camp.
+
+Includes:
+* Ten unique feastday gifts that your party members are sure to love. Each gift is specific to one potential companion.
+* Two types of lousy gifts to let your companions know you weren't completely serious.
+* A chance to explore the approval system in Dragon Age: Origins at greater depth by making your companions adore you.
+
+To find the gifts:
+* Bodahn stocks the gifts in his store at the party camp year-round. 
+
+Requires Dragon Age: Origins save game to play.]]></en-us>
+      <fr-fr><![CDATA[REMARQUE : POUR ACHETER MOINS CHER DES PRESENTS ET DES FARCES DE SATINALIA, ACHETEZ LE PACK INTEGRAL DE SATINALIA !
+
+Partout dans Thédas, la fête de Satinalia donne lieu à une grande liesse populaire. Durant les festivités, il est d'usage d'échanger des présents entre amis et amoureux.
+
+Pour accéder à ce contenu, il faudra que vous rendiez visite au marchand Bodahn au campement du groupe.
+
+Comprend :
+* Dix présents de Satinalia uniques que vos compagnons adoreront. Chaque cadeau est destiné à un compagnon en particulier.
+* Deux types de cadeaux grotesques à offrir à vos compagnons pour contrepeser vos largesses.
+* L'opportunité d'explorer plus avant le système d'approbation de Dragon Age: Origins en comblant de satisfaction tous vos compagnons.
+
+Pour trouver ces présents :
+* Bodahn propose ces articles toute l'année au campement du groupe.
+
+Nécessite le disque Dragon Age: Origins pour jouer.]]></fr-fr>
+      <it-it><![CDATA[NOTA: PER ACQUISTARE A UN PREZZO SCONTATO I DONI E GLI SCHERZI DEL GIORNO DI FESTA, ACQUISTA IL PACCHETTO COMPLETO DEL GIORNO DI FESTA!
+
+In tutto il Thedas, la grande festività di Satinalia è caratterizzata da sontuosi banchetti e sfrenati festeggiamenti. In questa occasione, è tradizione che gli amici e gli amanti si scambino dei regali.
+
+Per accedere a questo contenuto, dovrai poter visitare il mercante Bodahn nell'accampamento del gruppo.
+
+Comprende:
+* Dieci doni per il giorno di festa che sicuramente faranno la gioia dei membri del tuo gruppo. Ogni dono è specifico per un potenziale compagno.
+* Due tipi di doni disgustosi, se vorrai fare uno scherzo ai tuoi compagni.
+* Possibilità di esplorare il sistema di approvazione di Dragon Age: Origins in modo più approfondito, per far sì che i tuoi compagni ti adorino.
+
+Come trovare i doni:
+* Bodahn vende i doni nel suo negozio nell'accampamento del gruppo durante tutto l'anno.
+
+Richiede il disco di Dragon Age: Origins.]]></it-it>
+      <de-de><![CDATA[HINWEIS: DU KANNST DIE FESTTAGS-GESCHENKE AUCH GEMEINSAM MIT DEN FESTTAGS-STREICHEN IM GÜNSTIGEREN FESTTAGS-GESAMTPAKET KAUFEN!
+
+In ganz Thedas wird der bedeutende Feiertag Satinalia mit prächtigen Festen und wilden Feiern begangen. Im Rahmen der Feierlichkeiten ist es üblich, dass sich Freunde und Verliebte gegenseitig beschenken.
+
+Um auf diese Inhalte zugreifen zu können, musst du in der Lage sein, den Händler Bodahn im Lager der Gruppe aufzusuchen.
+
+Umfasst:
+* Zehn einzigartige Festtags-Geschenke, die deine Gruppenmitglieder lieben werden. Jedes Geschenk ist speziell für einen deiner möglichen Gefährten gedacht.
+* Zwei Arten von grässlichen Geschenken, die deinen Gefährten klarmachen, dass du es nicht wirklich ernst gemeint hast.
+* Eine Möglichkeit, das Vertrauenssystem von Dragon Age: Origins umfassender zu erleben, indem du deine Gefährten dazu bringst, dich zu bewundern.
+
+So findest du die Geschenke:
+* Bodahn bietet die Geschenke ganzjährig im Lager der Gruppe an.
+
+Zum Spielen wird die Dragon Age: Origins-Disc benötigt.]]></de-de>
+      <es-es><![CDATA[NOTA: PARA ADQUIRIR LOS REGALOS Y BROMAS FESTIVAS CON UN DESCUENTO, COMPRA EL PAQUETE COMBINADO FESTIVO.
+
+En todo Thedas, la gran festividad de Satinalia se vive con suntuosas fiestas y grandes celebraciones. Entre los festejos, es costumbre que amigos y enamorados se intercambien regalos.
+
+Para acceder a este contenido, tendrás que poder visitar al comerciante Bodahn en el campamento del grupo.
+
+Incluye:
+* Diez regalos festivos exclusivos que los miembros de tu grupo adorarán. Cada regalo corresponde a un posible compañero en concreto.
+* Dos tipos de regalos pésimos para que tus compañeros sepan que no te lo has tomado en serio.
+* La oportunidad de hacer que tus compañeros te adoren para explorar el sistema de aprobación de Dragon Age: Origins con mayor profundidad.
+
+Para encontrar los regalos:
+* Bodahn guarda los regalos en su tienda del campamento del grupo durante todo el año.
+
+Se necesita el disco de Dragon Age: Origins para poder jugar.]]></es-es>
+      <pl-pl><![CDATA[UWAGA: ABY ZDOBYĆ ZARÓWNO ŚWIĄTECZNE PODARUNKI JAK I PSIKUSY PO NIŻSZEJ CENIE, KUP PODWÓJNĄ ŚWIĄTECZNĄ PACZKĘ!
+
+
+
+W całym Thedas święta Satinaliów obchodzone są niezwykle hucznie. Organizuje się wystawne uczty i szalone przyjęcia. Oprócz tych uroczystości przyjął się także zwyczaj wręczania sobie wzajemnie podarunków.
+
+
+
+Aby skorzystać z tej zawartości, musisz mieć możliwość odwiedzenia kupca Bodahna w obozie drużyny.
+
+
+
+Zawiera:
+
+* Dziesięć unikalnych świątecznych podarunków, które z całą pewnością zachwycą członków twojej drużyny. Każdy prezent przeznaczony jest dla określonej osoby.
+
+* Dwa rodzaje żartobliwych podarunków, aby pokazać towarzyszom, że nie podchodzisz do tego całkiem serio.
+
+* Możliwość dokładniejszego zgłębienia systemu aprobaty w grze, przez sprawienie, że twoi towarzysze zaczną cię ubóstwiać.
+
+
+
+Aby zdobyć podarunki:
+
+* Podarunki przez okrągły rok są dostępne w sklepie Bodahna.
+
+Do uruchomienia wymagany jest dysk Dragon Age: Początek.]]></pl-pl>
+      <ru-ru><![CDATA[ПРИМЕЧАНИЕ. ЧТОБЫ КУПИТЬ СО СКИДКОЙ ОДНОВРЕМЕННО И ПОДАРКИ, И ПРЕДМЕТЫ ДЛЯ РОЗЫГРЫШЕЙ, ВЫБИРАЙТЕ ВМЕСТО ЭТОГО ТОВАРА ПРАЗДНИЧНЫЙ КОМБОКОМПЛЕКТ!
+
+В честь великого праздника Сатиналья по всему Тедасу проводятся карнавалы и пышные торжества. Во время праздника друзья и влюбленные обычно обмениваются подарками.
+
+Чтобы получить доступ к этому контенту, необходимо иметь возможность навестить купца Бодана в лагере отряда.
+
+В комплект входят:
+* Десять уникальных праздничных подарков, которые наверняка понравятся вашим спутникам. Каждый подарок рассчитан на одного из возможных спутников.
+* Два вида дурацких подарков, чтобы охладить возникшие теплые чувства спутников.
+* Возможность досконально исследовать систему симпатий в игре Dragon Age: Начало, заставив спутников обожать вас.
+
+Как найти подарки:
+* В любое время года подарки есть в лавке Бодана в лагере отряда.
+
+Для игры необходим диск Dragon Age: Начало.]]></ru-ru>
+      <pseudo><![CDATA[NOTE: TO BUY BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS AT A DISCOUNT, PURCHASE THE FEASTDAY COMBO PACK INSTEAD!
+
+Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts and wild celebration. Amid the feasting, it is customary for friends and lovers to exchange gifts.
+
+To access this content, you will need to be able to visit the merchant Bodahn in the party camp.
+
+Includes:
+* Ten unique feastday gifts that your party members are sure to love. Each gift is specific to one potential companion.
+* Two types of lousy gifts to let your companions know you weren't completely serious.
+* A chance to explore the approval system in Dragon Age: Origins at greater depth by making your companions adore you.
+
+To find the gifts:
+* Bodahn stocks the gifts in his store at the party camp year-round.]]></pseudo>
+      <cs-cz><![CDATA[POZNÁMKA: ABYSTE MOHLI NAKUPOVAT JAK SVÁTEČNÍ DÁRKY, TAK SVÁTEČNÍ LEGRÁCKY SE SLEVOU, ZAKUPTE SI RADĚJI SVÁTEČNÍ KOMBINACI!
+
+Velkolepé svátky Satinalie jsou po celém Thedasu slaveny nákladnými hostinami a bujarými veselicemi. V průběhu oslav si přátelé a milenci navzájem dávají dárky. 
+
+Chcete-li se dostat k tomuto obsahu, musíte navštívit obchodníka Bodahna v táboře družiny.
+
+Obsahuje:
+* Deset jedinečných svátečních dárků, které se vašim společníkům budou určitě líbit. Každý dárek je vhodný pro jednoho potenciálního společníka.
+* Dva typy pochybných dárků, díky kterým společníci poznají, že to nemyslíte tak úplně vážně.
+* Šanci lépe poznat systém věrnosti v Dragon Age: Prameny, protože vaši společníci vás budou zbožňovat.
+
+Jak najít dárky:
+* Bodahn dárky po celý rok skladuje ve svém obchodě v táboře družiny.
+
+Requires Dragon Age: Origins save game to play.]]></cs-cz>
+      <hu-hu><![CDATA[FIGYELEM: HOGY KEDVEZMÉNYES ÁRON JUSS A LAKOMA-NAPI AJÁNDÉKOKHOZ ÉS TRÉFÁKHOZ, VEDD MEG INKÁBB A LAKOMA-NAPI KOMBÓ CSOMAGOT!
+
+Satinalia ünnepe a bőséges lakomák, a szertelen vidámság és a bolondból csinált uralkodók napja Thedas-szerte. A vigasság közepette a barátok, szeretők és útitársak hagyományosan megtréfálják egymást.
+
+E tartalom eléréséhez fel kell keresned Bodahn kereskedőt a csapat táborában.
+
+Tartalma:
+* Tíz egyedi lakoma-napi ajándék, melyeket garantáltan imádni fognak csapatod tagjai. Minden egyes csapattag a hozzá illő ajándékot kapja.
+* Kétféle kitolás, hogy társaid rájöjjenek: nem veszed véresen komolyan a dolgokat.
+* Lehetőség a Dragon Age: Vérvonalak elfogadás rendszerének mélyebb megismerésére társaid imádatának elnyerése útján.
+
+Az ajándékok elérése:
+* Bodahn boltja a csapat táborában egész évben kínálja őket.
+
+Requires Dragon Age: Origins save game to play.]]></hu-hu>
+    </Description>
+    <Image>feastday_gifts_module</Image>
+    <Rating DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[Contenuti adatti a un pubblico adulto]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt tartalom)]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[Contenuti adatti a un pubblico adulto]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt tartalom)]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/feastday">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (site en anglais)]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (sito in inglese)]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/feastday (Seite auf Englisch)]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (sitio en inglés)]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (Strona w języku angielskim)]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (вебсайт на английском языке)]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (stránka v angličtině)]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (angol nyelvű honlap)]]></hu-hu>
+    </URL>
+    <ReleaseDate>01/04/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.03</GameVersion>
+    <Type>1</Type>
+    <Price>160</Price>
+    <Size>5</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="19579" microContentID="DAO_PRC_CP_3" Version="1.0">
+        <Title DefaultText="Feastday Gifts">
+          <en-us><![CDATA[Feastday Gifts]]></en-us>
+          <fr-fr><![CDATA[Présents de Satinalia]]></fr-fr>
+          <it-it><![CDATA[Regali della festa]]></it-it>
+          <de-de><![CDATA[Festtags-Geschenke]]></de-de>
+          <es-es><![CDATA[Regalos festivos]]></es-es>
+          <pl-pl><![CDATA[Świąteczne podarunki]]></pl-pl>
+          <ru-ru><![CDATA[Праздничные подарки]]></ru-ru>
+          <pseudo><![CDATA[Feastday Gifts]]></pseudo>
+          <cs-cz><![CDATA[Sváteční dárky]]></cs-cz>
+          <hu-hu><![CDATA[Lakoma-napi ajándékok]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_OCP_7" Name="o_PRC_CP7_AntiGift" ExtendedModuleUID="Single Player" Priority="301" Presentation="3" Format="1" BioWare="1">
+    <Title DefaultText="Feastday Pranks">
+      <en-us><![CDATA[Feastday Pranks]]></en-us>
+      <fr-fr><![CDATA[Farces de Satinalia]]></fr-fr>
+      <it-it><![CDATA[Scherzi della festa]]></it-it>
+      <de-de><![CDATA[Festtags-Streiche]]></de-de>
+      <es-es><![CDATA[Bromas festivas]]></es-es>
+      <pl-pl><![CDATA[Świąteczne psikusy]]></pl-pl>
+      <ru-ru><![CDATA[Праздничные розыгрыши]]></ru-ru>
+      <pseudo><![CDATA[Feastday Pranks]]></pseudo>
+      <cs-cz><![CDATA[Sváteční legrácky]]></cs-cz>
+      <hu-hu><![CDATA[Lakoma-napi tréfák]]></hu-hu>
+    </Title>
+    <Description DefaultText="Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts, wild celebration, and naming the town fool as ruler for a day. Amid the feasting, it is customary for friends and traveling companions to play pranks on each other.  To access this content, you will need to be able to visit the merchant Bodahn in the party camp.  Includes: * Ten unique feastday pranks that your party members will love to hate. Each prank is specific to one potential companion. * Two types of gifts to let you apologize afterward. * A chance to explore the approval system in Dragon Age: Origins at greater depth by making your companions despise you.  To find the pranks: * Bodahn stocks the pranks in his store at the party camp year-round.">
+      <en-us><![CDATA[NOTE: TO BUY BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS AT A DISCOUNT, PURCHASE THE FEASTDAY COMBO PACK INSTEAD!
+               
+Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts, wild celebration, and naming the town fool as ruler for a day. Amid the feasting, it is customary for friends and traveling companions to play pranks on each other.
+
+To access this content, you will need to be able to visit the merchant Bodahn in the party camp.
+
+Includes:
+* Ten unique feastday pranks that your party members will love to hate. Each prank is specific to one potential companion.
+* Two types of gifts to let you apologize afterward.
+* A chance to explore the approval system in Dragon Age: Origins at greater depth by making your companions despise you.
+
+To find the pranks:
+* Bodahn stocks the pranks in his store at the party camp year-round.
+
+Requires Dragon Age: Origins save to play.]]></en-us>
+      <fr-fr><![CDATA[REMARQUE : POUR ACHETER MOINS CHER DES PRESENTS ET DES FARCES DE SATINALIA, ACHETEZ LE PACK INTEGRAL DE SATINALIA ! 
+               
+Partout en Thédas, la fête de Satinalia donne lieu à une grande liesse populaire, assortie de libations excessives et de loisirs saugrenus. Durant les festivités, les amis et compagnons de voyage s'adonnent entre eux aux farces de mauvais aloi.
+
+Pour accéder à ce contenu, vous devrez vous adresser au marchand Bodahn, au campement de la fête.
+
+Comprend :
+* Dix farces de Satinalia que vos compagnons risquent de fort peu goûter. Chaque farce est destinée à un compagnon en particulier.
+* Deux types de cadeaux à offrir pour vous racheter de vos tours pendables.
+* L'opportunité d'explorer plus avant le système d'approbation de Dragon Age: Origins en cultivant le mépris de vos compagnons à votre égard.
+
+Pour trouver les farces :
+* Bodahn propose ces articles chaque année au campement de la fête.
+
+Nécessite le disque Dragon Age: Origins pour jouer.]]></fr-fr>
+      <it-it><![CDATA[NOTA: PER ACQUISTARE A UN PREZZO SCONTATO I DONI E GLI SCHERZI DEL GIORNO DI FESTA, ACQUISTA IL PACCHETTO COMPLETO DEL GIORNO DI FESTA! 
+               
+In tutto il Thedas, la grande festa di Satinalia viene celebrata con sontuosi banchetti, festeggiamenti sfarzosi e nominando lo scemo del villaggio governante per un giorno. Inoltre, è usanza comune per amici, innamorati e compagni di viaggio farsi scherzi a vicenda.
+
+Per accedere a questo contenuto devi fare visita al mercante Bodahn nell'accampamento del gruppo.
+
+Include:
+* Dieci scherzi della festa unici che i tuoi compagni apprezzeranno o odieranno. Ciascuno scherzo è specifico per un membro del gruppo in particolare.
+* Due tipi di regali per farti perdonare dopo uno scherzo.
+* La possibilità di esplorare il sistema di approvazione di Dragon Age: Origins in maniera più approfondita facendoti odiare dai tuoi compagni.
+
+Per trovare gli scherzi:
+* Bodahn conserva gli scherzi nel proprio negozio all'interno dell'accampamento del gruppo per tutto l'anno.
+
+Richiede il disco di Dragon Age: Origins.]]></it-it>
+      <de-de><![CDATA[HINWEIS: DU KANNST DIE FESTTAGS-GESCHENKE AUCH GEMEINSAM MIT DEN FESTTAGS-STREICHEN IM GÜNSTIGEREN FESTTAGS-GESAMTPAKET KAUFEN!
+               
+In ganz Thedas wird der bedeutende Feiertag Satinalia mit prächtigen Festen, wilden Feiern und der Ernennung des Dorftrottels zum Herrscher für einen Tag begangen. Im Rahmen der Feierlichkeiten ist es üblich, dass sich Freunde und Reisegefährten gegenseitig Streiche spielen.
+
+Um auf diese Inhalte zugreifen zu können, musst du in der Lage sein, den Händler Bodahn im Lager der Gruppe aufzusuchen
+
+Umfasst:
+* Zehn einzigartige Festtags-Streiche, die deine Gruppenmitglieder von ganzem Herzen hassen werden. Jeder Streich ist speziell für einen deiner möglichen Gefährten gedacht.
+* Zwei Arten von Geschenken, mit denen du dich anschließend entschuldigen kannst.
+* Eine Möglichkeit, das Vertrauenssystem von Dragon Age: Origins umfassender zu erleben, indem du deine Gefährten dazu bringst, dich zu verachten.
+
+So findest du die Gegenstände für die Streiche:
+* Bodahn bietet die Gegenstände für die Streiche ganzjährig im Lager der Gruppe an.
+
+Zum Spielen wird die Dragon Age: Origins-Disc benötigt.]]></de-de>
+      <es-es><![CDATA[NOTA: PARA ADQUIRIR LOS REGALOS Y BROMAS FESTIVAS CON UN DESCUENTO, COMPRA EL PAQUETE COMBINADO FESTIVO.
+               
+En Thedas, la gran festividad de Satinalia se caracteriza por suntuosos banquetes, animadas celebraciones y el nombramiento del tonto del pueblo como gobernante por un día. Durante las fiestas, es costumbre que amigos y compañeros de viaje se gasten bromas entre ellos.
+
+Para acceder a este contenido, debes visitar al mercader Bodahn en el campamento del grupo.
+
+Incluye:
+* Diez bromas festivas exclusivas: a los miembros de tu grupo les encantará sufrirlas. Cada broma corresponde a un posible compañero en concreto.
+* Dos tipos de regalos que te permiten disculparte a continuación.
+* La oportunidad de hacer que tus compañeros te desprecien para explorar el sistema de aprobación de Dragon Age: Origins con mayor profundidad.
+
+Para encontrar las bromas:
+* Bodahn guarda las bromas en su tienda del campamento del grupo durante todo el año.
+
+Se necesita el disco de Dragon Age: Origins para poder jugar.]]></es-es>
+      <pl-pl><![CDATA[UWAGA: ABY ZDOBYĆ ZARÓWNO ŚWIĄTECZNE PODARUNKI JAK I PSIKUSY PO NIŻSZEJ CENIE, KUP PODWÓJNĄ ŚWIĄTECZNĄ PACZKĘ!
+               
+W całym Thedas święta Satinaliów obchodzone są niezwykle hucznie. Organizuje się wystawne uczty i szalone przyjęcia, a tu i ówdzie miejski głupek na jeden dzień zostaje władcą. Oprócz tych uroczystości przyjął się także zwyczaj robienia sobie wzajemnie psikusów.
+
+Aby skorzystać z tej zawartości, musisz mieć możliwość odwiedzenia kupca Bodahna w obozie drużyny.
+
+Zawiera:
+* Dziesięć unikalnych świątecznych psikusów, które zdecydowanie podniosą ciśnienie członkom Twojej drużyny. Każdy psikus przeznaczony jest dla określonej osoby.
+* Dwa rodzaje podarunków, aby umożliwić Ci późniejsze przeprosiny.
+* Szansa dokładniejszego zgłębienia systemu aprobaty w grze, przez sprawienie, że Twoi towarzysze zaczną tobą pogardzać.
+
+Jak zdobyć psikusy:
+* Psikusy przez okrągły rok są dostępne w sklepie Bodahna.]]></pl-pl>
+      <ru-ru><![CDATA[ПРИМЕЧАНИЕ. ЧТОБЫ КУПИТЬ СО СКИДКОЙ ОДНОВРЕМЕННО И ПОДАРКИ, И ПРЕДМЕТЫ ДЛЯ РОЗЫГРЫШЕЙ, ВЫБИРАЙТЕ ВМЕСТО ЭТОГО ТОВАРА ПРАЗДНИЧНЫЙ КОМБОКОМПЛЕКТ!
+               
+По всему Тедасу великий праздник Сатинальи отмечают пышными пирами, бурным весельем, а правителем на этот день назначают главного городского дурака. Обычно во время этого праздника друзья и спутники подшучивают друг над другом.
+
+Чтобы получить доступ к этому контенту, вам нужно найти купца Бодана в лагере отряда.
+
+Включает:
+* Десять неповторимых праздничных сюрпризов, которые ваши спутники с удовольствием... возненавидят. Один розыгрыш рассчитан на одного спутника.
+* Два вида подарков, чтобы извиниться перед спутником после розыгрыша.
+* Заставив спутников презирать вас, вы получите возможность узнать особенности системы отношений между спутниками в Dragon Age: Начало.
+
+Как найти сюрпризы:
+* Сюрпризы всегда есть в лавке Бодана в лагере отряда.
+
+Для игры необходим диск Dragon Age: Начало.]]></ru-ru>
+      <pseudo><![CDATA[Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts, wild celebration, and naming the town fool as ruler for a day. Amid the feasting, it is customary for friends and traveling companions to play pranks on each other.
+
+To access this content, you will need to be able to visit the merchant Bodahn in the party camp.
+
+Includes:
+* Ten unique feastday pranks that your party members will love to hate. Each prank is specific to one potential companion.
+* Two types of gifts to let you apologize afterward.
+* A chance to explore the approval system in Dragon Age: Origins at greater depth by making your companions despise you.
+
+To find the pranks:
+* Bodahn stocks the pranks in his store at the party camp year-round.]]></pseudo>
+      <cs-cz><![CDATA[POZNÁMKA: ABYSTE MOHLI NAKUPOVAT JAK SVÁTEČNÍ DÁRKY, TAK SVÁTEČNÍ LEGRÁCKY SE SLEVOU, ZAKUPTE SI RADĚJI SVÁTEČNÍ KOMBINACI!
+               
+Napříč celým Thedasem se oblíbený svátek Satinálie slaví přepychovými hostinami, divokými oslavami a jmenováním místního blázna vládcem pro tento jediný den. V rámci oslav bývá mezi přáteli a společníky na cestách zvykem vypéct se navzájem nějakou legráckou.
+
+Abyste měli tento obsah k dispozici, musíte mít možnost navštívit obchodníka Bodahna ve svém táboře.
+
+Zahrnuje:
+* Deset jedinečných svátečních legrácek, za které vás členové vaší skupiny budou jistě "milovat". Každá legrácka je speciálně určená jednomu z vašich potenciálních společníků.
+* Dva druhy dárků, kterými se můžete následně omluvit.
+* Šanci prozkoumat hlouběji systém náklonnosti ve hře Dragon Age: Prameny – nechte své společníky, aby vámi opovrhovali.
+
+Kde legrácky najdete:
+* Bodahn má pro vás legrácky připravené ve vašem táboře.
+
+Requires Dragon Age: Origins save to play.]]></cs-cz>
+      <hu-hu><![CDATA[FIGYELEM: HOGY KEDVEZMÉNYES ÁRON JUSS A LAKOMA-NAPI AJÁNDÉKOKHOZ ÉS TRÉFÁKHOZ, VEDD MEG INKÁBB A LAKOMA-NAPI KOMBÓ CSOMAGOT!
+               
+Satinalia ünnepe a bőséges lakomák, a szertelen vidámság és a bolondból csinált uralkodók napja Thedas-szerte. A vigasság közepette a barátok, szeretők és útitársak hagyományosan megtréfálják egymást.
+
+E tartalom eléréséhez fel kell keresned Bodahn kereskedőt a csapat táborában.
+
+Tartalma:
+* Tíz egyedi lakoma-napi tréfa, melyek garantáltan kiakasztják majd csapatod tagjait. Minden lehetséges csapattag a hozzá illő tréfát kapja.
+* Kétféle ajándék, hogy hamar elnyerhesd bocsánatukat.
+* Lehetőség a Dragon Age: Vérvonalak elfogadás rendszerének mélyebb megismerésére társaid utálatának elnyerése útján.
+
+A tréfák elérése:
+* Bodahn boltja a csapat táborában egész évben kínálja őket.
+
+Requires Dragon Age: Origins save to play.]]></hu-hu>
+    </Description>
+    <Image>feastday_pranks_module</Image>
+    <Rating DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[Contenuti adatti a un pubblico adulto]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt tartalom)]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[Contenuti adatti a un pubblico adulto]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt tartalom)]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/feastday">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (site en anglais)]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (sito in inglese)]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/feastday (Seite auf Englisch)]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (sitio en inglés)]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (Strona w języku angielskim)]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (вебсайт на английском языке)]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (stránka v angličtině)]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (angol nyelvű honlap)]]></hu-hu>
+    </URL>
+    <ReleaseDate>01/04/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.03</GameVersion>
+    <Type>1</Type>
+    <Price>160</Price>
+    <Size>10</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="20450" microContentID="DAO_PRC_CP_7" Version="1.0">
+        <Title DefaultText="Feastday Pranks">
+          <en-us><![CDATA[Feastday Pranks]]></en-us>
+          <fr-fr><![CDATA[Farces de Satinalia]]></fr-fr>
+          <it-it><![CDATA[Scherzi della festa]]></it-it>
+          <de-de><![CDATA[Festtags-Streiche]]></de-de>
+          <es-es><![CDATA[Bromas festivas]]></es-es>
+          <pl-pl><![CDATA[Świąteczne psikusy]]></pl-pl>
+          <ru-ru><![CDATA[Праздничные розыгрыши]]></ru-ru>
+          <pseudo><![CDATA[Feastday Pranks]]></pseudo>
+          <cs-cz><![CDATA[Sváteční legrácky]]></cs-cz>
+          <hu-hu><![CDATA[Lakoma-napi tréfák]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_OCP_13" Name="o_PRC_CP13_Feastday" ExtendedModuleUID="Single Player" Priority="100" Presentation="4" Format="1" BioWare="1">
+    <Title DefaultText="Feastday Combo Pack">
+      <en-us><![CDATA[Feastday Combo Pack]]></en-us>
+      <fr-fr><![CDATA[Pack intégral de Satinalia]]></fr-fr>
+      <it-it><![CDATA[Pacchetto della festa]]></it-it>
+      <de-de><![CDATA[Festtags-Gesamtpaket]]></de-de>
+      <es-es><![CDATA[Paquete combinado festivo]]></es-es>
+      <pl-pl><![CDATA[Podwójna świąteczna paczka]]></pl-pl>
+      <ru-ru><![CDATA[Комбинированный праздничный набор]]></ru-ru>
+      <pseudo><![CDATA[Feastday Combo Pack]]></pseudo>
+      <cs-cz><![CDATA[Kombinovaný slavnostní balíček]]></cs-cz>
+      <hu-hu><![CDATA[Lakoma-napi kombó csomag]]></hu-hu>
+    </Title>
+    <Description DefaultText="NOTE: FEASTDAY COMBO PACK INCLUDES THE CONTENT OF BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS, WHICH ARE ALSO AVAILABLE SEPARATELY.  Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts, wild celebration, and naming the town fool as ruler for a day. Amid the feasting, it is customary for friends, lovers, and traveling companions to exchange gifts and pranks.  To access this content, you will need to be able to visit the merchant Bodahn in the party camp.  Includes: * All the content from both Feastday Gifts and Feastday Pranks.  To find the items: * Bodahn stocks the gifts and pranks in his store at the party camp year-round.">
+      <en-us><![CDATA[NOTE: FEASTDAY COMBO PACK INCLUDES THE CONTENT OF BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS, WHICH ARE ALSO AVAILABLE SEPARATELY.
+
+Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts, wild celebration, and naming the town fool as ruler for a day. Amid the feasting, it is customary for friends, lovers, and traveling companions to exchange gifts and pranks.
+
+To access this content, you will need to be able to visit the merchant Bodahn in the party camp.
+
+Includes:
+* All the content from both Feastday Gifts and Feastday Pranks.
+
+To find the items:
+* Bodahn stocks the gifts and pranks in his store at the party camp year-round.
+
+Requires Dragon Age: Origins save game to play.]]></en-us>
+      <fr-fr><![CDATA[REMARQUE : LE PACK INTEGRAL DE SATINALIA COMPREND DES PRESENTS ET DES FARCES DE SATINALIA, VENDUS AUSSI SEPAREMENT !
+
+Partout dans Thédas, la fête de Satinalia donne lieu à une grande liesse populaire, assortie de libations excessives et de loisirs saugrenus. Durant les festivités, il est d'usage d'échanger des présents et de se faire des farces entre amis, amoureux et compagnons de voyage.
+
+Pour accéder à ce contenu, il faudra que vous rendiez visite au marchand Bodahn au campement du groupe.
+
+Comprend :
+* Tout le contenu des présents et des farces de Satinalia.
+
+Pour trouver ces objets :
+* Bodahn propose ces présents et ces farces toute l'année au campement du groupe.
+
+Nécessite le disque Dragon Age: Origins pour jouer.]]></fr-fr>
+      <it-it><![CDATA[NOTA: IL PACCHETTO COMPLETO DEL GIORNO DI FESTA INCLUDE SIA I DONI CHE GLI SCHERZI DEL GIORNO DI FESTA, CHE SONO ANCHE DISPONIBILI SEPARATAMENTE!
+
+In tutto il Thedas, la grande festività di Satinalia è caratterizzata da sontuosi banchetti e sfrenati festeggiamenti, quando il matto della città viene nominato sovrano per un giorno. In questa occasione è tradizione che gli amici, gli amanti e i compagni di viaggio si scambino regali e si facciano degli scherzi.
+
+Per accedere a questo contenuto, dovrai poter visitare il mercante Bodahn nell'accampamento del gruppo.
+
+Comprende:
+* Tutti i doni del giorno di festa e gli scherzi del giorno di festa.
+
+Come trovare gli oggetti:
+* Bodahn vende sia i doni che gli scherzi nel suo negozio nell'accampamento del gruppo durante tutto l'anno.
+
+Richiede il disco di Dragon Age: Origins.]]></it-it>
+      <de-de><![CDATA[HINWEIS: DAS FESTTAGS-GESAMTPAKET ENTHÄLT SOWOHL DIE FESTTAGS-GESCHENKE ALS AUCH DIE FESTTAGS-STREICHE. BEIDE INHALTE SIND ABER AUCH SEPARAT ERHÄLTLICH.
+
+In ganz Thedas wird der bedeutende Feiertag Satinalia mit prächtigen Festen, wilden Feiern und der Ernennung des Dorftrottels zum Herrscher für einen Tag begangen. Im Rahmen der Feierlichkeiten ist es üblich, dass sich Freunde, Verliebte und Reisegefährten gegenseitig beschenken und Streiche spielen.
+
+Um auf diese Inhalte zugreifen zu können, musst du in der Lage sein, den Händler Bodahn im Lager der Gruppe aufzusuchen.
+
+Umfasst:
+* Sämtliche Inhalte der Festtags-Geschenke und Festtags-Streiche.
+
+So findest du die Gegenstände:
+* Bodahn bietet die Geschenke und die Gegenstände für die Streiche ganzjährig im Lager der Gruppe an.
+
+Zum Spielen wird die Dragon Age: Origins-Disc benötigt.]]></de-de>
+      <es-es><![CDATA[NOTA: EL PAQUETE COMBINADO FESTIVO INCLUYE EL CONTENIDO DE LAS BROMAS Y DE LOS REGALOS FESTIVOS, QUE TAMBIÉN ESTÁN DISPONIBLES POR SEPARADO.
+
+En Thedas, la gran festividad de Satinalia se caracteriza por suntuosos banquetes, animadas celebraciones y el nombramiento del tonto del pueblo como gobernante por un día. Durante las fiestas, es costumbre que amigos, amantes y compañeros de viaje intercambien regalos y bromas.
+
+Para acceder a este contenido, tendrás que poder visitar al comerciante Bodahn en el campamento del grupo.
+
+Incluye:
+* Todo el contenido de Regalos festivos y Bromas festivas.
+
+Para encontrar los objetos:
+* Bodahn guarda los regalos y las bromas en su tienda del campamento del grupo durante todo el año.
+
+Se necesita el disco de Dragon Age: Origins para poder jugar.]]></es-es>
+      <pl-pl><![CDATA[UWAGA: PODWÓJNA ŚWIĄTECZNA PACZKA ZAWIERA WSZYSTKIE ELEMENTY ZE ŚWIĄTECZNYCH PODARUNKÓW ORAZ ŚWIĄTECZNYCH PSIKUSÓW, KTÓRE SĄ TAKŻE DOSTĘPNE ODDZIELNIE.
+
+
+W całym Thedas święta Satinaliów obchodzone są niezwykle hucznie. Organizuje się wystawne uczty i szalone przyjęcia, a tu i ówdzie miejski głupek na jeden dzień zostaje władcą. Oprócz tych uroczystości przyjął się także zwyczaj wręczania sobie wzajemnie podarków lub robienia psikusów.
+
+
+
+Aby skorzystać z tej zawartości, musisz mieć możliwość odwiedzenia kupca Bodahna w obozie drużyny.
+
+
+
+Zawiera:
+
+* Wszystkie elementy ze "Świątecznych podarunków" oraz "Świątecznych psikusów".
+
+
+
+Aby zdobyć psikusy:
+
+* Psikusy oraz prezenty przez okrągły rok są dostępne w sklepie Bodahna.
+
+Do uruchomienia wymagany jest dysk Dragon Age: Początek.]]></pl-pl>
+      <ru-ru><![CDATA[ПРИМЕЧАНИЕ. В ПРАЗДНИЧНЫЙ КОМБОКОМПЛЕКТ ВХОДЯТ КАК ПОДАРКИ, ТАК И ПРЕДМЕТЫ ДЛЯ РОЗЫГРЫШЕЙ, ДОСТУПНЫЕ ТАКЖЕ ПО ОТДЕЛЬНОСТИ.
+
+В честь великого праздника Сатиналья по всему Тедасу проводятся карнавалы и пышные торжества. На один день правителем города назначается городской дурак. Во время праздника друзья, влюбленные и путешественники обычно обмениваются подарками и разыгрывают друг друга.
+
+Чтобы получить доступ к этому контенту, необходимо иметь возможность навестить купца Бодана в лагере отряда.
+
+В комплект входят:
+* Все из наборов праздничных подарков и праздничных предметов для розыгрышей.
+
+Как найти предметы:
+* В любое время года подарки и предметы для розыгрышей есть в лавке Бодана в лагере отряда.
+]]></ru-ru>
+      <pseudo><![CDATA[NOTE: FEASTDAY COMBO PACK INCLUDES THE CONTENT OF BOTH FEASTDAY GIFTS AND FEASTDAY PRANKS, WHICH ARE ALSO AVAILABLE SEPARATELY.
+
+Throughout Thedas, the great holiday of Satinalia is marked by sumptuous feasts, wild celebration, and naming the town fool as ruler for a day. Amid the feasting, it is customary for friends, lovers, and traveling companions to exchange gifts and pranks.
+
+To access this content, you will need to be able to visit the merchant Bodahn in the party camp.
+
+Includes:
+* All the content from both Feastday Gifts and Feastday Pranks.
+
+To find the items:
+* Bodahn stocks the gifts and pranks in his store at the party camp year-round.]]></pseudo>
+      <cs-cz><![CDATA[POZNÁMKA: KOMBINOVANÝ SVÁTEČNÍ BALÍČEK OBSAHUJE JAK SVÁTEČNÍ DÁRKY, TAK SVÁTEČNÍ LEGRÁCKY. KTERÉ LZE JINAK ZAKOUPIT I SAMOSTATNĚ.
+
+Velkolepé svátky Satinalie jsou po celém Thedasu slaveny nákladnými hostinami a bujarými veselicemi, jmenováním místního blázna na jeden den vládcem. V průběhu oslav si přátelé, milenci a společníci na cestách navzájem dávají dárky, nebo si naopak dělají různé naschvály. 
+
+Chcete-li se dostat k tomuto obsahu, musíte navštívit obchodníka Bodahna v táboře družiny.
+
+Obsahuje:
+* Všechny sváteční dárky i sváteční legrácky.
+
+Jak najít dárky a legrácky:
+* Bodahn dárky a legrácky po celý rok skladuje ve svém obchodě v táboře družiny.
+
+Requires Dragon Age: Origins save game to play.]]></cs-cz>
+      <hu-hu><![CDATA[FIGYELEM: A LAKOMA-NAPI KOMBÓ CSOMAG TARTALMAZZA A LAKOMA-NAPI AJÁNDÉKOKAT ÉS TRÉFÁKAT, MELYEK KÜLÖN-KÜLÖN IS ELÉRHETŐK.
+
+Satinalia ünnepe a bőséges lakomák, a szertelen vidámság és a bolondból csinált uralkodók napja Thedas-szerte. A vigasság közepette A vigasság közepette a barátok, szeretők és útitársak hagyományosan megajándékozzák és megtréfálják egymást.
+ 
+E tartalom eléréséhez fel kell keresned Bodahn kereskedőt a csapat táborában.
+
+Tartalma:
+* A Lakoma-napi ajándékok és Lakoma-napi tréfák teljes tartalma.
+
+A tárgyak elérése:
+* Bodahn boltja a csapat táborában egész évben kínálja őket.
+
+Requires Dragon Age: Origins save game to play.]]></hu-hu>
+    </Description>
+    <Image>dao_prc_cp3_cp7</Image>
+    <Rating DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[Contenuti adatti a un pubblico adulto]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt tartalom)]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="M for Mature">
+      <en-us><![CDATA[M for Mature]]></en-us>
+      <fr-fr><![CDATA[M pour public mature]]></fr-fr>
+      <it-it><![CDATA[Contenuti adatti a un pubblico adulto]]></it-it>
+      <de-de><![CDATA[M for Mature]]></de-de>
+      <es-es><![CDATA[M (adultos)]]></es-es>
+      <pl-pl><![CDATA[18+]]></pl-pl>
+      <ru-ru><![CDATA[В значит Взрослый]]></ru-ru>
+      <pseudo><![CDATA[M for Mature]]></pseudo>
+      <cs-cz><![CDATA[M for Mature]]></cs-cz>
+      <hu-hu><![CDATA[M (felnőtt tartalom)]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/feastday">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (site en anglais)]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (sito in inglese)]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/feastday (Seite auf Englisch)]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (sitio en inglés)]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (Strona w języku angielskim)]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (вебсайт на английском языке)]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (stránka v angličtině)]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/feastday (angol nyelvű honlap)]]></hu-hu>
+    </URL>
+    <ReleaseDate>01/04/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.03</GameVersion>
+    <Type>1</Type>
+    <Price>240</Price>
+    <Size>15</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="20451" microContentID="DAO_PRC_CP_3" Version="1.0">
+        <Title DefaultText="Feastday Combo Pack">
+          <en-us><![CDATA[Feastday Combo Pack]]></en-us>
+          <fr-fr><![CDATA[Pack intégral de Satinalia]]></fr-fr>
+          <it-it><![CDATA[Pacchetto della festa]]></it-it>
+          <de-de><![CDATA[Festtags-Gesamtpaket]]></de-de>
+          <es-es><![CDATA[Paquete combinado festivo]]></es-es>
+          <pl-pl><![CDATA[Podwójna świąteczna paczka]]></pl-pl>
+          <ru-ru><![CDATA[Комбинированный праздничный набор]]></ru-ru>
+          <pseudo><![CDATA[Feastday Combo Pack]]></pseudo>
+          <cs-cz><![CDATA[Kombinovaný slavnostní balíček]]></cs-cz>
+          <hu-hu><![CDATA[Lakoma-napi kombó csomag]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_ONRX_1" Name="PRC1 - Offer" ExtendedModuleUID="Single Player" Priority="1" Presentation="16" Format="1" BioWare="1">
+    <Title DefaultText="Warden's Keep">
+      <en-us><![CDATA[Warden's Keep]]></en-us>
+      <fr-fr><![CDATA[La forteresse des Gardes des ombres]]></fr-fr>
+      <it-it><![CDATA[Fortezza dei Custodi]]></it-it>
+      <de-de><![CDATA[Wächter-Festung]]></de-de>
+      <es-es><![CDATA[Castillo de los guardas]]></es-es>
+      <pl-pl><![CDATA[Twierdza Strażnika]]></pl-pl>
+      <ru-ru><![CDATA[Крепость Стражей]]></ru-ru>
+      <pseudo><![CDATA[Warden's Keep]]></pseudo>
+      <cs-cz><![CDATA[Pevnost Strážců]]></cs-cz>
+      <hu-hu><![CDATA[Kamarás erőd]]></hu-hu>
+    </Title>
+    <Description DefaultText="Some copies of Dragon Age: Origins contain a redemption code for this content. Check your game's packaging before purchasing. Two centuries ago, the Grey Wardens were expelled from Ferelden amidst a storm of blood and betrayal. Their fortress remains at remote Soldier's Peak, overgrown and reportedly haunted. Now comes a chance to unearth this lost chapter of Grey Warden history, to unravel the mystery behind its fall, and finally reclaim it for the order! To begin the journey to Soldier's Peak, return to your party camp from the world map and seek out a merchant named Levi Dryden. Includes: (1) A fun dungeon-delving adventure; (2) A set of ancient Grey Warden armor, complete with heraldry; (3) A chance to gain two of six mysterious new abilities. (4) A new base complete with merchants and a party chest to store your hard-earned loot.">
+      <en-us><![CDATA[Some copies of Dragon Age: Origins contain a redemption code for this content. Check your game's packaging before purchasing. Two centuries ago, the Grey Wardens were expelled from Ferelden amidst a storm of blood and betrayal. Their fortress remains at remote Soldier's Peak, overgrown and reportedly haunted. Now comes a chance to unearth this lost chapter of Grey Warden history, to unravel the mystery behind its fall, and finally reclaim it for the order! To begin the journey to Soldier's Peak, return to your party camp from the world map and seek out a merchant named Levi Dryden. Includes: (1) A fun dungeon-delving adventure; (2) A set of ancient Grey Warden armor, complete with heraldry; (3) A chance to gain two of six mysterious new abilities. (4) A new base complete with merchants and a party chest to store your hard-earned loot.]]></en-us>
+      <fr-fr><![CDATA[Certains exemplaires de Dragon Age: Origins peuvent contenir un code d'accès gratuit pour ce contenu. Vérifiez l'emballage du jeu avant d'acheter. Voilà deux siècles, les Gardes des ombres furent chassés de Férelden au cours d'événements entachés de sang et de trahison. Leur forteresse subsiste au lointain Pic du soldat, un bastion d'histoire à l'abandon et réputé hanté. Aujourd'hui, l'occasion est offerte de rouvrir ce chapitre oublié de l'histoire des Gardes des ombres, de percer les mystères qui ont jadis présidé à sa chute et d'enfin la revendiquer au nom de l'Ordre ! Pour commencer votre périple vers le Pic du soldat : Retournez à votre campement depuis la carte du monde et soyez à l'affût d'un marchand nommé Levi Dryden. Comprend : (1) Une palpitante exploration de donjon. (2) L'opportunité d'acquérir deux parmi six nouvelles mystérieuses capacités.]]></fr-fr>
+      <it-it><![CDATA[Alcune copie di Dragon Age: Origins includono un codice da riscattare gratuito per questo contenuto. Controlla la confezione del gioco prima dell'acquisto. Due secoli fa, i Custodi Grigi furono scacciati dal Ferelden in seguito a una burrascosa vicenda di sangue e tradimento. La loro fortezza restò nel remoto Picco del Soldato, coperta di vegetazione e, secondo alcune voci, infestata. Ecco la possibilità di narrare questo capitolo perduto della storia dei Custodi Grigi, di svelare il mistero dietro la loro caduta e di reclamarlo per l'ordine! Per iniziare il viaggio verso il Picco del Soldato: Torna all'accampamento del tuo gruppo dalla mappa del mondo e cerca un mercante di nome Levi Dryden. Comprende: (1) Una divertente avventura fatta di esplorazioni nei dungeon. (2) La possibilità di guadagnare due fra sei nuove, misteriose abilità.]]></it-it>
+      <de-de><![CDATA[Einige Exemplare von Dragon Age: Origins enthalten einen Gutscheincode für diesen Inhalt. Sieh bitte vor dem Kauf des Spiels auf der Verpackung nach. Die Grauen Wächter wurden vor zwei Jahrhunderten in einem Sturm aus Blut und Verrat aus Ferelden vertrieben. Zurück blieb ihre Festung auf dem abgelegenen Soldatengipfel, die inzwischen überwuchert und angeblich verflucht ist. Nun bietet sich die Möglichkeit, dieses verloren geglaubte Kapitel der Geschichte der Grauen Wächter zu ergründen, das Geheimnis ihres Sturzes zu lüften und die Festung endlich für den Orden zurückzufordern! So beginnst du deine Reise nach Soldatengipfel: Kehre von der Weltkarte zum Lager deiner Gruppe zurück und suche einen Händler namens Levi Dryden auf. Enthält: (1) Ein spannendes Abenteuer in den Tiefen der Festung. (2) Die Möglichkeit, zwei von sechs mysteriösen neuen Fähigkeiten zu erwerben. ]]></de-de>
+      <es-es><![CDATA[Algunas copias de Dragon Age: Origins tienen un código de canje para este contenido. Comprueba el embalaje de tu juego antes de comprar. Hace dos siglos, los guardas grises fueron expulsados de Ferelden en una tormenta de sangre y traición. Su fortaleza aún se eleva en el distante Pico del Soldado, cubierta por la maleza y, según se dice, encantada. Es el momento de recuperar este capítulo perdido de la historia de los guardas grises, de desentrañar el misterio de su caída... ¡y de reclamar la fortaleza para la orden! Para iniciar el viaje al Pico del Soldado: Regresa al campamento del grupo desde el mapa del mundo y busca a un mercader llamado Levi Dryden. Incluye: (1) Una aventura de mazmorras. (2) Una antigua armadura de guarda gris con heráldica. (3) La posibilidad de ganar dos de las seis misteriosas aptitudes nuevas.]]></es-es>
+      <pl-pl><![CDATA[Niektóre egzemplarze gry Dragon Age: Początek zawierają kod do odblokowania tego dodatku. Przed jego zakupem sprawdź opakowanie swojej gry. Dwa stulecia temu, Szara Straż została wygnana z Fereldenu, pośród rozlewu krwi i aktów zdrady. Na niedostępnym Szczycie Wojownika pozostała po niej zarośnięta i rzekomo nawiedzona forteca. Teraz pojawiła się w końcu szansa odkrycia zaginionego rozdziału historii Szarych Strażników, ujawnienia tajemnicy upadku fortecy oraz, przede wszystkim, jej odzyskania dla bractwa! Aby rozpocząć podróż na Szczyt Wojownika: Wróć z mapy świata do obozu drużyny i poszukaj kupca o imieniu Levi Dryden. Zawiera: (1) Wciągającą przygodę związaną z eksploracją podziemi. (2) Zestaw starożytnej zbroi Szarej Straży, łącznie z insygniami. (3) Szansę zdobycia dwóch z sześciu nowych, tajemniczych zdolności.]]></pl-pl>
+      <ru-ru><![CDATA[В вашей копии "Dragon Age: Начало" может оказаться бесплатный код выкупа для этого контента. Проверьте упаковку перед покупкой. Два века назад Серые Стражи были изгнаны из Ферелдена в результате кровавой бури и подлой измены. Их далекая крепость на Солдатском пике заросла бурьяном и стала прибежищем неупокоенных духов. Сейчас настал момент восстановить утерянную главу истории Серых Стражей, раскрыть тайну ее падения и вернуть ее ордену! Отправьтесь в путь на Солдатский пик: Вернитесь с карты мира в лагерь отряда и найдите купца по имени Леви Драйден. Состав: (1) Захватывающее приключение в подземельях. (2) Комплект древней брони Серых Стражей с геральдическими знаками. (3) Шанс получить две из шести новых секретных способностей. (4) Новая база с купцами и сундуком отряда для хранения кровью и потом добытых сокровищ.]]></ru-ru>
+      <pseudo><![CDATA[Some copies of Dragon Age: Origins contain a redemption code for this content. Check your game's packaging before purchasing. Two centuries ago, the Grey Wardens were expelled from Ferelden amidst a storm of blood and betrayal. Their fortress remains at remote Soldier's Peak, overgrown and reportedly haunted. Now comes a chance to unearth this lost chapter of Grey Warden history, to unravel the mystery behind its fall, and finally reclaim it for the order! To begin the journey to Soldier's Peak, return to your party camp from the world map and seek out a merchant named Levi Dryden. Includes: (1) A fun dungeon-delving adventure; (2) A set of ancient Grey Warden armor, complete with heraldry; (3) A chance to gain two of six mysterious new abilities. (4) A new base complete with merchants and a party chest to store your hard-earned loot.]]></pseudo>
+      <cs-cz><![CDATA[Obávaní hlídači zvaní golemové byli vyrobeni trpaslíky žijícími v dávných dobách a měli sloužit v první linii obrany proti zplozencům. Před dvěma stoletími byli Šedí strážci za pomoci zrady a množství prolité krve vyhnáni z Fereldenu. Jejich pevnost se zachovala na odlehlém Vojenském vrcholku - je opuštěná, zarostlá a podle všeho v ní straší. Nyní se naskýtá šance odkrýt tuto ztracenou kapitolu dějin Šedých strážců, odhalit tajemství, které stálo za jejím dobytím, a v neposlední řadě také šance na to, aby byla tato pevnost znovu navrácena do rukou řádu!
+          
+Putování k Vojenskému vrcholku započnete následovně:
+* Vraťte se z mapy světa do vašeho tábora a vyhledejte obchodníka jménem Levi Dryden.
+
+Obsahuje:
+* Zábavné dobrodružství při pátrání v opuštěné pevnosti.
+* Sadu starodávné zbroje Šedých strážců s příslušnými heraldickými symboly.
+* Možnost získání dvou ze šesti tajemných nových dovedností.
+* Novou základnu, v níž nechybí obchodníci a truhla výpravy, do které můžete ukládat vaši těžce získanou kořist.]]></cs-cz>
+      <hu-hu><![CDATA[Kétszáz évvel ezelőtt a Szürke Kamarásokat árulás és vérontás közepette száműzték Fereldenből. Erődjük mindmáig áll a távoli Harcosbércen, de visszahódította a természet, ráadásul azt beszélik, kísértetek lakják. Most lehetőséged van  arra, hogy megismerd a Szürke Kamarások történetének elfeledett fejezetét, felfedd bukásuk titkát, s hogy visszaszerezd az erődöt a rend számára!
+
+A Harcosbérc eléréséhez: 
+*Térj vissza a világtérképről a csapat táborába, és keresd a Levi Dryden nevű kereskedőt!
+
+Tartalom:
+* Egy hamisítatlan labirintus-kaland
+* Egy ősi Szürke Kamarás páncélöltözet, címerekkel.
+* Kettő a hat új, titokzatos képességből.
+* Egy új tábor kereskedőkkel, továbbá egy csapatláda, amiben a nehezen szerzett zsákmányt tárolhatod.]]></hu-hu>
+    </Description>
+    <Image>gwb_module</Image>
+    <Rating DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/soldierspeak">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/soldierspeak]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/fr-fr/soldierspeak]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/it-it/soldierspeak]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de-de/soldierspeak]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/es-es/soldierspeak]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/pl-pl/soldierspeak]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/ru-ru/soldierspeak]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/soldierspeak]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/cs-cz/soldierspeak]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/hu-hu/soldierspeak]]></hu-hu>
+    </URL>
+    <ReleaseDate>03/11/2009</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.0</GameVersion>
+    <Type>1</Type>
+    <Price>560</Price>
+    <Size>330</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="17762" microContentID="DAO_PRC_NRX_1" Version="1.0">
+        <Title DefaultText="Warden's Keep">
+          <en-us><![CDATA[Warden's Keep]]></en-us>
+          <fr-fr><![CDATA[La forteresse des Gardes des ombres]]></fr-fr>
+          <it-it><![CDATA[Fortezza dei Custodi]]></it-it>
+          <de-de><![CDATA[Wächter-Festung]]></de-de>
+          <es-es><![CDATA[Castillo de los guardas]]></es-es>
+          <pl-pl><![CDATA[Twierdza Strażnika]]></pl-pl>
+          <ru-ru><![CDATA[Крепость Стражей]]></ru-ru>
+          <pseudo><![CDATA[Warden's Keep]]></pseudo>
+          <cs-cz><![CDATA[Pevnost Strážců]]></cs-cz>
+          <hu-hu><![CDATA[Kamarás erőd]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_OPROMO_ME" Name="PROMO_MassEffect" Priority="512" Presentation="1" Format="1" BioWare="1">
+    <Title DefaultText="Blood Dragon Plate">
+      <en-us><![CDATA[Blood Dragon Plate]]></en-us>
+      <fr-fr><![CDATA[Armure de Dragon de Sang]]></fr-fr>
+      <it-it><![CDATA[Armatura di Sangue di Drago]]></it-it>
+      <de-de><![CDATA[Blutdrachen-Plattenrüstung]]></de-de>
+      <es-es><![CDATA[Coraza de Sangre de Dragón]]></es-es>
+      <pl-pl><![CDATA[Płytowa zbroja smoczej krwi]]></pl-pl>
+      <ru-ru><![CDATA[Латы Кровавого Дракона]]></ru-ru>
+      <pseudo><![CDATA[Blood Dragon Plate]]></pseudo>
+      <cs-cz><![CDATA[Plátová zbroj dračí krve]]></cs-cz>
+      <hu-hu><![CDATA[Vérsárkány lemezvért]]></hu-hu>
+    </Title>
+    <Description DefaultText="Commissioned by an infamous Nevarran dragon hunter, this armor was crafted in a time when dragons had almost been hunted to extinction. Infused with their blood, the armor gained notoriety after the hunter died at the hands of men rather than the dragons it was designed to protect him from. You'll receive one piece immediately. The other parts are available from Bodahn in the party camp.">
+      <en-us><![CDATA[Commissioned by an infamous Nevarran dragon hunter, this armor was crafted in a time when dragons had almost been hunted to extinction. Infused with their blood, the armor gained notoriety after the hunter died at the hands of men rather than the dragons it was designed to protect him from. You'll receive one piece immediately. The other parts are available from Bodahn in the party camp.]]></en-us>
+      <fr-fr><![CDATA[Conçue à l'origine pour un chasseur de dragons névarran notoire, cette armure fut forgée à une époque où les dragons furent menés au bord de l'extinction. Gorgée de leur sang, cette armure acquit en notoriété après que son porteur eut péri aux mains des hommes, et non des dragons dont elle devait le protéger. Vous recevrez une pièce d'armure sur-le-champ. Les autres pièces s'obtiendront auprès de Bodahn, au campement du groupe.]]></fr-fr>
+      <it-it><![CDATA[Commissionata da un malfamato cacciatore di draghi di Nevarra, quest'armatura è stata creata in un'epoca in cui la caccia ai draghi li aveva portati quasi all'estinzione. Infusa con il loro sangue, l'armatura divenne celebre quando il cacciatore morì per mano di alcuni umani, invece dei draghi contro i quali intendeva proteggersi. Ne riceverai un pezzo immediatamente, mentre gli altri saranno disponibili da Bodahn, nell'accampamento del gruppo.]]></it-it>
+      <de-de><![CDATA[Diese von einem berüchtigten Drachenjäger aus Nevarra in Auftrag gegebene Rüstung wurde zu einer Zeit hergestellt, als die Drachen schon beinahe ausgerottet waren. Sie ist mit Drachenblut angereichert und erlangte traurige Berühmtheit, als der Jäger durch Menschenhand starb, statt durch die Drachen, vor denen ihn die Rüstung schützen sollte. Ein Rüstungsteil erhältst du sofort, die restlichen Bestandteile findest du bei Bodahn im Lager der Gruppe.]]></de-de>
+      <es-es><![CDATA[La armadura fue encargada por un infame cazador de dragones nevarrano cuando estas criaturas estaban ya prácticamente extintas debido a la caza. Está impregnada de sangre de dragón, así que esta armadura ganó notoriedad tras la muerte del cazador a manos de humanos, no de las bestias de las que se suponía que debía protegerse. Recibirás una parte inmediatamente. Las demás, las tiene Bodahn en el campamento del grupo.]]></es-es>
+      <pl-pl><![CDATA[Ta nasycona smoczą krwią zbroja wykonana została na zamówienie cieszącego się złą sławą łowcy smoków,  Jeden fragment zbroi otrzymasz natychmiast. Pozostałe części dostępne będą u Bodahna w obozie drużyny]]></pl-pl>
+      <ru-ru><![CDATA[Эти доспехи сделаны для одного неварранца, охотника на драконов, и обрели дурную славу после того, как охотник был убит - людьми, а не драконами.]]></ru-ru>
+      <pseudo><![CDATA[Commissioned by an infamous Nevarran dragon hunter, this armor was crafted in a time when dragons had almost been hunted to extinction. Infused with their blood, the armor gained notoriety after the hunter died at the hands of men rather than the dragons it was designed to protect him from. You'll receive one piece immediately. The other parts are available from Bodahn in the party camp.]]></pseudo>
+      <cs-cz><![CDATA[Tuto zboj si nechal na zakázku vyrobit nechvalně známý dračí lovec Nevarran v časech, kdy byli draci téměř vyhubeni. Je prosycena jejich krví a proslula až po té, co zmíněný lovec padl. Nebyl však zabit draky, před nimiž ho měla chránit, ale lidmi. Jeden předmět obdržíte okamžitě. Ostatní lze získat od Bodahna v ležení družiny. Děkujeme a dobře se bavte!]]></cs-cz>
+      <hu-hu><![CDATA[Ez a páncél egy hírhedt nevarrai sárkányölő megrendelésére készült egy olyan korban, mikor a sárkányokat kihalás fenyegette. Fémjét vérükben edzették, tulajdonosa életét mégsem sikerült megóvnia: az illetőt tulajdon fajtársai ölték meg holmi hüllőfajzat helyett. Egyet azonnal megkapsz, a többit Bodahntól szerezheted meg, a csapat táborában. Köszönjük, és jó szórakozást!]]></hu-hu>
+    </Description>
+    <Image>blood_dragon_armor_module</Image>
+    <Rating DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="">
+      <en-us><![CDATA[]]></en-us>
+      <fr-fr><![CDATA[]]></fr-fr>
+      <it-it><![CDATA[]]></it-it>
+      <de-de><![CDATA[]]></de-de>
+      <es-es><![CDATA[]]></es-es>
+      <pl-pl><![CDATA[]]></pl-pl>
+      <ru-ru><![CDATA[]]></ru-ru>
+      <pseudo><![CDATA[]]></pseudo>
+      <cs-cz><![CDATA[]]></cs-cz>
+      <hu-hu><![CDATA[]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/blooddragonplate">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/blooddragonplate]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/blooddragonplate (site en anglais)]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/it-it/blooddragonplate]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/en-us/blooddragonplate]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/es-es/blooddragonplate]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/pl-pl/blooddragonplate]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/ru-ru/blooddragonplate]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/blooddragonplate]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/blooddragonplate]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/blooddragonplate]]></hu-hu>
+    </URL>
+    <ReleaseDate>03/11/2009</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.0</GameVersion>
+    <Type>1</Type>
+    <Price>0</Price>
+    <Size>5</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="18025" microContentID="DAO_PRC_PROMO_ME" Version="1.0" />
+    </PRCList>
+  </OfferItem>
+  <OfferItem UID="DAO_PRC_STR_O" Name="DAO_PRC_STR_O" ExtendedModuleUID="Single Player" Priority="503" Presentation="32" Format="1" BioWare="1">
+    <Title DefaultText="Witch Hunt">
+      <en-us><![CDATA[Witch Hunt]]></en-us>
+      <fr-fr><![CDATA[La Chasse aux Sorcières]]></fr-fr>
+      <it-it><![CDATA[Caccia alle streghe]]></it-it>
+      <de-de><![CDATA[Hexenjagd]]></de-de>
+      <es-es><![CDATA[Caza de brujas]]></es-es>
+      <pl-pl><![CDATA[Witch Hunt]]></pl-pl>
+      <ru-ru><![CDATA[Witch Hunt]]></ru-ru>
+      <pseudo><![CDATA[Witch Hunt]]></pseudo>
+      <cs-cz><![CDATA[Witch Hunt]]></cs-cz>
+      <hu-hu><![CDATA[Witch Hunt]]></hu-hu>
+    </Title>
+    <Description DefaultText="A final confrontation with Morrigan!  &quot;Never follow me.&quot; With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.  Includes: * Powerful rewards that transfer into your Awakening and Origins campaigns.  To begin the pursuit: * From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!  This content is not available in Russian, Polish, Czech, or Hungarian.">
+      <en-us><![CDATA[A final confrontation with Morrigan!
+
+"Never follow me." With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin the pursuit:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></en-us>
+      <fr-fr><![CDATA[Affrontement ultime avec Morrigan !
+
+"Pas la peine de me suivre." C'est sur ces mots que Morrigan disparut dans l'ombre. Ses intentions et le lieu où elle se trouvait restèrent un mystère... jusqu'à aujourd'hui. Que vous cherchiez des réponses, la vengeance ou la réconciliation avec votre amour perdu, vous risquez de trouver plus que ce que vous espériez.
+
+Comprend :
+* Des récompenses puissantes à utiliser dans les campagnes Awakening et Origins.
+
+Pour commencer le voyage :
+* Dans le menu principal, sélectionnez Autres campagnes. Ensuite, soit vous importez votre personnage de Origins, Awakening, ou les Golems d'Amgarrak, soit vous créez un nouveau héros de haut niveau !
+
+Ce contenu n'est pas disponible en russe, polonais, tchèque ou hongrois.]]></fr-fr>
+      <it-it><![CDATA[Il confronto finale con Morrigan!
+
+"Non seguirmi mai". Con queste parole, Morrigan è scomparsa nel nulla. I suoi piani e il suo nascondiglio sono rimasti un mistero... Fino a ora. Che tu cerchi risposte, vendetta o riconciliazione con il tuo amore perduto, potresti trovare più di quanto ti aspettavi.
+
+Include:
+* Potenti ricompense, che potrai trasferire nelle campagne di Origins e Awakening
+
+Per iniziare la ricerca:
+* Dal menu principale, seleziona Altra campagna e poi importa il tuo personaggio da Origins, Awakening o I golem di Amgarrak, oppure crea un nuovo eroe di alto livello!
+
+Questo contenuto non è disponibile in russo, polacco, ceco o ungherese.]]></it-it>
+      <de-de><![CDATA[Eine letzte Konfrontation mit Morrigan!
+
+"Macht Euch niemals auf die Suche nach mir." Mit diesen Worten verschwand Morrigan in den Schatten, und sowohl ihre Pläne als auch ihr Aufenthaltsort blieben ein Geheimnis ... bis jetzt. Doch egal, ob du nach Antworten suchst, auf Rache sinnst oder deine verlorene Liebe wiedersehen willst ... du könntest mehr finden, als du erwartest.
+
+Umfasst:
+* Mächtige Belohnungen, die in deine Awakening- und Origins-Kampagnen übertragen werden.
+
+So beginnst du die Suche:
+* Wähle im Hauptmenü die Option "Andere Kampagnen". Importiere anschließend entweder deinen Charakter aus Origins, Awakening oder Die Golems von Amgarrak oder erstelle einen neuen, hochstufigen Helden!
+
+Dieser Inhalt ist nicht auf Russisch, Polnisch, Tschechisch oder Ungarisch verfügbar.]]></de-de>
+      <es-es><![CDATA[¡La confrontación final con Morrigan!
+
+"Nunca me sigas". Con estas palabras, Morrigan se esfumó. Sus planes y su paradero han sido un misterio... hasta ahora. Pero ya busques respuestas, venganza o reconciliarte con tu amor perdido, puede que encuentres más de lo que se te ha prometido.
+
+Incluye:
+* Premios poderosos que transferir a tus campañas de El Despertar y de Origins.
+
+Para empezar la persecución:
+* En el menú principal, selecciona "Otras campañas" e importa tu personaje de Dragon Age: Origins, El Despertar o Los golems de Amgarrak, o crea directamente un nuevo héroe de nivel alto.
+
+Este contenido no está disponible en ruso, polaco, checo ni húngaro.]]></es-es>
+      <pl-pl><![CDATA[A final confrontation with Morrigan!
+
+"Never follow me." With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin the pursuit:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></pl-pl>
+      <ru-ru><![CDATA[A final confrontation with Morrigan!
+
+"Never follow me." With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin the pursuit:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></ru-ru>
+      <pseudo><![CDATA[A final confrontation with Morrigan!
+
+"Never follow me." With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin the pursuit:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></pseudo>
+      <cs-cz><![CDATA[A final confrontation with Morrigan!
+
+"Never follow me." With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin the pursuit:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></cs-cz>
+      <hu-hu><![CDATA[A final confrontation with Morrigan!
+
+"Never follow me." With these words, Morrigan vanished into the shadows. Her plans and her whereabouts have remained a mystery... until now. But whether you seek answers, revenge, or reconciliation with your lost love, you may find more than you bargained for.
+
+Includes:
+* Powerful rewards that transfer into your Awakening and Origins campaigns.
+
+To begin the pursuit:
+* From the main menu, select Other Campaigns. Then, either import your character from Origins, Awakening, or the Golems of Amgarrak, or create a new, high-level hero!
+
+This content is not available in Russian, Polish, Czech, or Hungarian.]]></hu-hu>
+    </Description>
+    <Image>witch_hunt_module</Image>
+    <Rating DefaultText="Mature">
+      <en-us><![CDATA[Mature]]></en-us>
+      <fr-fr><![CDATA[Jeunes adultes]]></fr-fr>
+      <it-it><![CDATA[Adatto a un pubblico maturo]]></it-it>
+      <de-de><![CDATA[Mature]]></de-de>
+      <es-es><![CDATA[Adultos]]></es-es>
+      <pl-pl><![CDATA[Mature]]></pl-pl>
+      <ru-ru><![CDATA[Mature]]></ru-ru>
+      <pseudo><![CDATA[Mature]]></pseudo>
+      <cs-cz><![CDATA[Mature]]></cs-cz>
+      <hu-hu><![CDATA[Mature]]></hu-hu>
+    </Rating>
+    <RatingDescription DefaultText="Mature">
+      <en-us><![CDATA[Mature]]></en-us>
+      <fr-fr><![CDATA[Jeunes adultes]]></fr-fr>
+      <it-it><![CDATA[Adatto a un pubblico maturo]]></it-it>
+      <de-de><![CDATA[Mature]]></de-de>
+      <es-es><![CDATA[Adultos]]></es-es>
+      <pl-pl><![CDATA[Mature]]></pl-pl>
+      <ru-ru><![CDATA[Mature]]></ru-ru>
+      <pseudo><![CDATA[Mature]]></pseudo>
+      <cs-cz><![CDATA[Mature]]></cs-cz>
+      <hu-hu><![CDATA[Mature]]></hu-hu>
+    </RatingDescription>
+    <URL DefaultText="http://go.bioware.com/dragonage/store/en-us/witchhunt">
+      <en-us><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></en-us>
+      <fr-fr><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></fr-fr>
+      <it-it><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></it-it>
+      <de-de><![CDATA[http://go.bioware.com/dragonage/store/de/witchhunt]]></de-de>
+      <es-es><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></es-es>
+      <pl-pl><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></pl-pl>
+      <ru-ru><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></ru-ru>
+      <pseudo><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></pseudo>
+      <cs-cz><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></cs-cz>
+      <hu-hu><![CDATA[http://go.bioware.com/dragonage/store/en-us/witchhunt]]></hu-hu>
+    </URL>
+    <ReleaseDate>07/9/2010</ReleaseDate>
+    <Version>1.0</Version>
+    <GameVersion>1.04</GameVersion>
+    <Type>1</Type>
+    <Price>560</Price>
+    <Size>740</Size>
+    <Publisher DefaultText="Electronic Arts">
+      <en-us><![CDATA[Electronic Arts]]></en-us>
+      <fr-fr><![CDATA[Electronic Arts]]></fr-fr>
+      <it-it><![CDATA[Electronic Arts]]></it-it>
+      <de-de><![CDATA[Electronic Arts]]></de-de>
+      <es-es><![CDATA[Electronic Arts]]></es-es>
+      <pl-pl><![CDATA[Electronic Arts]]></pl-pl>
+      <ru-ru><![CDATA[Electronic Arts]]></ru-ru>
+      <pseudo><![CDATA[Electronic Arts]]></pseudo>
+      <cs-cz><![CDATA[Electronic Arts]]></cs-cz>
+      <hu-hu><![CDATA[Electronic Arts]]></hu-hu>
+    </Publisher>
+    <PrereqList />
+    <PRCList>
+      <PRCItem ProductID="22935" microContentID="DAO_PRC_STR" Version="1.0">
+        <Title DefaultText="Witch Hunt">
+          <en-us><![CDATA[Witch Hunt]]></en-us>
+          <fr-fr><![CDATA[Chasse aux sorcières]]></fr-fr>
+          <it-it><![CDATA[Caccia alle streghe]]></it-it>
+          <de-de><![CDATA[Hexenjagd]]></de-de>
+          <es-es><![CDATA[Caza de brujas]]></es-es>
+          <pl-pl><![CDATA[Witch Hunt]]></pl-pl>
+          <ru-ru><![CDATA[Witch Hunt]]></ru-ru>
+          <pseudo><![CDATA[Witch Hunt]]></pseudo>
+          <cs-cz><![CDATA[Witch Hunt]]></cs-cz>
+          <hu-hu><![CDATA[Witch Hunt]]></hu-hu>
+        </Title>
+      </PRCItem>
+    </PRCList>
+  </OfferItem>
+</OfferList>

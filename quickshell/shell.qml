@@ -33,6 +33,12 @@ ShellRoot {
             function open(page: string): void { app.navigate(page); }
             function page(): string { return app.page; }
             function game(store: string, id: string): void { app.openGame(store, id); }
+            function mods(game: string): void { app.navigate("mods"); app.openModGame(game); }
+            function modsTab(game: string, tab: string): void {
+                app.navigate("mods");
+                app.modTab = tab;
+                app.openModGame(game);
+            }
         }
         IpcHandler {
             target: "hikari"

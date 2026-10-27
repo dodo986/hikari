@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +40,7 @@ type RunLog struct {
 	Running   bool      `json:"running"`
 	State     string    `json:"state"`
 	ExitCode  int       `json:"exit_code"`
+	Canceled  bool      `json:"canceled,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	StartedAt time.Time `json:"started_at"`
 	EndedAt   time.Time `json:"ended_at,omitempty"`
@@ -99,7 +102,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 		if plan.Prepare != nil {
 			if err := plan.Prepare(runCtx); err != nil {
 				m.log.Error("launch preparation failed", "game", key, "err", err)
-				m.finish(key, StateCrashed, 0, err)
+				m.finish(key, StateCrashed, 0, false, err)
 				if onState != nil {
 					onState(StateCrashed, 0)
 				}
@@ -147,7 +150,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 			},
 		})
 		if !res.Canceled && plan.Prefix != "" {
-			m.adoptPrefix(runCtx, plan.Prefix, func(pid int) {
+			m.adoptPrefix(runCtx, plan.Prefix, plan.Exe, rg.started, func(pid int) {
 				m.log.Debug("game outlived the engine", "game", key, "pid", pid)
 				m.mu.Lock()
 				rg.pid = pid
@@ -175,7 +178,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 			state = StateCrashed
 			m.log.Error("game exited with error", "game", key, "err", err)
 		}
-		m.finish(key, state, res.ExitCode, err)
+		m.finish(key, state, res.ExitCode, res.Canceled, err)
 		if onState != nil {
 			onState(state, 0)
 		}
@@ -183,7 +186,7 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 	return nil
 }
 
-func (m *Manager) finish(key, state string, code int, err error) {
+func (m *Manager) finish(key, state string, code int, canceled bool, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.running, key)
@@ -194,6 +197,7 @@ func (m *Manager) finish(key, state string, code int, err error) {
 	rec.Running = false
 	rec.State = state
 	rec.ExitCode = code
+	rec.Canceled = canceled
 	rec.EndedAt = time.Now()
 	if err != nil {
 		rec.Error = err.Error()
@@ -214,15 +218,19 @@ func (m *Manager) LastRun(store, id string) (RunLog, bool) {
 
 const prefixPollInterval = 2 * time.Second
 
-func (m *Manager) adoptPrefix(ctx context.Context, prefix string, onPlay func(pid int)) {
-	pid, ok := prefixPID(prefix)
+// prefixStartSlack forgives /proc start-time rounding when a launch polls for
+// its own process a moment after spawning it.
+const prefixStartSlack = 2 * time.Second
+
+func (m *Manager) adoptPrefix(ctx context.Context, prefix, exe string, since time.Time, onPlay func(pid int)) {
+	pid, ok := launchPID(prefix, exe, since)
 	if !ok {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(prefixPollInterval):
 		}
-		if pid, ok = prefixPID(prefix); !ok {
+		if pid, ok = launchPID(prefix, exe, since); !ok {
 			return
 		}
 	}
@@ -234,7 +242,7 @@ func (m *Manager) adoptPrefix(ctx context.Context, prefix string, onPlay func(pi
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if _, alive := prefixPID(prefix); !alive {
+			if _, alive := launchPID(prefix, exe, since); !alive {
 				m.log.Debug("game left the prefix", "prefix", prefix)
 				return
 			}
@@ -242,12 +250,27 @@ func (m *Manager) adoptPrefix(ctx context.Context, prefix string, onPlay func(pi
 	}
 }
 
-func prefixPID(prefix string) (int, bool) {
-	pids := PrefixProcesses(prefix)
-	if len(pids) == 0 {
-		return 0, false
+// launchPID picks a process that this launch started, never a leftover from an
+// earlier session: the game's own executable when it is still there, otherwise
+// anything that appeared in the prefix after the launch began.
+func launchPID(prefix, exe string, since time.Time) (int, bool) {
+	game := strings.ToLower(filepath.Base(exe))
+	best, bestStart, found := 0, time.Time{}, false
+	for _, pid := range PrefixProcesses(prefix) {
+		start := PrefixStart(pid)
+		if !start.IsZero() && start.Before(since.Add(-prefixStartSlack)) {
+			continue
+		}
+		if game != "" && strings.Contains(strings.ToLower(PrefixCmdline(pid)), game) {
+			return pid, true
+		}
+		// Equal start times mean the same clock tick, where the higher pid is
+		// the later process.
+		if !found || start.After(bestStart) || (start.Equal(bestStart) && pid > best) {
+			best, bestStart, found = pid, start, true
+		}
 	}
-	return pids[0], true
+	return best, found
 }
 
 func (m *Manager) Stop(key string) error {
@@ -296,7 +319,7 @@ func (m *Manager) LaunchFake(ctx context.Context, store, id string, life time.Du
 		case <-time.After(life):
 			cancel()
 		}
-		m.finish(key, StateStopped, 0, nil)
+		m.finish(key, StateStopped, 0, false, nil)
 		if onState != nil {
 			onState(StateStopped, 0)
 		}

@@ -20,6 +20,19 @@ for _ in $(seq 1 40); do
 	sleep 0.1
 done
 
+# nxm://<game>/mods/<id>/files/<id>?key=… from the Nexus site: bring the shell up
+# so the job is visible, then hand the link to the daemon.
+if [ "${1:-}" = "nxm" ]; then
+	if ! "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then
+		setsid -f "$qs_bin" -n -c hikari >/dev/null 2>&1 || true
+		for _ in $(seq 1 40); do
+			if "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then break; fi
+			sleep 0.1
+		done
+	fi
+	exec "$bin/hikari" mods nxm "${2:-}"
+fi
+
 if "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then
 	exit 0
 fi

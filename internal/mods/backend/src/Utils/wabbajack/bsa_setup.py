@@ -1,0 +1,540 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import struct
+import subprocess
+import tempfile
+import threading
+import time
+import wave
+from dataclasses import dataclass
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import closing
+from pathlib import Path
+
+from Utils.atomic_write import write_atomic_text
+from Utils.bsa.encoding import encode_bsa_name
+from .archive_io import extract_bethesda, read_member, records
+from .games import nexus_domain
+from .hashes import file_hash
+from .paths import WabbajackError, source_path, within
+from .diagnostics import emit, emit_exception
+from .post_install_rules import bsa_requirement as requirement
+
+MOD_NAME = "Wabbajack Patched BSAs"
+RECIPE = "fnv-vanilla-bsas-1"
+PREFIX = f"root/mods/{MOD_NAME}/"
+_ARCHIVE_LIMIT = 2 * 1024 ** 3 - 16 * 1024 ** 2
+_SOURCES = (
+    ("Fallout - Meshes.bsa", "jiqlT0njgBA="),
+    ("Fallout - Misc.bsa", "EVhzdbXz0Bo="),
+    ("Fallout - Textures.bsa", "BewSSpegvMc="),
+    ("Fallout - Textures2.bsa", "QGPu8cxNgIY="),
+    ("Fallout - Sound.bsa", "Rjyz0LLmiXA="),
+    ("DeadMoney - Sounds.bsa", "hiYjCvwkUhs="),
+    ("HonestHearts - Sounds.bsa", "HvpkqQYcq3o="),
+    ("LonesomeRoad - Sounds.bsa", "Me926qGNh0c="),
+    ("OldWorldBlues - Sounds.bsa", "lgV+M+EuPSw="),
+)
+_AUDIO_EXCLUSIONS = ("sound/songs/", "sound/fx/mus/", "sound/fx/emt/raintoggle/")
+
+
+@dataclass(frozen=True)
+class Source:
+    name: str
+    path: Path
+    digest: str
+    expanded: int
+    audio: bool
+
+
+def _stop(stop):
+    if stop is not None and stop.is_set():
+        raise InterruptedError("BSA setup stopped")
+
+
+def library_paths(package):
+    needed = requirement(package)
+    if not needed:
+        return {}
+    names = {"libvorbis.dll", "libvorbisfile.dll", "ogg.dll"}
+    paths = {Path(d.path).name.casefold(): d.path for d in package.directives
+             if len(d.path.split("/")) == 2 and d.path.split("/")[0] in needed.folders
+             and Path(d.path).name.casefold() in names}
+    if paths and paths.keys() != names:
+        raise WabbajackError("The bundled BSA patcher's Vorbis libraries are incomplete; this list needs a corrected package including ogg.dll, libvorbis.dll and libvorbisfile.dll")
+    return paths
+
+
+def _audio_size(stream, row, stop):
+    first, tail = bytearray(), bytearray()
+    def collect(data):
+        first.extend(data[:max(0, 4096 - len(first))])
+        tail.extend(data)
+        del tail[:-65536]
+    read_member(stream, row, collect, stop)
+    if first[:4] != b"OggS" or len(first) < 27:
+        raise WabbajackError(f"Invalid vanilla Vorbis header: {row[0]}")
+    start = 27 + first[26]
+    packet = first[start:start + 16]
+    end = tail.rfind(b"OggS")
+    if (len(packet) != 16 or packet[:7] != b"\x01vorbis" or packet[11] not in (1, 2)
+            or end < 0 or len(tail) - end < 27 or not tail[end + 5] & 4):
+        raise WabbajackError(f"Invalid vanilla Vorbis stream: {row[0]}")
+    frames = struct.unpack_from("<Q", tail, end + 6)[0]
+    size = frames * packet[11] * 2 + 4096
+    if not frames or size >= 1 << 30:
+        raise WabbajackError(f"Vanilla audio exceeds the supported conversion size: {row[0]}")
+    return size
+
+
+def sources(request, stop=None, log=None, *, names=None):
+    from .verification import parallel_verify, verified_read
+    roots = {p.resolve() for name, p in request.game_roots.items() if nexus_domain(name) == "newvegas"}
+    if len(roots) != 1:
+        raise WabbajackError("Configure one original New Vegas game directory for BSA setup")
+    root = roots.pop()
+    emit(log, "bsa.sources.started", game_root=root,
+         expected_archives=len(_SOURCES))
+    data = source_path(root, "Data")
+    available = {p.name.casefold() for p in data.iterdir()}
+    def candidates():
+        for index, (name, expected) in enumerate(_SOURCES):
+            _stop(stop)
+            if names is not None and name not in names:
+                continue
+            if names is None and index >= 5 and name.casefold() not in available:
+                continue
+            try:
+                path = source_path(data, name)
+            except (OSError, WabbajackError):
+                raise WabbajackError(f"BSA setup requires the original Data/{name}; verify the game's files") from None
+            yield index, name, path, expected
+    def verify(candidate):
+        index, name, path, expected = candidate
+        digest, expanded, audio = verified_read(path, (RECIPE, expected),
+            lambda: _inspect_source(path, expected, stop))
+        emit(log, "bsa.source.verified", archive=name, path=path,
+             hash=digest, expanded_bytes=expanded, audio=audio)
+        return index, Source(name, path, digest, expanded, audio)
+    result = [item for _, item in sorted(parallel_verify(verify, candidates(), stop))]
+    emit(log, "bsa.sources.completed", archives=len(result),
+         expanded_bytes=sum(item.expanded for item in result),
+         audio_archives=sum(item.audio for item in result))
+    return result
+
+
+def _inspect_source(path, expected, stop):
+    digest = file_hash(path, stop)
+    if digest != expected:
+        raise WabbajackError(f"{path.name} differs from the supported English vanilla archive. Restore original game files and check the game language before BSA setup.")
+    rows = records(path)
+    expanded = sum(len(row[1]) + sum(segment[2] for segment in row[2]) for row in rows)
+    audio = [row for row in rows if row[0].casefold().endswith(".ogg")
+             and not row[0].casefold().startswith(_AUDIO_EXCLUSIONS)]
+    with path.open("rb") as stream:
+        for row in audio:
+            expanded += max(0, _audio_size(stream, row, stop) - sum(s[2] for s in row[2]))
+    return digest, expanded + len(rows) * 512, bool(audio)
+
+
+def probe_audio(log=None):
+    exe = shutil.which("ffmpeg")
+    if not exe:
+        raise WabbajackError("Install FFmpeg with Vorbis decoding and PCM WAV encoding for the required BSA audio fixes")
+    for flag, codec in (("-decoders", "vorbis"), ("-encoders", "pcm_s16le")):
+        result = subprocess.run([exe, "-hide_banner", flag], capture_output=True, text=True, timeout=15)
+        emit(log, "bsa.ffmpeg.probe", executable=exe, flag=flag, codec=codec,
+             exit_code=result.returncode, found=any(codec == word for word in result.stdout.split()),
+             stderr=result.stderr[-1000:])
+        if result.returncode or not any(codec == word for word in result.stdout.split()):
+            raise WabbajackError(f"FFmpeg lacks the required {codec} audio codec")
+    return exe
+
+
+def _signature(group):
+    data = [(s.name, s.digest) for s in group]
+    return RECIPE + ":" + hashlib.sha256(json.dumps(data).encode()).hexdigest()
+
+
+def groups(items):
+    return [items[:2], *([item] for item in items[2:])]
+
+
+def expected_outputs(items):
+    return {PREFIX + item.name: _signature(group) for group in groups(items) for item in group}
+
+
+def shared_outputs(request, expected, stop=None, log=None):
+    found = {}
+    parent = request.directory.parent
+    if not expected or not parent.is_dir() or parent.is_symlink():
+        return found
+    for directory in sorted(parent.iterdir()):
+        _stop(stop)
+        if directory == request.directory or directory.is_symlink() or not directory.is_dir():
+            continue
+        database = directory / "state.sqlite"
+        if database.is_symlink() or not database.is_file():
+            continue
+        try:
+            with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.2)) as db:
+                row = db.execute("SELECT value FROM metadata WHERE key='status'").fetchone()
+                if row is None or json.loads(row[0]) != "complete":
+                    continue
+                rows = db.execute("SELECT path,signature,authored_hash FROM outputs WHERE path LIKE ?",
+                                  (PREFIX + "%",)).fetchall()
+            for key, signature, digest in rows:
+                if key in found or expected.get(key) != signature:
+                    continue
+                path = source_path(directory, key)
+                if file_hash(path, stop) == digest:
+                    found[key] = {"source": str(path), "authored_hash": digest, "signature": signature}
+        except InterruptedError:
+            raise
+        except (OSError, ValueError, sqlite3.Error, WabbajackError) as exc:
+            emit(log, "bsa.shared.unavailable", directory=directory, reason=str(exc))
+        if expected.keys() <= found.keys():
+            break
+    emit(log, "bsa.shared.verified", archives=len(found))
+    return found
+
+
+def source_plan(request, tracked=()):
+    available = {key.removeprefix(PREFIX).casefold() for key in tracked if key.startswith(PREFIX)}
+    for name, root in request.game_roots.items():
+        if nexus_domain(name) != "newvegas":
+            continue
+        try:
+            available.update(path.name.casefold() for path in source_path(root, "Data").iterdir())
+        except (OSError, WabbajackError):
+            pass
+    return [Source(name, Path(), digest, 0, False)
+            for index, (name, digest) in enumerate(_SOURCES)
+            if index < 5 or name.casefold() in available]
+
+
+def preflight_setup(request, check, stop=None, log=None, *, hardlinks=True):
+    needed = requirement(request.package)
+    if not needed:
+        emit(log, "bsa.preflight.skipped")
+        return 0, set()
+    emit(log, "bsa.preflight.started", reason=needed.reason,
+         folders=needed.folders)
+    try:
+        from .adapters import adapter_for
+        library_paths(request.package)
+        if not adapter_for(request.package, request.game, log=log).mo2:
+            raise WabbajackError("Automatic New Vegas BSA setup requires a supported profile and shared-mods layout")
+        if any(d.path.casefold().startswith(f"mods/{MOD_NAME}/".casefold()) for d in request.package.directives):
+            raise WabbajackError(f"The authored list uses the reserved mod name {MOD_NAME}; rename it before installation")
+        old, completed = {}, {}
+        database = request.directory / "state.sqlite"
+        if database.is_file():
+            with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as db:
+                old = {p: (sig, digest) for p, sig, digest in db.execute("SELECT path,signature,authored_hash FROM outputs")}
+                completed = {p: (sig, digest) for p, sig, digest in db.execute("SELECT path,signature,actual_hash FROM completed")}
+        if (request.directory / "root" / "mods" / MOD_NAME).exists() and not any(p.startswith(PREFIX) for p in old):
+            raise WabbajackError(f"Move or rename the existing unowned {MOD_NAME} mod before installing")
+        items = source_plan(request, old.keys() | completed.keys())
+        reused, staged = set(), set()
+        for key, sig in expected_outputs(items).items():
+            row = old.get(key)
+            path = within(request.directory, key)
+            if row and row[0] == sig and path.is_file() and file_hash(path, stop) == row[1]:
+                reused.add(key)
+            row = completed.get(key)
+            path = within(request.directory, "work/bsa-setup/output/" + key.removeprefix(PREFIX))
+            if row and row[0] == sig and path.is_file() and file_hash(path, stop) == row[1]:
+                staged.add(key)
+        shared = shared_outputs(request, {k: v for k, v in expected_outputs(items).items()
+                                         if k not in reused | staged}, stop, log)
+        pending = [g for g in groups(items) if any(PREFIX + s.name not in reused | staged for s in g)]
+        names = {s.name for g in pending for s in g}
+        inputs = {s.name: s for s in sources(request, stop, log, names=names)} if names else {}
+        if any(item.audio for item in inputs.values()):
+            probe_audio(log)
+        output = sum(s.expanded for s in inputs.values())
+        temporary = max((sum(inputs[s.name].expanded for s in g) for g in pending), default=0)
+        from .store import publication_copy_required
+        publish = output if not hardlinks else 0
+        for item in items:
+            key = PREFIX + item.name
+            if item.name in names:
+                reused.discard(key)
+            elif key in staged and key not in reused:
+                source = within(request.directory, "work/bsa-setup/output/" + item.name)
+                if not hardlinks or publication_copy_required(source, within(request.directory, key), request.directory / "work"):
+                    publish += source.stat().st_size
+        check("pass", "BSA setup", f"{needed.reason}. Automatically prepare {len(items)} archives and enable {MOD_NAME} in every selected profile; {len(reused | staged | shared.keys())} verified archives can be reused.")
+        emit(log, "bsa.preflight.completed", archives=len(items),
+             reusable=len(reused), staged=len(staged), shared=len(shared), pending_groups=len(pending),
+             required_bytes=output + publish + temporary)
+        return output + publish + temporary, reused
+    except InterruptedError:
+        raise
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        emit_exception(log, "bsa.preflight.failed", exc)
+        check("error", "BSA setup", str(exc))
+        return 0, set()
+
+
+def _convert_audio(root, exe, stop, progress, log=None):
+    from .acquire import _CombinedStop
+    from Utils.archives.budget import ExtractionMemoryBudget
+    from Utils.ui.config import load_collection_settings
+    started = time.monotonic()
+    paths = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.casefold() == ".ogg"
+                   and not p.relative_to(root).as_posix().casefold().startswith(_AUDIO_EXCLUSIONS))
+    paths.sort(key=lambda path: path.stat().st_size, reverse=True)
+    workers = min(4, max(1, (os.cpu_count() or 1) // 2), load_collection_settings()["max_extract_workers"])
+    failed = threading.Event()
+    stop = _CombinedStop(stop or threading.Event(), failed)
+    memory = ExtractionMemoryBudget(max_workers=workers, max_budget_bytes=512 * 1024 ** 2)
+    emit(log, "bsa.audio.batch.started", files=len(paths), workers=workers)
+    def convert(path):
+        _stop(stop)
+        target = path.with_suffix(".wav")
+        if target.exists():
+            raise WabbajackError(f"BSA audio conversion would overwrite {target.relative_to(root)}")
+        temporary = target.with_suffix(".wav.tmp")
+        memory.acquire(64 * 1024 ** 2, cancel=stop)
+        try:
+            with tempfile.TemporaryFile() as errors, subprocess.Popen(
+                    [exe, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                     "-i", str(path), "-map_metadata", "-1", "-vn", "-c:a", "pcm_s16le",
+                     "-threads", "1", "-f", "wav", str(temporary)],
+                    stdout=subprocess.DEVNULL, stderr=errors) as process:
+                try:
+                    deadline = time.monotonic() + 120
+                    while True:
+                        _stop(stop)
+                        if time.monotonic() >= deadline:
+                            raise WabbajackError(f"BSA audio conversion timed out: {path.relative_to(root)}")
+                        try:
+                            code = process.wait(timeout=0.1)
+                            break
+                        except subprocess.TimeoutExpired:
+                            pass
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                errors.seek(0)
+                stderr = errors.read().decode("utf-8", "replace")[-4000:]
+            if code:
+                raise WabbajackError(
+                    f"BSA audio conversion failed: {path.relative_to(root)} "
+                    f"(FFmpeg exit {code}): {stderr}")
+            with wave.open(str(temporary), "rb") as audio:
+                if audio.getsampwidth() != 2 or audio.getnchannels() not in (1, 2) or not audio.getnframes():
+                    raise WabbajackError(f"Invalid converted BSA audio: {path.name}")
+            temporary.replace(target)
+            path.unlink()
+            return path
+        except BaseException as exc:
+            emit_exception(log, "bsa.audio.failed", exc, source=path)
+            raise
+        finally:
+            temporary.unlink(missing_ok=True)
+            memory.release(64 * 1024 ** 2)
+    pending = set()
+    completed = 0
+    iterator = iter(paths)
+    last_log = started
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="wabbajack-audio") as pool:
+        try:
+            while True:
+                _stop(stop)
+                while len(pending) < workers:
+                    path = next(iterator, None)
+                    if path is None:
+                        break
+                    pending.add(pool.submit(convert, path))
+                if not pending:
+                    break
+                done, pending = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
+                for future in done:
+                    path = future.result()
+                    completed += 1
+                    progress(completed, len(paths), path.relative_to(root).as_posix())
+                now = time.monotonic()
+                if now - last_log >= 2:
+                    emit(log, "bsa.audio.progress", completed=completed, total=len(paths))
+                    last_log = now
+        finally:
+            failed.set()
+            for future in pending:
+                future.cancel()
+    emit(log, "bsa.audio.batch.completed", files=completed,
+         elapsed_seconds=round(time.monotonic() - started, 3))
+    progress(len(paths), len(paths), "Audio fixes verified")
+
+
+def _members(root):
+    from Utils.bsa.writer import tes4_hash_file, tes4_hash_folder
+    files = [p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()]
+    files.sort(key=lambda p: (tes4_hash_folder(p.rpartition("/")[0].replace("/", "\\")),
+                             tes4_hash_file(p.rpartition("/")[2])))
+    return [{"Path": p, "Index": i, "FlipCompression": False} for i, p in enumerate(files)]
+
+
+def _split_meshes(meshes, misc, stop):
+    total = 0
+    for item in _members(meshes):
+        _stop(stop)
+        path = within(meshes, item["Path"])
+        size = path.stat().st_size + len(encode_bsa_name(item["Path"])) + 64
+        if total + size <= _ARCHIVE_LIMIT:
+            total += size
+            continue
+        target = within(misc, item["Path"])
+        if target.exists():
+            raise WabbajackError(f"Conflicting vanilla mesh: {item['Path']}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        path.replace(target)
+
+
+def run_setup(request, store, desired, stop, progress, log=None):
+    needed = requirement(request.package)
+    if not needed:
+        emit(log, "bsa.setup.skipped")
+        return []
+    started = time.monotonic()
+    emit(log, "bsa.setup.started", reason=needed.reason,
+         output_mod=MOD_NAME)
+    progress("Preparing vanilla BSAs", 0, 0, "Checking reusable archives")
+    old = store.outputs()
+    items = source_plan(request, old.keys() | store.completed_outputs().keys())
+    exe = None
+    base = within(store.work, "bsa-setup")
+    output = within(base, "output")
+    output.mkdir(parents=True, exist_ok=True)
+    shared = None
+    for group in groups(items):
+        group_started = time.monotonic()
+        sig = _signature(group)
+        reusable = {}
+        for item in group:
+            key = PREFIX + item.name
+            for candidate, digest in ((within(output, item.name), store.completed(key, sig)),
+                    (store.target(key), old.get(key, {}).get("authored_hash") if old.get(key, {}).get("signature") == sig else None)):
+                if digest and candidate.is_file() and file_hash(candidate, stop) == digest:
+                    reusable[key] = {"source": str(candidate), "authored_hash": digest, "signature": sig}
+                    break
+        if len(reusable) != len(group):
+            if shared is None:
+                shared = shared_outputs(request, expected_outputs(items), stop, log)
+            missing = {PREFIX + item.name for item in group} - reusable.keys()
+            if missing <= shared.keys():
+                for key in missing:
+                    row = shared[key]
+                    target = within(output, key.removeprefix(PREFIX))
+                    progress("Preparing vanilla BSAs", 0, 0, "Reusing verified " + target.name)
+                    try:
+                        copied = store._copy(Path(row["source"]), target, stop=stop,
+                                             expected=row["authored_hash"])
+                    except InterruptedError:
+                        raise
+                    except (OSError, WabbajackError) as exc:
+                        emit(log, "bsa.shared.unavailable", source=row["source"], reason=str(exc))
+                        break
+                    store.remember_source(target, copied[1])
+                    store.record_completed(key, sig, row["authored_hash"])
+                    reusable[key] = {**row, "source": str(target)}
+                store.flush_completed()
+        if len(reusable) == len(group):
+            desired.update(reusable)
+            progress("Preparing vanilla BSAs", 1, 1, "Reusing verified " + ", ".join(s.name for s in group))
+            emit(log, "bsa.group.reused", archives=[item.name for item in group],
+                 elapsed_seconds=round(time.monotonic() - group_started, 3))
+            continue
+        group = sources(request, stop, log, names={item.name for item in group})
+        if exe is None and any(item.audio for item in group):
+            exe = probe_audio(log)
+        emit(log, "bsa.group.started", archives=[item.name for item in group],
+             signature=sig)
+        scratch = within(base, "extracted")
+        if scratch.exists():
+            shutil.rmtree(scratch)
+        try:
+            for item in group:
+                extraction_started = time.monotonic()
+                root = within(scratch, item.name)
+                root.mkdir(parents=True, exist_ok=True)
+                excluded = frozenset({"menus/s.txt"}) if item.name == "Fallout - Misc.bsa" else frozenset()
+                emit(log, "bsa.archive.extract.started", archive=item.name,
+                     source=item.path, target=root, excluded=sorted(excluded))
+                extract_bethesda(item.path, root, stop,
+                    lambda cur, total: progress("Decompressing vanilla BSAs", cur, total, item.name),
+                    excluded_paths=excluded)
+                if item.audio:
+                    _convert_audio(root, exe, stop,
+                        lambda cur, total, detail: progress(
+                            "Fixing vanilla BSA audio", cur, total, detail), log)
+                emit(log, "bsa.archive.extract.completed", archive=item.name,
+                     elapsed_seconds=round(time.monotonic() - extraction_started, 3))
+            if len(group) == 2:
+                _split_meshes(within(scratch, group[0].name), within(scratch, group[1].name), stop)
+            completed = {}
+            for item in group:
+                rebuild_started = time.monotonic()
+                root = within(scratch, item.name)
+                members = _members(root)
+                with item.path.open("rb") as stream:
+                    header = struct.unpack("<4s8I", stream.read(36))
+                flags = header[3] & ~4
+                file_flags = header[8] & 0x1ff
+                if item.name == "Fallout - Misc.bsa":
+                    file_flags |= 1
+                if file_flags & 8:
+                    file_flags |= 16
+                    flags |= 16
+                state = {"$type": "BSAState", "Version": 104, "ArchiveFlags": flags, "FileFlags": file_flags}
+                emit(log, "bsa.archive.rebuild.started", archive=item.name,
+                     members=len(members), state=state)
+                from Utils.bsa.writer import write_bsa_reconstruction
+                target = within(output, item.name)
+                progress("Rebuilding vanilla BSAs", 0, len(members), item.name)
+                write_bsa_reconstruction(target, root, state=state, file_states=members, cancel=stop,
+                    progress=lambda cur, total: progress("Rebuilding vanilla BSAs", cur, total, item.name))
+                if target.stat().st_size >= 2 * 1024 ** 3:
+                    raise WabbajackError(f"{item.name} exceeds the New Vegas archive size limit")
+                digest = file_hash(target, stop)
+                store.remember_source(target, digest)
+                key = PREFIX + item.name
+                completed[key] = {"source": str(target), "authored_hash": digest, "signature": sig}
+                emit(log, "bsa.archive.rebuild.completed", archive=item.name,
+                     target=target, bytes=target.stat().st_size, hash=digest,
+                     elapsed_seconds=round(time.monotonic() - rebuild_started, 3))
+            for item in group:
+                if file_hash(item.path, stop) != item.digest:
+                    raise WabbajackError(f"Original game archive changed during BSA setup: {item.name}")
+            for key, row in completed.items():
+                store.record_completed(key, sig, row["authored_hash"])
+            store.flush_completed()
+            desired.update(completed)
+            emit(log, "bsa.group.completed", archives=[item.name for item in group],
+                 elapsed_seconds=round(time.monotonic() - group_started, 3))
+        finally:
+            if scratch.exists():
+                shutil.rmtree(scratch)
+    meta = within(output, "meta.ini")
+    write_atomic_text(meta, "[General]\nrootFolder=false\n")
+    desired[PREFIX + "meta.ini"] = {"source": str(meta), "authored_hash": file_hash(meta), "signature": RECIPE}
+    for name, path in library_paths(request.package).items():
+        row = desired["root/" + path]
+        desired[PREFIX + "root/" + name] = {**row, "signature": "bsa-library:" + row["signature"]}
+    store.set("pending_bsa_setup", {"recipe": RECIPE, "reason": needed.reason,
+        "sources": {item.name: item.digest for item in items}, "mod": MOD_NAME})
+    emit(log, "bsa.setup.completed", archives=len(items), output_mod=MOD_NAME,
+         elapsed_seconds=round(time.monotonic() - started, 3))
+    return [MOD_NAME]

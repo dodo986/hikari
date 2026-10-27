@@ -1,0 +1,17 @@
+# Python packages Amethyst's backend imports when it runs headless (no
+# PySide6 - the bridge never touches Qt). Versions mirror Amethyst's own
+# requirements-vendor.txt so the backend runs on the set it is tested with.
+py7zr
+Pillow
+lz4
+zstandard
+requests
+PyYAML==6.0.3
+keyring
+jeepney
+msgpack
+bsdiff4
+cryptography==46.0.5
+SecretStorage==3.5.0
+certifi==2026.4.22
+xxhash==3.6.0

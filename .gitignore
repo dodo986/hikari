@@ -2,3 +2,17 @@
 /hikarid
 /dist/
 *.test
+
+# Wine/Proton leftovers written into whatever directory a game was started from
+vkd3d-proton.cache*
+*.reg.old
+# REDengine crash-info dumps
+*.exe-[0-9]*.txt
+
+# Native filegraph build output (scripts/build-backend.sh)
+/amethyst_filegraph.abi3.so
+/internal/mods/backend/native/amethyst_filegraph/target/
+
+# Python leftovers from local checks
+__pycache__/
+*.pyc

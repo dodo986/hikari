@@ -1,0 +1,2983 @@
+"""
+base_game.py
+Abstract base class that all game handlers must subclass.
+
+To add support for a new game:
+  1. Create a new .py file in the Games/ directory
+  2. Subclass BaseGame and implement all abstract methods/properties
+  3. Drop the file in - it will be auto-discovered by Utils/game_loader.py
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from functools import wraps
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from Utils.config_paths import get_game_config_dir, get_game_config_path
+from Utils.deployment import LinkMode
+from Utils.launchers.steam import find_prefix as _find_steam_prefix
+
+if TYPE_CHECKING:
+    from typing import Callable
+
+
+# Shared auto_install_deps preset for modern DirectX/x64-runtime games (modern
+# Bethesda Creation Engine titles, Cyberpunk 2077, etc.): their script/SE/ENB
+# DLL plugins need the VC++ x64 runtime and Community Shaders / ENB need the
+# fxc2 d3dcompiler_47. Installed via the Proton-menu installers, not winetricks.
+MODERN_DIRECTX_DEPS = ["vcredist", "d3dcompiler_47"]
+
+
+# Shared serialisation tables for load_paths/save_paths. Note that we map both
+# "symlink" and "copy" → SYMLINK on read - historically the user-facing "copy"
+# option was renamed to symlink years ago and the saved string can be either.
+# Games that genuinely deploy by copying (7DTD, Morrowind, OpenMW) set
+# deploy_mode_supports_copy = True to use _DEPLOY_MODE_FROM_STR_COPY instead.
+_DEPLOY_MODE_FROM_STR: dict[str, LinkMode] = {
+    "symlink": LinkMode.SYMLINK,
+    "copy":    LinkMode.SYMLINK,
+}
+_DEPLOY_MODE_FROM_STR_COPY: dict[str, LinkMode] = {
+    "symlink": LinkMode.SYMLINK,
+    "copy":    LinkMode.COPY,
+}
+_DEPLOY_MODE_TO_STR: dict[LinkMode, str] = {
+    LinkMode.SYMLINK: "symlink",
+    LinkMode.COPY:    "copy",
+}
+_DEFAULT_DEPLOY_MODE = LinkMode.HARDLINK
+
+# Sentinel for "key absent" / "no change" when diffing a profile's settings or
+# paths against their effective value (so a real value of None/False/"" is never
+# confused with unset, and "no override to write" is distinct from a real value).
+_UNSET = object()
+
+# paths.json launcher-id key -> the public setter that persists it, so
+# set_launcher_ids() can go through a handler's own override of that setter.
+_LAUNCHER_ID_SETTERS = {
+    "heroic_app_name": "set_heroic_app_name",
+    "lutris_slug":     "set_lutris_slug",
+    "faugus_gameid":   "set_faugus_gameid",
+    "bottles_program": "set_bottles_program",
+    "shortcut_appid":  "set_shortcut_appid",
+}
+
+
+def _ensure_lutris_prefix_compat(prefix_path: "Path | None") -> None:
+    """When the game's prefix is Lutris-managed, make sure a ``steamuser``
+    account exists (classic lutris-wine prefixes only have the real user;
+    handler paths are hardcoded to steamuser). No-op for other prefixes."""
+    if prefix_path is None:
+        return
+    try:
+        from Utils.launchers.lutris import is_lutris_prefix, ensure_steamuser_compat
+        from Utils.launchers.bottles import is_bottles_prefix
+        if is_lutris_prefix(prefix_path) or is_bottles_prefix(prefix_path):
+            ensure_steamuser_compat(prefix_path)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Wizard tool descriptor
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class WizardTool:
+    """Describes a single wizard tool available for a game.
+
+    Attributes:
+        id:          Unique machine-readable key, e.g. ``"downgrade_fo3"``.
+        label:       Short human-readable name shown on the button.
+        description: One-line explanation shown below the label.
+        dialog_class_path:  Dotted import path to the dialog class,
+                            e.g. ``"wizards.fallout_downgrade.FalloutDowngradeWizard"``.
+                            Resolved lazily at runtime so game modules don't
+                            need to import heavy GUI code at load time.
+        extra:       Arbitrary keyword arguments forwarded to the dialog
+                     constructor.  Lets a single dialog class serve multiple
+                     games with different configuration (URLs, keywords, etc.).
+    """
+    id: str
+    label: str
+    description: str = ""
+    dialog_class_path: str = ""
+    extra: dict = field(default_factory=dict)
+    category: str = ""  # optional grouping header in the wizard picker; inferred if empty
+    # Handlers are toolkit-neutral (no self.tr here), so label/description stay
+    # canonical English and the Qt layer translates them at display time. When
+    # a label varies by build name, keep the frame translatable by writing it
+    # as a "{0}" template and passing the runtime values here, e.g.
+    # label="Run {0}", label_args=("SSEEdit",).
+    label_args: tuple = ()
+    description_args: tuple = ()
+
+
+# ---------------------------------------------------------------------------
+# Launch-settings toggle descriptor
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class LaunchToggle:
+    """A game-specific checkbox in the play-bar's Launch settings dialog.
+
+    For choices only a handler can describe - "skip the OpenMW launcher" -
+    that would otherwise need game-specific code in the Qt view. The dialog
+    renders whatever :attr:`BaseGame.launch_toggles` returns and stores the
+    state per game; the handler reads it back with
+    ``exe_launch.load_launch_toggle(game, key, default)``.
+
+    Attributes:
+        key:     Machine-readable, unique per game, e.g. ``"skip_launcher"``.
+        label:   Checkbox text.
+        hint:    Optional one-line explanation shown under the checkbox.
+        default: State when the user has never saved this toggle.
+    """
+    key: str
+    label: str
+    hint: str = ""
+    default: bool = False
+
+
+class BaseGame(ABC):
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        restore = cls.__dict__.get("restore")
+        if restore is None:
+            return
+
+        @wraps(restore)
+        def restore_with_routes(self, *args, **kwargs):
+            if getattr(self, "_restoring_vortex_routes", False):
+                return restore(self, *args, **kwargs)
+            from Utils.deployment.vortex_deploy import restore_routes
+            self._restoring_vortex_routes = True
+            try:
+                restore_routes(self, kwargs.get("log_fn", args[0] if args else None))
+                return restore(self, *args, **kwargs)
+            finally:
+                self._restoring_vortex_routes = False
+
+        cls.restore = restore_with_routes
+
+    # -----------------------------------------------------------------------
+    # Per-profile setting overrides
+    # -----------------------------------------------------------------------
+    # Keys a non-default profile may override (default keeps the global value):
+    #   profile_overridable_settings       → game_settings.json keys (via
+    #                                         _load_settings/_save_settings)
+    #   profile_overridable_paths_extras   → paths.json extras (via
+    #                                         _load_paths_extra/_save_paths_extra)
+    # Subclasses extend these; unlisted keys stay global for all profiles
+    # (e.g. heroic_app_name, a game-detection detail).
+    #
+    # Set by the GUI for the duration of a deploy that the Play button (or a
+    # Run-dropdown entry) started, meaning a launch through the manager
+    # follows immediately.  post_deploy() implementations use it to skip
+    # advice that only applies to launching from Steam/Heroic directly - our
+    # own launch routes already pass default_launch_args.  Always False for
+    # a standalone Deploy, and for wizard/CLI deploys.
+    deploy_launch_pending: bool = False
+
+    # Saved Proton prefix, managed entirely by load_paths()/save_paths(). The
+    # class-level default keeps get_prefix_path() answering for a handler whose
+    # __init__ hasn't assigned it yet, rather than raising AttributeError.
+    _prefix_path: "Path | None" = None
+    _prefix_path_cleared: bool = False
+
+    # App ID of the non-Steam shortcut this game was configured through, or "".
+    # Set only when Configure Game resolved the install via shortcuts.vdf, and
+    # cleared when the user picks a different launcher. Unlike heroic_app_name
+    # / lutris_slug / faugus_gameid - informational fallbacks that live only in
+    # paths.json - this one is a real instance field, because it is
+    # authoritative: Steam keys the prefix, the compat tool and
+    # steam://rungameid off it, and it differs from the handler's hard-coded
+    # steam_id, so every load and save has to carry it.
+    _shortcut_appid: str = ""
+
+    # True for games that deploy by copying files (so the saved "copy" deploy
+    # mode is preserved instead of collapsing to symlink).
+    deploy_mode_supports_copy: bool = False
+
+    # LinkMode used when a saved deploy_mode string is unknown/"hardlink".
+    # Override (e.g. to LinkMode.COPY) for games that never hardlink.
+    deploy_mode_fallback: LinkMode = _DEFAULT_DEPLOY_MODE
+
+    case_alias_links_default: bool = True
+
+    # Opt-in for the incremental redeploy fast path (Utils/deployment/incremental.py).
+    # Only safe for handlers whose deploy() is the plain standard sequence
+    # (move_to_core → deploy_filemap → deploy_core) with a single Data-style
+    # target and idempotent post-deploy steps.  See BethesdaBase for the first
+    # opted-in family.
+    supports_incremental_deploy: bool = False
+
+    # Opt-in for a third VFS choice in deploy-method controls. ProfileVFSGameMixin
+    # provides the launch-time overlay implementation; handlers such as OpenMW
+    # can expose a native, configuration-driven VFS without using that overlay.
+    supports_vfs_deploy: bool = False
+    vfs_deploy_label: str = "Virtual filesystem (VFS)"
+
+    # Opt-in contract for Utils.vfs. A compatible handler exposes a stable
+    # game root plus primary mod-data directory and implements the VFS setting,
+    # deploy and launch hooks. Keeping this False by default prevents a generic
+    # toggle from applying Bethesda-style semantics to unrelated layouts.
+    supports_profile_vfs: bool = False
+    vfs_launch_enabled: bool = False
+    virtualizes_game_root: bool = False
+    # Some legacy Windows engines resolve loose assets from their process
+    # working/install directory using MAX_PATH-sized buffers.  A profile's
+    # materialized shadow or stock-game root can be much longer than the
+    # configured install path. Opted-in handlers can expose the shadow at a
+    # shorter launch-only bind root instead of running from those long paths.
+    vfs_bind_launch_at_game_root: bool = False
+
+    # Extra entries for the game selector's "Open ▸" submenu, as
+    # (label, path template) pairs.  The template is a str expanded by
+    # resolve_open_location(): "~" and $ENV expand as usual, and the tokens
+    # {prefix}, {game}, {staging}, {profile}, {mygames}, {appdata} and
+    # {config} stand for the folders the built-in entries open, so a handler
+    # can name a location inside the Proton prefix or out on the host system
+    # with one syntax.  A token whose folder is unknown drops the entry.
+    #   extra_open_locations = (
+    #       ("DFU Config", "~/.config/unity3d/Daggerfall Workshop/Daggerfall Unity"),
+    #       ("Engine logs", "{prefix}/drive_c/users/steamuser/AppData/Local/Foo"),
+    #   )
+    extra_open_locations: tuple[tuple[str, str], ...] = ()
+
+    # Native games normally launch without a store process, but some call
+    # SteamAPI directly and cannot initialise unless the Steam client is live.
+    # The direct native Play path uses this opt-in to start/wait for Steam
+    # without asking Steam to launch the physical game outside a profile VFS.
+    native_steam_client_required: bool = False
+
+    # A preferred executable which the store launcher does not invoke itself.
+    preferred_launch_requires_direct: bool = False
+
+    # A handler-selected executable for manager-owned Play launches. Unlike
+    # preferred_launch_exe, this does not change the Play entry's settings key.
+    direct_play_requires_direct: bool = False
+
+    profile_overridable_settings: tuple[str, ...] = (
+        "auto_deploy",
+        "archive_invalidation",
+        "prefix_numbering",
+    )
+    profile_overridable_paths_extras: tuple[str, ...] = ()
+
+    # paths.json keys naming WHICH install the game was configured through.
+    # They are part of the install choice - as much as game_path is - because
+    # two launchers can register the same folder (Lutris and Faugus both
+    # pointing at one The Sims 4 install), so a non-default profile pins them
+    # per profile instead of writing them globally.
+    launcher_id_keys: tuple[str, ...] = (
+        "shortcut_appid",
+        "heroic_app_name",
+        "lutris_slug",
+        "faugus_gameid",
+        "bottles_program",
+    )
+
+    # User-set save folder, persisted in paths.json as "save_path_override".
+    # The Saves tab resolves locations from the Ludusavi manifest, which can
+    # miss a game entirely or list only a Windows path for a game with a native
+    # Linux build (Daggerfall Unity). A class-level default keeps this working
+    # for handlers whose __init__ does not chain to BaseGame.
+    _save_path_override: "Path | None" = None
+
+    # Profile Groups (Utils/profiles/groups.py): merged deploy of several
+    # profiles. A group is an ordinary profile-specific profile whose mods/
+    # is a per-mod symlink farm, so any handler that deploys from filemap.txt
+    # + the mod index supports it unchanged. Set False only for a handler
+    # that cannot (none currently do).
+    profile_groups_supported: bool = True
+
+    # -----------------------------------------------------------------------
+    # Identity
+    # -----------------------------------------------------------------------
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """
+        Human-readable display name, e.g. 'Skyrim Special Edition'.
+        Must match the subfolder name under Games/ and Profiles/.
+        """
+
+    @property
+    @abstractmethod
+    def game_id(self) -> str:
+        """
+        Filesystem-safe identifier, e.g. 'skyrim_se'.
+        Typically matches the handler's .py filename (without extension).
+        """
+
+    @property
+    @abstractmethod
+    def exe_name(self) -> str:
+        """
+        The game's executable filename used to locate it in Steam libraries.
+        e.g. 'SkyrimSELauncher.exe'
+        """
+
+    @property
+    def exe_name_alts(self) -> list[str]:
+        """
+        Additional executable paths to try when auto-detecting the game install.
+        Used for games that ship different exe paths depending on the store
+        (e.g. Steam vs Epic/Heroic).  Checked after ``exe_name``.
+        """
+        return []
+
+    def detect_standalone_install(self) -> Path | None:
+        """Find a validated install using bounded local hints, without scanning drives."""
+        return None
+
+    @property
+    def auto_drive_scan(self) -> bool:
+        """
+        When True, the Configure-Game view falls back to the all-drives exe
+        scan automatically if no launcher/store library detects the game.
+        For games with no storefront at all (manual downloads like Daggerfall
+        Unity) the library scan can never succeed, so the drive scan is the
+        real auto-detection.
+        """
+        return False
+
+    @property
+    def default_deploy_mode(self) -> str | None:
+        """
+        The recommended deploy method in the configure menus.
+        Override with ``"symlink"`` or ``"hardlink"`` when a game needs a
+        specific method. The configure menus only mark explicit choices as
+        recommended.
+        """
+        return None
+
+    @property
+    def vfs_deploy_active(self) -> bool:
+        return bool(
+            self.supports_vfs_deploy
+            and getattr(self, "vfs_enabled", False)
+        )
+
+    @property
+    def root_folder_deploy_enabled(self) -> bool:
+        """
+        Whether Root_Folder deployment is supported for this game.
+        When True (the default), the GUI will transfer files from
+        Profiles/<game>/Root_Folder/ into the game's install root on deploy
+        (subject to the per-session checkbox in the mod list).
+        Set to False in a game handler to permanently disable this feature
+        regardless of the checkbox state (e.g. for games where writing to the
+        install root would be unsafe or unsupported).
+        """
+        return True
+
+    @property
+    def mod_folder_strip_prefixes(self) -> set[str]:
+        """
+        Lowercase top-level folder names to strip from mod files during filemap
+        building.  Useful for games where mod authors sometimes wrap their files
+        in a redundant top-level folder that the game already provides.
+
+        Example: Subnautica mods are installed into BepInEx/Plugins/, but some
+        authors ship their mod as plugins/MyMod/MyMod.dll.  Declaring {"plugins"}
+        here causes that leading "plugins/" segment to be stripped so the file
+        lands at MyMod/MyMod.dll inside the target directory.
+
+        Stripping is applied only to the first path segment and only when it
+        matches one of these names (case-insensitive).  Mods whose files do not
+        start with a listed prefix are unaffected.
+
+        Return an empty set (the default) to disable stripping entirely.
+        """
+        return set()
+
+    @property
+    def conflict_ignore_filenames(self) -> set[str]:
+        """
+        Lowercase filename glob patterns excluded from the filemap.
+
+        Files whose name (not path) matches an entry here are dropped from
+        the filemap entirely - never deployed and never conflict-tracked.
+        Useful for metadata files that many mods ship (e.g. modinfo.ini) which would otherwise cause spurious conflict markers.
+
+        Return an empty set (the default) to disable.
+        """
+        return set()
+
+    @property
+    def conflict_ignore_foldernames(self) -> set[str]:
+        """
+        Lowercase folder-name glob patterns excluded from the filemap.
+
+        A folder whose name matches an entry here - at any depth inside a
+        mod - is skipped along with its entire subtree: nothing inside it is
+        deployed or conflict-tracked.  Files remain in modindex.bin; the
+        exclusion is applied at filemap-merge time, unlike
+        ``filemap_exclude_dirs`` which removes top-level dirs at scan time.
+
+        Return an empty set (the default) to disable.
+        """
+        return set()
+
+    @property
+    def excluded_loose_filenames(self) -> set[str]:
+        """
+        Lowercase filename glob patterns that are excluded from the filemap
+        entirely, but only when the file is *loose* (sits at the top level of
+        a mod with no parent folder).
+
+        Unlike conflict_ignore_filenames (which keeps files in the filemap and
+        only skips conflict tracking), matched loose files are dropped from the
+        filemap and never deployed.  Files of the same name nested inside a
+        folder are unaffected.
+
+        Useful for generic loose readme/spawn-command .txt files that can crash
+        a game, while preserving identically-extensioned files (e.g. .txt
+        localization) that live inside folders.
+
+        Return an empty set (the default) to disable.
+        """
+        return set()
+
+    @property
+    def archive_extensions(self) -> frozenset[str]:
+        """
+        File extensions of game-specific archive formats (e.g. ``.bsa``,
+        ``.ba2``, ``.pak``/``.utoc``) whose contents should be scanned for
+        archive-level conflict detection.
+
+        When non-empty, the filemap rebuild also parses the table-of-contents
+        of matching archive files inside each mod's staging folder and computes
+        which files inside archives overlap between mods.
+
+        Return an empty frozenset (the default) to disable archive conflict
+        detection entirely.  Bethesda-family games use BSA/BA2; UE5 games
+        use pak/IoStore containers (see ``UE5Game``).
+        """
+        return frozenset()
+
+    @property
+    def archive_plugin_ordering(self) -> bool:
+        """
+        When True (the default), archive load order is refined by plugin
+        load order - Bethesda engines load a BSA at its owning plugin's
+        position, so conflict winners follow loadorder.txt.
+
+        Games whose archives are not plugin-tied (UE5 paks) return False so
+        archive conflict winners follow pure mod priority instead.
+        """
+        return True
+
+    @property
+    def filemap_exclude_dirs(self) -> frozenset[str]:
+        """
+        Lowercase top-level directory names inside a mod folder that are
+        completely excluded from filemap scanning.  Files inside these
+        directories are never indexed, never appear in the filemap, and are
+        never deployed to the game's data directory.
+
+        The default includes ``"fomod"`` so that FOMOD installer metadata
+        (ModuleConfig.xml, screenshots, etc.) stored in every FOMOD-capable
+        mod's staging folder is never surfaced as a deployable game file.
+
+        Override and extend to suppress additional per-game metadata dirs.
+        """
+        return frozenset({"fomod"})
+
+    @property
+    def mod_folder_strip_prefixes_post(self) -> set[str]:
+        """
+        Like mod_folder_strip_prefixes, but applied AFTER mod_required_top_level_folders
+        and mod_auto_strip_until_required have run at install time.
+
+        Use this when the folder to strip is the same one declared in
+        mod_required_top_level_folders - so auto-strip can first normalise the
+        mod structure down to that folder, then this property removes it.
+
+        Example: REFramework mods must contain a top-level reframework/ folder
+        (validated by mod_required_top_level_folders), which is then stripped
+        here so files are staged as bare content paths.
+
+        Also applied during filemap building (same as mod_folder_strip_prefixes).
+
+        Return an empty set (the default) to disable.
+        """
+        return set()
+
+    @property
+    def mod_install_prefix(self) -> str:
+        """
+        A forward-slash path segment automatically prepended to every file's
+        destination when a mod is installed.  Applied during install before the
+        mod_required_top_level_folders check, so the check sees the final path.
+
+        Example: Witcher 3 mods normally live in <game>/mods/<ModName>/…
+        Declaring "mods" here means a mod shipped as ModName/content/… lands at
+        mods/ModName/content/… without the user having to do anything.
+
+        Return an empty string (the default) to disable prepending entirely.
+        """
+        return ""
+
+    @property
+    def mod_install_extensions(self) -> set[str]:
+        """
+        When non-empty, only files whose extension (lowercase, including the
+        leading dot) appears in this set will be included in the filemap.
+        Files with other extensions are silently excluded during filemap build.
+
+        Example: Baldur's Gate 3 mods only need .pak files in the Mods folder;
+        declaring {".pak"} here filters out .txt readme files, images, etc.
+
+        Return an empty set (the default) to include all files.
+        """
+        return set()
+
+    @property
+    def mod_root_deploy_folders(self) -> set[str]: # Legacy, Use custom routing rules instead
+        """
+        Lowercase top-level folder names inside a mod that should be deployed
+        to the game's root directory instead of the normal mod data path.
+
+        During filemap building, files whose first path segment (after
+        strip-prefix processing) matches one of these names are written to a
+        separate ``filemap_root.txt`` and bypass the ``mod_install_extensions``
+        filter.  The game's ``deploy()`` method is responsible for deploying
+        that file into the game root.
+
+        Example: Baldur's Gate 3 mods normally install ``.pak`` files into the
+        Proton-prefix Mods folder, but some mods ship a ``bin/`` folder that
+        must land in the game's install root.  Declaring ``{"bin"}`` here
+        routes those files accordingly.
+
+        Return an empty set (the default) to disable this behaviour.
+        """
+        return set()
+
+    @property
+    def mod_required_top_level_folders(self) -> set[str]:
+        """
+        Lowercase top-level folder names that are valid install roots for this
+        game's mods.  When non-empty, the installer checks whether a mod
+        contains at least one of these as its top-level directory.  If none
+        match, the user is prompted to set a prefix path before the mod is
+        installed (MO2-style "Set data directory").
+
+        Example: Cyberpunk 2077 mods must live under archive/, bin/, r6/, or
+        red4ext/ - declaring these here causes a warning dialog to appear when
+        an author ships loose files with no recognised top-level folder.
+
+        Return an empty set (the default) to disable this check entirely.
+        """
+        return set()
+
+    @property
+    def mod_auto_strip_until_required(self) -> bool:
+        """
+        When True and mod_required_top_level_folders is non-empty, the
+        installer will try to strip leading path segments (one or more
+        top-level folders) until at least one remaining top-level folder
+        is in mod_required_top_level_folders, instead of showing the
+        prefix dialog. When False (the default), the dialog is shown
+        when no required top-level folder is found.
+        """
+        return False
+
+    @property
+    def filemap_exclude_unknown_top_level(self) -> bool:
+        """
+        When True (and mod_required_top_level_folders is non-empty), any
+        filemap entry whose top-level path segment is not one of the
+        mod_required_top_level_folders is dropped from the filemap entirely
+        (and therefore from deployment and the Data tab).
+
+        Use for games like Cyberpunk 2077 where authors ship extra top-level
+        folders (e.g. screenshots, "aboutMods", source dumps) that must not be
+        deployed into the game root.  Loose top-level files (no folder) are NOT
+        affected - they are left to the loose-exclusion / routing rules.
+
+        A handler can exempt individual mods from this filter by implementing
+        ``filemap_top_level_exempt_mods(modlist_path, staging)``; see Elden
+        Ring, where proxy-loader DLL mods ship arbitrarily-named sidecar
+        folders that are deployed and so must stay in the filemap.
+
+        Return False (the default) to keep every entry regardless of its
+        top-level folder.
+        """
+        return False
+
+    @property
+    def mod_required_file_types(self) -> set[str]:
+        """
+        File extensions (e.g. {".esp", ".esm", ".esl"}) that are recognised as
+        valid top-level content for this game's mods.
+
+        Can be used in two ways:
+
+        1. Alongside mod_required_top_level_folders (fallback): if the
+           top-level folder check fails, the installer checks whether the mod
+           contains a file with one of these extensions at its root (or can be
+           stripped down to one) before falling through to the prefix dialog.
+
+        2. Standalone (without mod_required_top_level_folders): if no required
+           top-level folders are declared, this check runs on its own - the mod
+           must have a qualifying file at its top level, or the auto-strip /
+           prefix-dialog / install-as-is fallbacks apply as normal.
+
+        mod_auto_strip_until_required and mod_install_as_is_if_no_match both
+        apply in either mode.
+
+        Return an empty set (the default) to disable this check entirely.
+        """
+        return set()
+
+    @property
+    def additional_install_logic(self) -> list:
+        """
+        List of callables for game-specific post-install steps.
+
+        Each callable is invoked as fn(dest_root, mod_name, log_fn) after the
+        mod files are copied to staging. Use for game-specific file moves or
+        transformations (e.g. moving loose .archive files to archive/pc/mod
+        for Cyberpunk 2077).
+
+        Return an empty list (the default) for no additional logic.
+        """
+        return []
+
+    @property
+    def mod_install_as_is_if_no_match(self) -> bool:
+        """
+        When True, if both mod_required_top_level_folders and
+        mod_required_file_types checks fail for a mod, the mod is installed
+        as-is without stripping any folders and without showing the prefix
+        dialog.  Use this for games where some mods have a predictable
+        structure and others are completely free-form.
+
+        When False (the default), the prefix dialog is shown instead.
+        """
+        return False
+
+    @property
+    def supports_bain(self) -> bool:
+        """
+        When True, the installer runs BAIN (Wrye Bash bundled archive)
+        detection and shows the sub-package picker for archives that look
+        like a complex BAIN package.
+
+        False by default: BAIN packages are only authored for Bethesda
+        games, and the Bethesda-centric heuristics misfire on other games'
+        loose mods (a stray readme .txt or a coincidentally-named "Textures"
+        folder is enough). Bethesda game handlers override this to True.
+        """
+        return False
+
+    @property
+    def collections_disabled(self) -> bool:
+        """
+        When True, the Collections button is hidden for this game and incoming
+        nxm:// collection links are silently ignored.
+
+        Defaults to False.  Set to True in game handlers that do not support
+        Nexus Collections (e.g. games without a Nexus Collections catalogue).
+        """
+        return False
+
+    @property
+    def mod_supports_bundles(self) -> bool:
+        """
+        When True, the installer detects bundle mods - archives whose top-level
+        subfolders each contain a ``modinfo.ini`` with the same ``nameasbundle``
+        value - and installs every variant as a separate staged mod named
+        ``<bundle_name>__<variant_name>``.  The mod list then shows them as a
+        radio-button group where enabling one variant auto-disables the others.
+
+        Defaults to False.  Enable in game handlers that use the Fluffy-style
+        bundle format (e.g. Resident Evil Village).
+        """
+        return False
+
+    @property
+    def mod_deploy_path_remap(self) -> dict[str, str]:
+        """
+        Prefix substitutions applied to deployed file paths (destination only).
+
+        Keys are lowercase source prefixes; values are the replacement prefix.
+        Applied before the file is written to the game root.
+
+        Example: RE2/RE3 ship mods with ``natives/x64/`` paths but the game
+        installs files under ``natives/STM/``.  Declaring
+        ``{"natives/x64/": "natives/STM/"}`` here causes the deploy to write
+        files to the correct location while the filemap still records the
+        original ``natives/x64/`` relative path.
+
+        Defaults to an empty dict (no remapping).
+        """
+        return {}
+
+    @property
+    def pak_hash_extension_remap(self) -> dict[str, str]:
+        """
+        File extension substitutions applied when computing PAK hashes.
+
+        Some RE Engine games store assets with a different format-version suffix
+        in the PAK than what mod authors ship.  For example, RE2/RE3 store
+        textures as ``.tex.34`` inside the PAK, but mods are distributed with
+        ``.tex.10``.  Declaring ``{".tex.10": ".tex.34"}`` here causes the
+        patcher to hash the remapped filename when searching the PAK.
+
+        Defaults to an empty dict (no remapping).
+        """
+        return {}
+
+    @property
+    def filemap_conflict_key_fn(self) -> "Callable[[str], str] | None":
+        """Return a function that normalises a filemap rel_key for conflict detection.
+
+        When two staged paths produce the same conflict key they are treated as
+        the same file.  This is needed when ``mod_deploy_path_remap`` or
+        ``pak_hash_extension_remap`` map different staged paths to the same
+        deployed path (e.g. ``natives/x64/foo.tex.10`` and
+        ``natives/STM/foo.tex.34`` both land at ``natives/STM/foo.tex.34``).
+
+        Returns None (the default) when no normalisation is needed.
+        """
+        _path_remap = self.mod_deploy_path_remap
+        _ext_remap = self.pak_hash_extension_remap
+        if not _path_remap and not _ext_remap:
+            return None
+        _prefix_pairs = [(k.lower(), v.lower()) for k, v in _path_remap.items()]
+        _ext_pairs = [(k.lower(), v.lower()) for k, v in _ext_remap.items()]
+
+        def _normalise(rel_key: str) -> str:
+            k = rel_key.lower()
+            for old_p, new_p in _prefix_pairs:
+                if k.startswith(old_p):
+                    k = new_p + k[len(old_p):]
+                    break
+            for old_e, new_e in _ext_pairs:
+                if k.endswith(old_e):
+                    k = k[: len(k) - len(old_e)] + new_e
+                    break
+            return k
+
+        return _normalise
+
+    @property
+    def pak_uuid_conflicts(self) -> bool:
+        """True when .pak files contest by the module UUID inside them (BG3)."""
+        return False
+
+    def make_filemap_conflict_key_fn(self, staging: "Path", index_path: "Path",
+                                     log_fn=None, fallback=None):
+        """Return a (mod_name, rel_key) -> conflict key callable, or None.
+
+        For games whose conflict identity lives inside the file (BG3 pak UUIDs).
+        Implementations MUST delegate unclaimed files to *fallback*, the
+        path-based key fn the pipeline would otherwise use.
+        """
+        return None
+
+    @property
+    def normalize_folder_case(self) -> bool:
+        """
+        When True (the default), folder segments that differ only in case across
+        mods are unified to a single canonical casing (most-uppercase wins).
+        This is correct for case-insensitive games (Windows/Bethesda etc.) where
+        ``Scripts/`` and ``scripts/`` are the same directory.
+
+        Set to False for games whose mod loader runs on a case-sensitive file
+        system and respects the exact folder names provided by mod authors
+        (e.g. Stardew Valley on Linux, where ``Music/`` and ``music/`` are
+        different directories).  When False, folder names in the filemap are
+        left exactly as each mod provides them - no cross-mod unification.
+        """
+        return True
+
+    @property
+    def filemap_casing(self) -> str:
+        """
+        How to pick the canonical casing for folders/filenames in the filemap
+        when ``normalize_folder_case`` is True. Ignored when normalization is
+        off. One of:
+
+          "upper"        - prefer the variant with more uppercase letters
+                           (default; correct for most Windows-shipped mods).
+          "lower"        - prefer the variant with more lowercase letters
+                           (Cyberpunk 2077: REDengine reads ``archive/pc/mod``
+                           lowercase - using ``Mod`` for one mod and ``mod``
+                           for another would split into two real dirs on
+                           case-sensitive Linux filesystems).
+          "force_lower"  - every folder segment is lowercased regardless of
+                           how mod authors shipped it. Filenames untouched.
+          "force_upper"  - every folder segment is uppercased. Filenames
+                           untouched. Mostly here for symmetry - rarely
+                           useful in practice.
+        """
+        return "upper"
+
+    @property
+    def filemap_casing_pins(self) -> "dict[str, str]":
+        """
+        Per-folder casing overrides that win over ``filemap_casing``.
+
+        Some mods read their own data folders by a hardcoded, case-sensitive
+        path string, so the merged deploy MUST use the exact casing that mod
+        shipped - the ``filemap_casing`` heuristic only preserves it by
+        coincidence (e.g. when the required casing happens to be the most-
+        uppercase variant) and can be knocked over the moment another mod
+        ships a differently-cased variant of the same folder name.
+
+        A pin makes that guarantee explicit.  Keyed by the *lowercase* path
+        segment name, valued by the exact casing to deploy.  Any segment with
+        that name (at any depth) is rewritten to the pinned casing regardless
+        of strategy or what mods ship.  Only the named segment is affected;
+        segments nested inside it still follow the normal strategy.
+
+        Include an extension to pin a FILENAME (``{"compass.swf":
+        "Compass.swf"}``) - the winning mod's on-disk name is otherwise what
+        deploys, so a replacer shipping a lowercase copy renames the link.
+        Filename pins apply to the deployed name only; install-time staging
+        still merges folders alone and never renames a file on disk.
+
+        Returns an empty dict by default (no pins).  Example (Skyrim SE):
+        ``{"compassshoutmeterholder": "CompassShoutMeterHolder"}`` keeps
+        Compass Navigation Overhaul from crashing when the folder would
+        otherwise deploy lowercased.
+        """
+        return {}
+
+    @property
+    def probe_stub_dirs(self) -> "list[str]":
+        """
+        Game-root-relative directories to create EMPTY at deploy time
+        because the engine repeatedly looks for them and they never exist.
+
+        A lookup that misses costs Wine a full scan of the parent directory
+        to prove the name is absent; an empty stub turns that into an exact
+        hit on a directory with nothing to scan.  Measured on Skyrim SE
+        (GH#374): the engine probes ``Data\\Data`` ~57k times per load, which
+        was 31.4M of the load's 33.4M directory-entry visits - stubbing it
+        cut entry visits by 94%.
+
+        Created before the ``case_alias_dirs`` pass so the stub gets its
+        case variants too, removed on restore only while still empty, and
+        gated on the same ``case_alias_links`` setting.  Empty by default.
+        """
+        return []
+
+    @property
+    def case_alias_dirs(self) -> "list[str]":
+        """
+        Game-root-relative directories to mirror with case-variant symlink
+        aliases (``data -> Data``) at the end of every deploy.
+
+        Windows engines resolve paths case-insensitively and some request
+        folders in a different casing than they ship on disk (Creation
+        Engine asks for ``data\\<plugin>.ini`` and ``Data\\TEXTURES\\...``).
+        On Linux every such miss makes Wine fall back to scanning the whole
+        directory per lookup - measured at ~50 s of a 165 s Skyrim SE load
+        (GH#374).  An alias symlink spelled the way the engine asks turns
+        the miss into an exact-case hit; because different requests use
+        CONTRADICTORY casings, aliases are the only single-disk-state fix
+        (renaming or force_lower just moves which requests pay).
+
+        For each listed directory the deploy creates sibling symlinks for
+        the all-lowercase and ALL-UPPERCASE spellings of its final segment;
+        a trailing ``/*`` aliases every subdirectory (``"Data/*"``).  Real
+        entries are never replaced.  Handlers that override this must also
+        call ``remove_case_alias_links`` in their restore() so the aliases
+        leave with the deploy.  Empty by default.
+        """
+        return []
+
+    @property
+    def mod_staging_requires_subdir(self) -> bool:
+        """
+        When True, each mod's staging folder must contain a named subdirectory
+        at its top level - loose files must NOT sit at the staging folder root.
+
+        This applies to games like Stardew Valley where the mod loader requires
+        mods to live in <game>/Mods/<ModName>/.  The staging structure must
+        therefore be mods/<StagingName>/<ModName>/... so the filemap records
+        <ModName>/... and deploys to Mods/<ModName>/....
+
+        A common mistake is copying an existing Mods/<ModName>/ folder directly
+        into staging (resulting in mods/<ModName>/manifest.json at root).  When
+        this flag is True the mod list panel automatically wraps the contents of
+        any flat staging folder inside a subdirectory named after the folder
+        before building the filemap, preventing silent mis-deployment.
+
+        Return False (the default) to disable this behaviour.
+        """
+        return False
+
+    @property
+    def mod_staging_wrap_signals(self) -> "tuple[set[str], set[str]]":
+        """Marker (filenames, extensions) that flag a flat mod as needing wrapping.
+
+        Only consulted when ``mod_staging_requires_subdir`` is True.  Returns a
+        tuple of (lowercase filenames, lowercase extensions incl. dot).  A flat
+        staging folder is wrapped into ``<ModName>/`` if any root-level file
+        matches.  Default matches ``manifest.json`` (Stardew/SMAPI).
+        """
+        return ({"manifest.json"}, set())
+
+    @property
+    def mod_staging_already_structured_markers(self) -> "set[str]":
+        """Marker filenames that mark a mod as already correctly structured.
+
+        Only consulted when ``mod_staging_requires_subdir`` is True.  If any
+        immediate subdirectory of a mod contains one of these files, the mod is
+        left untouched even if a wrap signal is present at the root - the loose
+        root file is a sibling (e.g. a JA3 Packs ``.hpk`` next to an existing
+        ``<ModName>/metadata.lua`` folder), not a flat mod.  Empty (the default)
+        disables the guard.
+        """
+        return set()
+
+    @property
+    def frameworks(self) -> dict[str, str]:
+        """
+        A mapping of framework display names to their executable filenames.
+
+        The plugin panel checks whether each executable exists in the game's
+        root directory **or** in the active profile's Root_Folder staging
+        directory, and displays a status banner at the top of the Plugins tab:
+          • Green  - "Script Extender Installed"
+          • Red    - "Script Extender Not Present"
+
+        Example (Skyrim SE):
+            {"Script Extender": "skse64_loader.exe"}
+
+        A value may also be a tuple/list of alternative paths - the framework
+        counts as satisfied when ANY of them is found (e.g. BepInEx ships
+        winhttp.dll on Windows builds but run_bepinex.sh on native Linux
+        builds):
+            {"BepInEx": ("winhttp.dll", "run_bepinex.sh")}
+
+        Return an empty dict (the default) to show no banners.
+        """
+        return {}
+
+    def framework_installed(self, label: str) -> "bool | None":
+        """Whether the framework *label* is installed, for one that lives
+        outside the game folder and the staged mods (a native Linux script
+        extender in ~/.local/share), or None to look for its files as usual.
+        """
+        return None
+
+    def requirement_replacement(self, mod_id: int) -> "dict | None":
+        """What stands in for the Nexus requirement *mod_id* on this setup, for
+        the missing-requirements view to show in its place: a dict with
+        "name", "notes", "url" and "wizard" (the id of a wizard tool its
+        Install button opens instead of a Nexus download), or None.
+        """
+        return None
+
+    def add_deploy_warning(self, message: str) -> None:
+        """Queue a user-facing warning for the GUI to toast after deploy."""
+        if not hasattr(self, "_deploy_user_warnings"):
+            self._deploy_user_warnings: list[str] = []
+        self._deploy_user_warnings.append(message)
+
+    def pop_deploy_warnings(self) -> list[str]:
+        """Return and clear queued deploy warnings."""
+        out = getattr(self, "_deploy_user_warnings", [])
+        self._deploy_user_warnings = []
+        return out
+
+    @property
+    def launch_toggles(self) -> "list[LaunchToggle]":
+        """Game-specific checkboxes to show in the Launch settings dialog.
+
+        Empty (the default) means the dialog shows only its standard fields.
+        Read a saved state back in the handler with
+        ``exe_launch.load_launch_toggle(self, key, default)`` - typically from
+        :meth:`get_launch_command`, so the choice takes effect on the next
+        Play with no restart.
+        """
+        return []
+
+    def get_launch_command(self) -> "list[str] | None":
+        """Return a native Linux command used to launch this game, bypassing Proton.
+
+        When non-None, the plugin panel will use this command for the Play
+        button instead of the normal exe-via-Proton path.  The command is a
+        list suitable for subprocess.Popen, e.g.::
+
+            ["flatpak", "run", "org.openmw.OpenMW"]
+
+        Return None (the default) to use the normal Proton launch path - unless
+        :attr:`native_launch_required` is True, in which case a None refuses
+        the launch outright.
+        """
+        return None
+
+    @property
+    def native_launch_required(self) -> bool:
+        """Whether this game requires Amethyst's launch wrapper.
+
+        True for games whose mods are served by an external loader rather than
+        deployed to disk (me3), and for launch-time VFS handlers that must wrap
+        Steam's normal command. A plain store/Proton fallback would start with
+        no mods while looking successful, so such handlers refuse instead.
+        """
+        return False
+
+    def native_launch_blocked_reason(self) -> str:
+        """Why get_launch_command() returned None, phrased for the user."""
+        return ""
+
+    def get_launch_handoff(self, profile: "str | None" = None):
+        """Return launcher-specific settings that keep Amethyst in the chain.
+
+        The configured profile records whether its install came from Steam,
+        Heroic, Lutris, or Faugus.  Each launcher has a different wrapper UI,
+        so the toolkit-neutral builder returns labelled fields for the GUI.
+        """
+        from Utils.launchers.handoff import build_launch_handoff
+        return build_launch_handoff(self, profile)
+
+    def get_steam_launch_string(self, profile: "str | None" = None) -> str:
+        """Return the Steam Launch Options string that starts this game modded.
+
+        Kept for API compatibility. New UI code uses
+        :meth:`get_launch_handoff`, which also supports Heroic, Lutris, and
+        Faugus.
+
+        Only meaningful for handlers whose mods require an external loader or
+        launch-time VFS (:attr:`native_launch_required`); everything else is
+        launched by Steam normally and needs no launch option. Returns ""
+        otherwise, which is the signal to the GUI not to offer one.
+
+        No profile is pinned by default: the CLI resolves the last *deployed*
+        profile at launch time, so switching profiles in the manager is picked
+        up without editing anything in Steam.  Pass *profile* only to hard-wire
+        one (e.g. a second Steam entry that always plays a specific list).
+
+        The command deploys first, so pressing Play in Steam picks up mod-list
+        changes made in the manager. ``%command%`` is appended because Steam
+        substitutes the vanilla command there; external loaders ignore it,
+        while launch-time VFS handlers wrap it inside their mount namespace.
+        """
+        if not getattr(self, "native_launch_required", False):
+            return ""
+        from Utils.config_paths import cli_invocation
+        from Utils.launchers.handoff import compose_steam_handoff_command
+
+        argv = [*cli_invocation(), "launch", self.game_id]
+        if profile:
+            argv += ["--profile", profile]
+        return compose_steam_handoff_command(self, [*argv, "--"])
+
+    @property
+    def play_button_callback(self) -> "Callable[[], None] | None":
+        """Optional extra action to run when the Play button is pressed.
+
+        The GUI calls this synchronously before its normal deploy/launch
+        handling.  A game handler can return a bound method here to perform
+        any game-specific preparation while retaining the standard Play
+        behaviour::
+
+            @property
+            def play_button_callback(self):
+                return self.prepare_for_launch
+
+        Return None (the default) when no additional action is needed.
+        """
+        return None
+
+    @property
+    def preferred_launch_exe(self) -> str:
+        """
+        Optional game-root-relative path to an alternative executable that
+        should be shown first in the exe dropdown and treated as the launch
+        exe (green Play button), but ONLY when the file is present on disk.
+
+        Use this for games where a script extender or mod loader must be
+        launched instead of the normal game executable, but where replacing
+        the original exe on disk would cause errors (e.g. Oblivion Remastered
+        with obse64_loader.exe).
+
+        When the file at this path does not exist, the normal ``exe_name``
+        is used as the launch exe instead.
+
+        Return an empty string (the default) to always use ``exe_name``.
+        """
+        return ""
+
+    @property
+    def direct_play_exe(self) -> str:
+        """Optional game-root-relative executable for direct Play launches."""
+        return ""
+
+    @property
+    def direct_launch_exes(self) -> list[str]:
+        """Additional game-root executables that directly start the game.
+
+        ``exe_name`` is often a launcher (for example
+        ``SkyrimSELauncher.exe``), while the install also contains a runtime
+        binary users can select from the play dropdown. Declare those paths
+        here so the Proton launch path gives them the game verb, Steam shim and
+        app context instead of treating them as ordinary tools.
+        """
+        return []
+
+    @property
+    def framework_launch_exes(self) -> dict[str, str]:
+        """
+        A mapping of display names to game-root-relative exe paths for
+        frameworks that *launch* the game (script extenders and the like).
+
+        Each entry that exists in the deployed game root is added to the
+        play-bar Run dropdown automatically - no manual "Add custom EXE"
+        needed. Unlike ``preferred_launch_exe`` the game's own Play entry is
+        left untouched; the framework appears as an extra dropdown item and
+        runs in the game's own launch context. A verified Steam launcher swap
+        is handed back to Steam; other setups use the configured game prefix
+        and runner with the exe's folder as cwd.
+
+        Only include launchers here - config GUIs / compilers declared in
+        ``frameworks`` (MGE XE gui, scc.exe, …) don't belong in the Run
+        dropdown. Return an empty dict (the default) to add nothing.
+        """
+        return {}
+
+    @property
+    def default_launch_args(self) -> list[str]:
+        """
+        Command-line arguments the game itself should always be launched with.
+
+        Applied on every launch route that can carry arguments: the direct
+        Proton path appends them to the command line, and the Steam route
+        forwards them via ``steam -applaunch`` / the rungameid URL.  Launcher
+        routes that can't carry arguments (Heroic/Lutris/Faugus) only log a
+        note - the game handler should surface those in a deploy warning.
+
+        Per-exe arguments the user saved come on top; a default that the user
+        already passes themselves is skipped, so no flag is doubled.
+
+        Example: Cyberpunk 2077 returns ``["-modded"]`` so deployed REDmods
+        are actually loaded.  Return an empty list (the default) for none.
+        """
+        return []
+
+    def default_launch_args_for_exe(self, exe_name: str) -> list[str]:
+        """Per-exe variant of :attr:`default_launch_args`.
+
+        The direct Proton launch path asks this with the exe's filename, so a
+        game can withhold args that only make sense for some launch targets
+        (e.g. a game may keep launcher-only flags away from a direct game
+        executable). Defaults to :attr:`default_launch_args` for every exe.
+        """
+        return self.default_launch_args
+
+    def prepare_launch_environment_for_exe(
+            self, exe_path: Path, env: dict[str, str], log_fn=None) -> None:
+        """Apply handler-specific environment values before launching an exe."""
+
+    @property
+    def steam_id(self) -> str:
+        """
+        Steam App ID for this game, e.g. '377160' for Fallout 4.
+        Used to locate the game's Steam compatibility data / Proton prefix.
+        Return an empty string for non-Steam games or if not applicable.
+        """
+        return ""
+
+    @property
+    def alt_steam_ids(self) -> list[str]:
+        """
+        Additional Steam App IDs for alternate editions of this game
+        (e.g. GOTY, Complete Edition) that share the same game folder and
+        Proton prefix layout.  Checked when the primary steam_id prefix is
+        not found.  Return an empty list if there are no alternates.
+        """
+        return []
+
+    def effective_steam_id(self) -> str:
+        """Return the Steam App ID that is actually installed for this game.
+
+        Some games ship under more than one App ID (e.g. localized editions or
+        GOTY bundles) that share the same install layout but require launching
+        through the App ID the user actually owns.  ``steam_id`` is the primary
+        ID; :meth:`alt_steam_ids` lists the alternates.
+
+        The configured Proton prefix lives under
+        ``compatdata/<app_id>/pfx``, so when a prefix is set we read the App ID
+        straight out of that path and use it if it matches one of this game's
+        known IDs.  Falls back to the primary ``steam_id`` otherwise.
+
+        A game configured through a non-Steam shortcut overrides all of that:
+        Steam knows that install only by the shortcut's own App ID, which is
+        what its compatdata, its CompatToolMapping entry and any
+        ``steam://rungameid`` launch are keyed on. The handler's hard-coded
+        ``steam_id`` names the store release instead, and using it would
+        resolve the wrong prefix (or none).
+        """
+        if self._shortcut_appid:
+            return self._shortcut_appid
+        known = [self.steam_id, *self.alt_steam_ids]
+        known = [str(s) for s in known if s]
+        prefix = self.get_prefix_path()
+        if prefix is not None:
+            # prefix is .../compatdata/<app_id>/pfx (or the compatdata/<app_id>
+            # dir itself); walk up looking for a part that matches a known ID.
+            for part in prefix.parts[::-1]:
+                if part in known:
+                    return part
+        return self.steam_id
+
+    @property
+    def heroic_app_names(self) -> list[str]:
+        """
+        Heroic Games Launcher app identifiers for this game, resolved from
+        the central registry in Games/heroic_appnames.py (keyed by game_id,
+        so it also covers custom games).  Add entries there, not here.
+
+        When empty (the default), Heroic detection matches on the handler's
+        exe name(s).  When set, these names are authoritative and the exe
+        scan is skipped entirely - register games whose launcher name
+        collides with a different title (e.g. FalloutLauncher.exe ships
+        with both Fallout 3 GOTY and classic Fallout on GOG).
+        """
+        try:
+            from Games.heroic_appnames import heroic_app_names_for
+            return heroic_app_names_for(self.game_id)
+        except Exception:
+            return []
+
+    def get_prefix_path(self) -> Path | None:
+        """Return the saved Proton prefix (pfx/) for this game, or None."""
+        # load_paths()/save_paths() already read, write, auto-locate and heal
+        # self._prefix_path for every handler, so the attribute is the answer.
+        # This used to be a `return None` stub each handler had to override;
+        # one that forgot (Elden Ring, Mewgenics) reported "no prefix" forever,
+        # which silently hid the prefix-gated Proton menu in the header.
+        return self._prefix_path
+
+    def resolve_open_location(self, template: str) -> "Path | None":
+        """Expand one extra_open_locations template to a path, or None when a
+        token in it names a folder this game has no answer for."""
+        import os
+        import re
+
+        def _token(name: str) -> "Path | None":
+            if name == "prefix":
+                return self.get_prefix_path()
+            if name == "game":
+                return self.get_game_path()
+            if name == "staging":
+                getter = getattr(self, "get_effective_mod_staging_path", None) \
+                    or getattr(self, "get_mod_staging_path", None)
+                return getter() if callable(getter) else None
+            if name == "profile":
+                return getattr(self, "_active_profile_dir", None)
+            if name == "mygames":
+                getter = getattr(self, "_mygames_path", None)
+                path = getter() if callable(getter) else None
+                if path is not None:
+                    return path
+                prefix = self.get_prefix_path()
+                return (prefix / "drive_c/users/steamuser/Documents/My Games"
+                        if prefix is not None else None)
+            if name == "appdata":
+                prefix = self.get_prefix_path()
+                if prefix is None:
+                    return None
+                sub = getattr(self, "_APPDATA_SUBPATH", None)
+                return prefix / (sub if sub is not None
+                                 else Path("drive_c/users/steamuser/AppData/Local"))
+            if name == "config":
+                from Utils.config_paths import get_config_dir
+                return get_config_dir()
+            return None
+
+        # Substitute {token}s first so a resolved path containing a '$' or '~'
+        # is never re-expanded as a shell construct.
+        missing = False
+        parts: list[str] = []
+        for chunk in re.split(r"(\{[a-z_]+\})", str(template)):
+            if chunk.startswith("{") and chunk.endswith("}"):
+                try:
+                    value = _token(chunk[1:-1])
+                except Exception:
+                    value = None
+                if value is None:
+                    missing = True
+                    break
+                parts.append(str(value))
+            else:
+                # $VARs expand anywhere; a leading ~ only means $HOME when it
+                # actually starts the template.
+                chunk = os.path.expandvars(chunk)
+                parts.append(os.path.expanduser(chunk) if not parts else chunk)
+        if missing or not parts:
+            return None
+        return Path("".join(parts))
+
+    def set_prefix_path(self, path: "Path | str | None") -> None:
+        """Save the Proton prefix path and persist it to paths.json."""
+        self._prefix_path = Path(path) if path else None
+        self._prefix_path_cleared = self._prefix_path is None
+        self.save_paths()
+
+    def clear_prefix_path(self) -> None:
+        """Clear the Proton prefix without allowing load-time auto-detection."""
+        self._prefix_path = None
+        self._prefix_path_cleared = True
+        self.save_paths()
+
+    def is_prefix_path_cleared(self) -> bool:
+        return self._prefix_path is None and self._prefix_path_cleared
+
+    @property
+    def plugin_extensions(self) -> list[str]:
+        """
+        File extensions that this game treats as plugins (loaded by the engine).
+        e.g. ['.esp', '.esl', '.esm'] for Bethesda games.
+        Return an empty list to disable all plugin tracking for this game.
+        Subclasses override this to enable plugin panel functionality.
+        """
+        return []
+
+    @property
+    def groundcover_plugin_extensions(self) -> tuple[str, ...]:
+        """Plugin types the game can register as groundcover instead of content."""
+        return ()
+
+    @property
+    def has_override_pak_tab(self) -> bool:
+        """Whether the plugins panel shows the BG3-style Overrides pak tab."""
+        return False
+
+    @property
+    def plugins_use_star_prefix(self) -> bool:
+        """
+        Whether plugins.txt uses the MO2-style '*Name' prefix for enabled plugins.
+        Most Bethesda games use True. Oblivion Remastered uses False (bare names only).
+        """
+        return True
+
+    # Whether the engine loads all master-group plugins (.esm/.esl extension
+    # or master header flag) before all non-masters. The plugins panel then
+    # enforces that partition like MO2/Wrye Bash do.
+    plugins_master_block: bool = False
+
+    # Starfield Blueprint plugins (0x800) load after every non-blueprint one.
+    plugins_have_blueprints: bool = False
+
+    @property
+    def plugins_include_vanilla(self) -> bool:
+        """
+        Whether vanilla (base-game) plugins should be written into plugins.txt.
+        Standard Bethesda games exclude them (the engine handles them separately).
+        Oblivion Remastered requires all plugins, including vanilla, to be listed.
+        """
+        return False
+
+    @property
+    def vanilla_plugins(self) -> list[str]:
+        """Hardcoded vanilla plugin filenames for this game."""
+        return []
+
+    @property
+    def vanilla_dlc_plugins(self) -> list[str]:
+        """Official DLC plugin filenames (mirrors MO2's DLCPlugins())."""
+        return []
+
+    @property
+    def vanilla_ccc_filename(self) -> str | None:
+        """Filename of the CC manifest in <game_path>, or None."""
+        return None
+
+    @property
+    def primary_plugin_order(self) -> list[str]:
+        """Vanilla plugins whose engine-defined order must be kept fixed.
+
+        This is the equivalent of MO2's ordered ``primaryPlugins()`` list.
+        Most games leave it empty and let their saved order / LOOT decide.
+        """
+        return []
+
+    @property
+    def supports_esl_flag(self) -> bool:
+        """
+        Whether this game supports the ESL (light plugin) flag in TES4 plugin headers.
+        ESL plugins occupy their own FormID space and don't count against the 255‑plugin limit.
+        Supported by: Fallout 4, Fallout 4 VR, Skyrim SE/AE, Skyrim VR, Enderal SE, Starfield.
+        NOT supported by: Fallout 3, Fallout NV, Oblivion, Skyrim LE, Enderal LE, Morrowind.
+        """
+        return False
+
+    @property
+    def supports_esl_conversion(self) -> bool:
+        """Whether the UI should offer ESL eligibility checks and flag changes."""
+        return self.supports_esl_flag
+
+    @property
+    def loot_sort_enabled(self) -> bool:
+        """
+        Whether LOOT plugin sorting is supported for this game.
+        Return False for games that don't use or need LOOT (e.g. Subnautica).
+        When False, the Sort Plugins button will do nothing.
+        Subclasses that support LOOT should override this to return True
+        and also provide loot_game_type and loot_masterlist_url.
+        """
+        return False
+
+    @property
+    def loot_game_type(self) -> str:
+        """
+        The libloot GameType attribute name for this game, e.g. 'SkyrimSE'.
+        Only used when loot_sort_enabled is True.
+        Must match an attribute of loot.GameType in the libloot Python bindings.
+        """
+        return ""
+
+    @property
+    def loot_masterlist_repo(self) -> str:
+        """
+        Repo slug under github.com/loot/ that hosts this game's masterlist
+        (e.g. 'skyrimse', 'fallout4', 'fallout4vr').
+
+        When set, the masterlist URL is built dynamically to match the bundled
+        libloot version (loot_sorter.masterlist_url_for_repo), with a
+        walk-down fallback to the most recent available branch. This is the
+        preferred way to declare masterlist hosting - `loot_masterlist_url`
+        is kept as a legacy fallback for repos that don't follow the
+        standard branch-per-libloot-version convention.
+
+        Return an empty string to use `loot_masterlist_url` instead.
+        """
+        return ""
+
+    @property
+    def loot_masterlist_url(self) -> str:
+        """
+        Legacy: full URL to download the LOOT masterlist YAML for this game.
+        Only used as a fallback when `loot_masterlist_repo` is not set.
+        e.g. 'https://raw.githubusercontent.com/loot/skyrimse/v0.21/masterlist.yaml'
+        The masterlist is stored as ~/.config/AmethystModManager/LOOT/data/masterlist_<game_id>.yaml.
+        Return an empty string if no masterlist URL is known.
+        """
+        return ""
+
+    @property
+    def nexus_game_domain(self) -> str:
+        """
+        Nexus Mods game domain name used for API requests.
+        e.g. 'skyrimspecialedition', 'cyberpunk2077', 'baldursgate3'
+        This is the subdomain used in URLs like nexusmods.com/<domain>/mods/...
+        Return an empty string to disable Nexus integration for this game.
+        """
+        return ""
+
+    @property
+    def thunderstore_community(self) -> str:
+        """
+        Thunderstore community slug used for browse/listing API requests.
+        e.g. 'subnautica', 'lethal-company', 'hollow-knight-silksong'
+        This is the slug used in URLs like thunderstore.io/c/<community>/.
+        Note it is NOT derivable from ``nexus_game_domain`` - the two differ
+        (Nexus 'lethalcompany' vs Thunderstore 'lethal-company').
+        Return an empty string to disable Thunderstore integration for this game.
+        """
+        return ""
+
+    @property
+    def additional_nexus_domains(self) -> list[str]:
+        """Additional Nexus game domains whose mods are valid for this game.
+
+        ``nexus_game_domain`` remains the primary/default domain. Override
+        this for games such as Enderal that can also consume mods published
+        for another Nexus game.
+        """
+        return []
+
+    @property
+    def nexus_game_domains(self) -> tuple[str, ...]:
+        """Primary + additional Nexus domains, preserving configured casing."""
+        result: list[str] = []
+        seen: set[str] = set()
+        extras = self.additional_nexus_domains or []
+        for raw in (self.nexus_game_domain, *extras):
+            domain = (raw or "").strip()
+            if domain and domain.lower() not in seen:
+                seen.add(domain.lower())
+                result.append(domain)
+        return tuple(result)
+
+    def accepts_nexus_domain(self, domain: str) -> bool:
+        """Whether *domain* is the game's primary or an additional domain."""
+        return (domain or "").strip().lower() in {
+            value.lower() for value in self.nexus_game_domains}
+
+    @property
+    def wine_dll_overrides(self) -> dict[str, str]:
+        """
+        Wine DLL overrides to apply to the Proton prefix on every deploy.
+
+        Maps DLL name → load order string using Wine's notation:
+          ``"native,builtin"``  - try the Windows DLL first, then Wine's
+          ``"native"``          - Windows DLL only
+          ``"builtin"``         - Wine's built-in only
+          ``""``               - block the DLL entirely
+
+        These are written into ``user.reg`` under
+        ``[Software\\\\Wine\\\\DllOverrides]`` each time ``deploy()`` runs,
+        so users do not need to configure winecfg manually.
+
+        Example (BepInEx)::
+
+            return {"winhttp": "native,builtin"}
+
+        Return an empty dict (the default) to leave the prefix unchanged.
+        """
+        return {}
+
+    @property
+    def winetricks_components(self) -> list[str]:
+        """
+        Winetricks components to install automatically when this game is first
+        added (i.e. when the user clicks Add/Confirm in the configure dialog).
+
+        Each entry is a winetricks verb, e.g. ``"d3dcompiler_47"`` or
+        ``"vcrun2022"``.  Installation is skipped silently when no Proton prefix
+        is available for the game.
+
+        Return an empty list (the default) to skip automatic installation.
+        """
+        return []
+
+    @property
+    def auto_install_deps(self) -> list[str]:
+        """
+        Prefix dependencies to install automatically when this game is first
+        added, using the same curated installers the Proton Tools menu uses.
+        Supported keys include ``"vcredist"`` (Microsoft's
+        official vc_redist.x64.exe), ``"d3dcompiler_47"`` (the Mozilla fxc2
+        Win 8.1 DLL drop), ``"dotnet6"`` (and the other .NET Desktop Runtime
+        versions offered by Proton Tools), ``"lavfilters"``, and the curated
+        legacy DirectX winetricks verbs in ``protontricks.WINETRICKS_VERB_DEPS``.
+
+        These run silently in the background and are skipped per-dep when the
+        prefix's amethyst_deps.json already records them, or when no Proton
+        prefix is available. Prefer this over ``winetricks_components`` - many
+        users lack a working winetricks/cabextract setup, and the winetricks
+        vcredist/d3dcompiler verbs are also less reliable for DLL mods.
+
+        Default: ``["vcredist"]`` for every game (including custom games) -
+        the VC++ x64 runtime is a near-universal requirement for Windows
+        titles and mod DLLs, and games without a Proton prefix (native Linux)
+        are skipped anyway. Games needing more override this (see
+        ``MODERN_DIRECTX_DEPS``); returning ``[]`` opts a game out entirely.
+        """
+        return ["vcredist"]
+
+    @property
+    def prefix_health_extras(self) -> list[str]:
+        """
+        Extra ``Utils.wine.health`` component tokens to REPORT (and offer a
+        Fix / Fix All for) without installing them when the game is added.
+
+        Use this for components a community guide recommends but that are too
+        many, too slow, or too situational to inflict on every user up front -
+        the user opts in from the prefix health overlay. Tokens must exist in
+        ``Utils.wine.health.COMPONENT_SPECS``; unknown ones are ignored.
+
+        Rows appear after ``auto_install_deps``, in declared order.
+        """
+        return []
+
+    @property
+    def custom_routing_rules(self) -> list:
+        """
+        A list of CustomRule objects (from Utils.deployment) that route specific
+        file types to a game-root-relative destination directory during deploy.
+
+        Files matching a rule are placed under game_root / rule.dest and are
+        excluded from the normal deploy destination. Placement depends on
+        rule.flatten: when True the file lands as a bare filename under dest;
+        when False (default) the mod-relative path is preserved under dest.
+
+        Example (RE Engine .pak files, flattened to one folder)::
+
+            from Utils.deployment import CustomRule
+            return [CustomRule(dest="pak_mods", extensions=[".pak"], flatten=True)]
+
+        Return an empty list (the default) to use normal routing for all files.
+        """
+        return []
+
+    @property
+    def vortex_mod_types(self) -> dict:
+        return {}
+
+    @property
+    def effective_custom_routing_rules(self) -> list:
+        from Utils.games.routing_rules import effective_rules
+        return effective_rules(self)
+
+    def _deploy_custom_routing_rules(self, mode, log_fn=None) -> set[str]:
+        from Utils.deployment import deploy_custom_rules, load_per_mod_strip_prefixes
+        rules = self.effective_custom_routing_rules
+        if not rules:
+            return set()
+        filemap = self.get_effective_filemap_path()
+        return deploy_custom_rules(
+            filemap, self.get_game_path(), self.get_effective_mod_staging_path(),
+            rules, mode=mode, log_fn=log_fn, prefix_root=self.get_prefix_path(),
+            strip_prefixes=self.mod_folder_strip_prefixes,
+            per_mod_strip_prefixes=load_per_mod_strip_prefixes(filemap.parent))
+
+    def _custom_routing_destinations_under(
+        self, handled: set[str], root: Path,
+    ) -> set[str]:
+        if not handled:
+            return set()
+        from Utils.filegraph.deploy import absolute_destination, entries
+        root_abs = Path(os.path.abspath(root))
+        placed = set()
+        for entry in entries():
+            if not entry.legacy_rel or entry.legacy_rel.lower() not in handled:
+                continue
+            destination = absolute_destination(self, entry)
+            if destination is None:
+                continue
+            try:
+                relative = Path(os.path.abspath(destination)).relative_to(root_abs)
+            except ValueError:
+                continue
+            placed.add(relative.as_posix().lower())
+        return placed
+
+    def _restore_custom_routing_rules(self, log_fn=None) -> None:
+        from Utils.deployment import restore_custom_rules
+        game_root = self.get_game_path()
+        if game_root is not None:
+            restore_custom_rules(
+                self.get_effective_filemap_path(), game_root, [],
+                log_fn=log_fn, prefix_root=self.get_prefix_path())
+
+    @property
+    def restore_whitelist(self) -> list:
+        """A list of RestoreWhitelistRule objects (from Utils.deployment) that keep
+        matching runtime files in the game folder on restore instead of moving
+        them to overwrite/ or Root_Folder/.  See RestoreWhitelistRule for the
+        anchored, glob-capable matching rules.  Default: protect nothing.
+        """
+        return []
+
+    def restore_whitelist_matcher(self, rel_prefix: str = ""):
+        """Compiled matcher over this game's restore_whitelist, or None.
+
+        rel_prefix - pass the deploy subfolder (e.g. "data/") when the walk
+        root is a subdirectory of the game root; rules are re-based onto it.
+        """
+        rules = self.restore_whitelist
+        if not rules:
+            return None
+        from Utils.deployment import build_restore_whitelist_matcher
+        return build_restore_whitelist_matcher(rules, rel_prefix=rel_prefix)
+
+    @property
+    def restore_before_deploy(self) -> bool:
+        """
+        When True (the default), the GUI runs restore() before deploy() when
+        the user clicks Deploy, to clean the game state first. Set to False
+        for games where deploy() itself restores then applies mods in one
+        cycle (e.g. unpack → remove modded → add mods → repack).
+        """
+        return True
+
+    @property
+    def restore_on_close_eligible(self) -> bool:
+        """When False, the 'restore on close' setting skips this game.
+
+        Override to False for games where restore is expensive (e.g. gpak
+        repack) and should only run when the user explicitly clicks Restore.
+        """
+        return True
+
+    @property
+    def reshade_dll(self) -> str | None:
+        """
+        Suggested DLL name that ReShade should be installed as.
+
+        This is only a *hint* used to pre-select the right option in the
+        ReShade wizard - the user can always change it there.  The correct
+        value depends on the graphics API the game uses:
+          - DirectX 9          → ``"d3d9.dll"``
+          - DirectX 10/11/12   → ``"dxgi.dll"``
+          - OpenGL             → ``"opengl32.dll"``
+
+        The ReShade wizard is offered for every game regardless of this
+        value; return ``None`` (the default) to leave the wizard's DLL
+        choice unset so the user picks it manually (e.g. custom games).
+        """
+        return None
+
+    @property
+    def reshade_arch(self) -> int | None:
+        """
+        Suggested executable architecture for ReShade: ``32`` or ``64``.
+
+        Like :attr:`reshade_dll`, this only pre-selects the matching option
+        in the wizard; the user can override it.  Controls whether
+        ``ReShade32.dll`` or ``ReShade64.dll`` is extracted from the
+        installer.  Override to ``32`` for legacy 32-bit games (e.g.
+        Fallout 3, Fallout New Vegas, Oblivion, Skyrim classic).
+
+        Return ``None`` (the default) to leave the choice unset so the user
+        picks it manually.
+        """
+        return None
+
+    def reshade_install_subdir(self, game_path: "Path") -> "Path | None":
+        """Return the game-root-relative folder where ReShade (the proxy DLL,
+        ReShade.ini, preset and ``reshade-shaders/``) must be installed.
+
+        ReShade has to sit next to the *rendering* executable so the graphics
+        API proxy DLL gets loaded.  For most games that is the folder holding
+        :attr:`exe_name`.  Games whose ``exe_name`` is a bootstrap launcher
+        sitting above the real binary (e.g. Unreal Engine titles, where the
+        shipping exe lives under ``<Project>/Binaries/Win64/``) override this
+        to point at the actual binary's directory.
+
+        *game_path* is the resolved install root, so implementations can probe
+        the on-disk layout.  Return ``None`` to mean "the game root itself"
+        (no subdir).
+        """
+        exe = self.exe_name or ""
+        subdir = Path(exe).parent if exe else Path(".")
+        return None if subdir == Path(".") else subdir
+
+    @property
+    def wizard_tools(self) -> list[WizardTool]:
+        """
+        Per-game helper tools shown in the Wizard dialog.
+
+        Override this in a game subclass to register tools that aid with
+        game-specific setup tasks (e.g. downgrading, patching, installing
+        runtimes).  Each entry is a :class:`WizardTool` whose
+        ``dialog_class_path`` points to the CTkToplevel that implements the
+        multi-step wizard.
+
+        Subclasses that add their own tools should extend via::
+
+            @property
+            def wizard_tools(self):
+                return self._base_wizard_tools() + [WizardTool(...)]
+
+        Return an empty list (the default) to hide the Wizard button for
+        this game.
+        """
+        return self._base_wizard_tools()
+
+    def _base_wizard_tools(self) -> list[WizardTool]:
+        """Return the framework-level wizard tools (e.g. ReShade).
+
+        Subclasses that override :attr:`wizard_tools` and need to include
+        the auto-generated base tools (such as Install ReShade) should call
+        this method rather than ``super().wizard_tools``, to avoid
+        accidentally inheriting intermediate class tools::
+
+            @property
+            def wizard_tools(self):
+                return self._base_wizard_tools() + [WizardTool(...)]
+        """
+        tools: list[WizardTool] = []
+        tools.append(WizardTool(
+            id="install_reshade",
+            label="Install ReShade",
+            description="Download and install ReShade into the game folder.",
+            dialog_class_path="wizards.reshade.ReShadeWizard",
+            extra={"reshade_dll": self.reshade_dll, "reshade_arch": self.reshade_arch},
+        ))
+        return tools
+
+    # -----------------------------------------------------------------------
+    # Paths
+    # -----------------------------------------------------------------------
+
+    @abstractmethod
+    def get_game_path(self) -> Path | None:
+        """
+        Return the root install directory of the game, or None if not set.
+        e.g. /home/deck/.steam/steamapps/common/Skyrim Special Edition
+        """
+
+    def get_global_game_path(self) -> Path | None:
+        """Return the configured game path before profile overrides."""
+        raw = self._read_global_paths().get("game_path", "")
+        return Path(raw) if isinstance(raw, str) and raw else None
+
+    def get_root_deploy_path(self, profile_dir: Path | None = None) -> Path | None:
+        return self.get_game_path()
+
+    def get_wabbajack_game_path(self) -> Path | None:
+        return self.get_game_path()
+
+    # Subpath that game_data_subpath() should report when the deploy dir is
+    # NOT inside the game root. Only handlers that deploy outside the install
+    # (OpenMW: profile folder + an extra openmw.cfg data= line) set this, so
+    # root-flagged 'Data Files/foo.esp' entries are still recognised.
+    game_data_subpath_override: str = ""
+
+    @abstractmethod
+    def get_mod_data_path(self) -> Path | None:
+        """
+        Return the directory inside the game where mod files are installed.
+        e.g. for Skyrim SE: <game_path>/Data
+        Returns None if game_path is not configured.
+        """
+
+    def get_vanilla_plugins_path(self) -> Path | None:
+        """
+        Return the directory that contains the game's own (vanilla) plugin files.
+        Used to detect which .esp/.esm files belong to the base game so they can
+        be shown as non-disableable entries in the plugins panel.
+
+        Defaults to get_mod_data_path(). Override for games whose vanilla plugins
+        live in a different subdirectory (e.g. Oblivion Remastered).
+        """
+        return self.get_mod_data_path()
+
+    @abstractmethod
+    def get_mod_staging_path(self) -> Path:
+        """
+        Return the path where this manager stages installed mods before
+        linking them into the game. Always returns a Path regardless of
+        whether the directory exists yet.
+        e.g. Profiles/Skyrim Special Edition/mods/
+        """
+
+    def get_hardlink_deploy_targets(self) -> list[tuple[str, "Path | None"]]:
+        """
+        Return a list of (label, path) pairs for directories that must be on
+        the same filesystem as the staging folder when using hardlinks.
+
+        The default returns just the game directory.  Games that also deploy
+        into the Proton prefix (e.g. The Sims 4, BG3) should override this.
+        """
+        return [("Game directory", self.get_game_path())]
+
+    def get_profile_root(self) -> Path:
+        """
+        Return the root directory that contains the profiles/ folder.
+
+        - Default (no custom staging): the parent of get_mod_staging_path(),
+          i.e. Profiles/<game>/ so that profiles/ sits alongside mods/.
+        - Custom staging path: the staging path itself is the root, so
+          profiles/ lives inside it (e.g. /mnt/ssd/MySkyrimMods/profiles/).
+        """
+        if self._staging_path is not None:
+            return self._staging_path
+        return self.get_mod_staging_path().parent
+
+    # Active profile directory - set by the UI whenever the user switches profiles.
+    _active_profile_dir: "Path | None" = None
+
+    def set_active_profile_dir(self, profile_dir: "Path | None") -> None:
+        """Record which profile folder is currently active.
+
+        Call on every profile switch (so get_effective_mod_staging_path can route
+        mods correctly), then re-run :meth:`load_paths` to apply that profile's
+        path overrides.
+        """
+        self._active_profile_dir = profile_dir
+
+    def _is_default_profile(self) -> bool:
+        """True when the active profile is the default one (or none is set).
+
+        The default keeps its settings global; only non-default profiles override.
+        """
+        return self._active_profile_dir is None or self._active_profile_dir.name == "default"
+
+    def _deploy_mode_from_str(self, raw: str) -> LinkMode:
+        """Parse a saved deploy-mode string, honouring deploy_mode_supports_copy.
+
+        Unknown values (including "hardlink") fall back to deploy_mode_fallback.
+        """
+        table = (
+            _DEPLOY_MODE_FROM_STR_COPY
+            if self.deploy_mode_supports_copy
+            else _DEPLOY_MODE_FROM_STR
+        )
+        return table.get(raw, self.deploy_mode_fallback)
+
+    def _apply_profile_path_overrides(self, paths_data: dict | None = None) -> None:
+        """Overlay the active non-default profile's overrides on the loaded paths.
+
+        No-op for the default profile. Overridden game_path/prefix_path/
+        deploy_mode replace the instance vars; absent keys keep the default's
+        value. staging_path stays global. Overridable subclass extras are applied
+        by re-running _load_paths_extra() with profile values overlaid on
+        *paths_data*.
+        """
+        if self._is_default_profile():
+            return
+        try:
+            from Utils.profiles.state import read_profile_settings
+            pset = read_profile_settings(self._active_profile_dir)
+        except Exception:
+            return
+        if isinstance(pset.get("game_path"), str) and pset["game_path"]:
+            self._game_path = Path(pset["game_path"])
+        if isinstance(pset.get("prefix_path"), str) and pset["prefix_path"]:
+            self._prefix_path = Path(pset["prefix_path"])
+            self._prefix_path_cleared = False
+        if isinstance(pset.get("prefix_path_cleared"), bool):
+            self._prefix_path_cleared = pset["prefix_path_cleared"]
+            if self._prefix_path_cleared:
+                self._prefix_path = None
+        if isinstance(pset.get("deploy_mode"), str) and pset["deploy_mode"]:
+            # Parse via the helper (not the already-loaded value), or a "hardlink"
+            # override would silently revert to the default profile's mode.
+            self._deploy_mode = self._deploy_mode_from_str(pset["deploy_mode"])
+        # "" is a meaningful override for a launcher id (this profile uses no
+        # shortcut even though the default does), so an empty string applies.
+        if isinstance(pset.get("shortcut_appid"), str):
+            self._shortcut_appid = pset["shortcut_appid"]
+        overlay_keys = (*self.profile_overridable_paths_extras,
+                        *self.launcher_id_keys)
+        if overlay_keys:
+            overlay = dict(paths_data or {})
+            applied = False
+            for key in overlay_keys:
+                if key in pset:
+                    overlay[key] = pset[key]
+                    applied = True
+            if applied:
+                self._load_paths_extra(overlay)
+
+    def get_effective_mod_staging_path(self) -> Path:
+        """Return the mods staging path that should be used for the active profile.
+
+        If the active profile has the ``profile_specific_mods`` flag set in
+        ``profile_state.json`` (profile_settings), returns ``<profile_dir>/mods/`` so that all
+        mod files are kept inside the profile folder itself.
+
+        Otherwise falls back to the standard :meth:`get_mod_staging_path`
+        (shared ``mods/`` folder next to ``profiles/``), which preserves the
+        existing behaviour for all profiles without the flag.
+        """
+        if self._active_profile_dir is not None:
+            try:
+                from Utils.profiles.state import profile_uses_specific_mods
+                if profile_uses_specific_mods(self._active_profile_dir):
+                    return self._active_profile_dir / "mods"
+            except Exception:
+                pass
+        return self.get_mod_staging_path()
+
+    def extra_save_paths(self) -> list[tuple[str, str, str]]:
+        """Manifest-shaped save paths the Ludusavi data is missing.
+
+        Same triple as a manifest entry -(token path, os, store constraint) -
+        and resolved through the same token tables, so a handler only has to
+        know the path, not how it expands.  For games Ludusavi describes on
+        Windows terms only, this is where the native Linux location goes.
+
+        Distinct from get_save_path_override(): that is the user's manual
+        answer and outranks everything, while these are merged in as further
+        manifest entries would be.
+        """
+        return []
+
+    def get_save_path_override(self) -> "Path | None":
+        """Return the user's manual save folder, or None to use the manifest."""
+        return self._save_path_override
+
+    def set_save_path_override(self, path: "Path | str | None") -> None:
+        """Set (or clear with None) the manual save folder and persist it."""
+        self._save_path_override = Path(path) if path else None
+        self.save_paths()
+
+    def get_effective_overwrite_path(self) -> Path:
+        """Return the overwrite directory for the active profile.
+
+        For profiles with the ``profile_specific_mods`` flag the overwrite
+        folder lives inside the profile directory itself (a sibling of the
+        profile-specific ``mods/`` folder).  For all other profiles it
+        falls back to ``<profile_root>/overwrite/``, which is the original
+        shared location that sits alongside the shared ``mods/`` folder.
+
+        This is always consistent with :meth:`get_effective_mod_staging_path`:
+        ``overwrite/`` is a sibling of ``mods/`` regardless of which root they
+        live under.
+        """
+        return self.get_effective_mod_staging_path().parent / "overwrite"
+
+    def get_effective_filemap_path(self) -> Path:
+        """Return the filemap.txt path for the active profile.
+
+        For profile-specific-mods profiles this is ``<profile_dir>/filemap.txt``
+        so that each profile maintains its own independent filemap.
+        For normal profiles it falls back to ``<profile_root>/filemap.txt``.
+        """
+        return self.get_effective_mod_staging_path().parent / "filemap.txt"
+
+    def get_effective_root_folder_path(self) -> Path:
+        """Return the Root_Folder staging path for the active profile.
+
+        For profiles with the ``profile_specific_mods`` flag the Root_Folder
+        lives inside the profile directory itself (a sibling of the
+        profile-specific ``mods/`` folder).  For all other profiles it
+        falls back to ``<profile_root>/Root_Folder/``, the original shared
+        location that sits alongside the shared ``mods/`` folder.
+        """
+        if self._active_profile_dir is not None:
+            try:
+                from Utils.profiles.state import profile_uses_specific_mods
+                if profile_uses_specific_mods(self._active_profile_dir):
+                    return self._active_profile_dir / "Root_Folder"
+            except Exception:
+                pass
+        return self.get_profile_root() / "Root_Folder"
+
+    # -----------------------------------------------------------------------
+    # Runtime-file capture (standard-deployed games)
+    # -----------------------------------------------------------------------
+
+    def runtime_snapshot_exclude_dirs(self) -> set[str] | None:
+        """Top-level game-root dir names to exclude from the runtime snapshot.
+
+        Standard games override this to return their deploy subfolder (e.g.
+        ``{"Data"}``); ``None`` (default) snapshots the whole game root.
+        """
+        return None
+
+    def root_restore_protect_dirs(self) -> set[str]:
+        """Top-level dir names owned by the standard data deploy (Data_Core).
+
+        restore_root_folder() uses this to avoid deleting a root-flagged file
+        sitting at a path the standard deploy also restores (e.g. a root mod
+        shipping its own Data/Fallout4.esm).  Defaults to the deploy subfolder
+        reported by runtime_snapshot_exclude_dirs(); games without a Data-style
+        deploy return an empty set so all their root files are removed normally.
+        """
+        excl = self.runtime_snapshot_exclude_dirs()
+        return set(excl) if excl else set()
+
+    def begin_deferred_runtime_snapshot(self) -> None:
+        """Suppress in-deploy snapshot writes until end_deferred_runtime_snapshot.
+
+        Called by run_deploy_pipeline around game.deploy(): the handler's
+        end-of-deploy snapshot_root_for_runtime_capture() call becomes a no-op
+        that only records the request, and the pipeline writes the snapshot
+        once after the root-folder files have also landed - one game-root walk
+        per deploy instead of two (and chained handler deploys coalesce)."""
+        self._defer_runtime_snapshot = True
+        self._deferred_snapshot_requested = False
+        # Some game handlers and deploy_filemap_to_root call the low-level
+        # snapshot writer directly. Defer those too so the shared pipeline can
+        # coalesce every request into the same final game-root walk.
+        from Utils.deployment.shared import _begin_deferred_deploy_snapshots
+        _begin_deferred_deploy_snapshots()
+
+    def end_deferred_runtime_snapshot(self) -> "tuple[bool, list[tuple]]":
+        """End deferral and return (generic_requested, direct_requests)."""
+        from Utils.deployment.shared import _end_deferred_deploy_snapshots
+        direct_requests = _end_deferred_deploy_snapshots()
+        requested = getattr(self, "_deferred_snapshot_requested", False)
+        self._defer_runtime_snapshot = False
+        self._deferred_snapshot_requested = False
+        return requested, direct_requests
+
+    def snapshot_root_for_runtime_capture(self, exclude_dirs=None, log_fn=None) -> None:
+        """Snapshot the game root at deploy time for later runtime capture.
+
+        Standard games call this at the end of deploy(); restore() then uses
+        capture_runtime_files_to_root_folder() to detect files generated
+        outside the deploy subfolder.
+        """
+        if getattr(self, "_defer_runtime_snapshot", False):
+            self._deferred_snapshot_requested = True
+            return
+        from Utils.deployment import _write_deploy_snapshot, _FILEMAP_SNAPSHOT_NAME
+        gp = self.get_game_path()
+        if not gp:
+            return
+        if exclude_dirs is None:
+            exclude_dirs = self.runtime_snapshot_exclude_dirs()
+        snap = self.get_effective_filemap_path().parent / _FILEMAP_SNAPSHOT_NAME
+        _write_deploy_snapshot(Path(gp), snap, exclude_dirs=exclude_dirs, log_fn=log_fn)
+
+    def capture_runtime_files_to_root_folder(self, exclude_dirs=None, log_fn=None) -> int:
+        """Sweep files generated since deploy (outside the deploy subfolder)
+        into Root_Folder/ so they re-deploy to the game root next time.
+
+        No-op if no snapshot exists.  Deletes the snapshot after sweeping.
+        """
+        from Utils.deployment import _move_runtime_files, _FILEMAP_SNAPSHOT_NAME
+        gp = self.get_game_path()
+        snap = self.get_effective_filemap_path().parent / _FILEMAP_SNAPSHOT_NAME
+        if not (gp and snap.is_file()):
+            return 0
+        if exclude_dirs is None:
+            exclude_dirs = self.runtime_snapshot_exclude_dirs()
+        moved = _move_runtime_files(
+            Path(gp), snap, self.get_effective_root_folder_path(),
+            log_fn=log_fn, exclude_dirs=exclude_dirs,
+            restore_whitelist=self.restore_whitelist_matcher(),
+        )
+        try:
+            snap.unlink()
+        except OSError:
+            pass
+        return moved
+
+    # -----------------------------------------------------------------------
+    # Configuration persistence
+    # -----------------------------------------------------------------------
+
+    @property
+    def _deploy_state_file(self) -> Path:
+        """Path to deploy_state.json for this game.
+
+        Stores the profile and paths of the latest deployment attempt so
+        that restore() can direct runtime-generated files (ShaderCache, saves,
+        etc.) to the correct overwrite folder even when the user has since
+        switched to a different profile.
+        """
+        return self._paths_file.parent / "deploy_state.json"
+
+    def get_last_deployed_profile(self) -> str:
+        """Return the profile to recover, or 'default' for legacy state."""
+        try:
+            data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            return data.get("last_deployed") or "default"
+        except (OSError, ValueError):
+            return "default"
+
+    def get_deploy_active(self) -> bool:
+        """Return True if mods are currently deployed to the game folder."""
+        try:
+            data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            return bool(data.get("deploy_active", False))
+        except (OSError, ValueError):
+            return False
+
+    def get_last_deploy_mode(self) -> str | None:
+        """LinkMode name (e.g. "HARDLINK") of the last deploy, or None.
+
+        Used by the incremental-deploy eligibility check: a mode change means
+        the on-disk links don't match what the current mode would produce, so
+        a full restore + redeploy is required."""
+        try:
+            data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            return data.get("last_deploy_mode") or None
+        except (OSError, ValueError):
+            return None
+
+    def get_deployment_context(self) -> dict:
+        try:
+            data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            context = data.get("recovery_context")
+            if data.get("deploy_active") and isinstance(context, dict):
+                return context
+        except (OSError, ValueError):
+            pass
+        return {}
+
+    def save_last_deployed_profile(self, profile_name: str,
+                                   deploy_mode: str | None = None) -> None:
+        """Record recovery paths before deployment can modify the installation."""
+        from Utils.atomic_write import write_atomic_text
+        from Utils.deployment.custom_rules import _root_record
+
+        self._deploy_state_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        data["last_deployed"] = profile_name
+        data["deploy_active"] = True
+        if deploy_mode is not None:
+            data["last_deploy_mode"] = deploy_mode
+        data["recovery_context"] = {
+            "profile_dir": str(self.get_profile_root() / "profiles" / profile_name),
+            "filemap_path": str(self.get_effective_filemap_path()),
+            "staging_root": _root_record(self.get_profile_root()),
+            "game_root": _root_record(self.get_game_path()),
+            "prefix_root": _root_record(self.get_prefix_path()),
+        }
+        write_atomic_text(self._deploy_state_file, json.dumps(data, indent=2))
+
+    def clear_deploy_active(self) -> None:
+        """Mark mods as no longer deployed to the game folder (e.g. after a restore)."""
+        try:
+            self._deploy_state_file.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            data["deploy_active"] = False
+            data.pop("recovery_context", None)
+            self._deploy_state_file.write_text(
+                json.dumps(data, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def get_last_active_profile(self) -> str:
+        """Return the name of the last active profile for this game, or 'default'."""
+        try:
+            data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            return data.get("last_active_profile") or "default"
+        except (OSError, ValueError):
+            return "default"
+
+    def save_last_active_profile(self, profile_name: str) -> None:
+        """Persist profile_name as the last active profile for this game."""
+        try:
+            self._deploy_state_file.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data = json.loads(self._deploy_state_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            data["last_active_profile"] = profile_name
+            self._deploy_state_file.write_text(
+                json.dumps(data, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    @property
+    def _paths_file(self) -> Path:
+        """Path to this game's paths.json in the user config directory.
+
+        Resolves to: ~/.config/AmethystModManager/games/<game_name>/paths.json
+
+        Stored outside the app bundle so it survives AppImage updates and
+        works correctly when the AppImage filesystem is mounted read-only.
+        """
+        return get_game_config_path(self.name)
+
+    @property
+    def _settings_file(self) -> Path:
+        """Path to this game's game_settings.json in the user config directory.
+
+        Stores lightweight per-game UI preferences (e.g. auto_deploy) that are
+        independent of the path configuration persisted in paths.json.
+
+        Resolves to: ~/.config/AmethystModManager/games/<game_name>/game_settings.json
+        """
+        return get_game_config_dir(self.name) / "game_settings.json"
+
+    def _read_global_settings(self) -> dict:
+        """Read game_settings.json verbatim, without any per-profile overlay."""
+        try:
+            if self._settings_file.exists():
+                data = json.loads(self._settings_file.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, OSError):
+            pass
+        return {}
+
+    def _load_settings(self) -> dict:
+        # Every option property reads through here, so overlaying the active
+        # non-default profile's overrides makes them transparently per-profile.
+        data = self._read_global_settings()
+        if not self._is_default_profile() and self.profile_overridable_settings:
+            try:
+                from Utils.profiles.state import read_profile_settings
+                pset = read_profile_settings(self._active_profile_dir)
+            except Exception:
+                pset = {}
+            for key in self.profile_overridable_settings:
+                if key in pset:
+                    data[key] = pset[key]
+        return data
+
+    def _save_settings(self, data: dict) -> None:
+        # Default profile writes straight to game_settings.json.
+        if self._is_default_profile() or not self.profile_overridable_settings:
+            self._settings_file.parent.mkdir(parents=True, exist_ok=True)
+            self._settings_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return
+
+        # Non-default profile: persist an overridable key as a sticky per-profile
+        # override only when the incoming value differs from the profile's current
+        # effective value (global overlaid with any existing override). A key the
+        # user actually changed differs and gets pinned - and stays pinned even if
+        # it equals the default, surviving later changes to the default. A key
+        # left untouched matches its effective value and is not written, so it
+        # keeps following the default.
+        effective = self._load_settings()
+        override_updates: dict = {}
+        for key in self.profile_overridable_settings:
+            if key in data and data[key] != effective.get(key, _UNSET):
+                override_updates[key] = data[key]
+        if override_updates:
+            try:
+                from Utils.profiles.state import merge_profile_settings
+                merge_profile_settings(self._active_profile_dir, override_updates)
+            except Exception:
+                pass
+
+        # Non-overridable keys are global: update them in game_settings.json
+        # without disturbing the default's overridable values stored there.
+        on_disk = self._read_global_settings()
+        for k, v in data.items():
+            if k not in self.profile_overridable_settings:
+                on_disk[k] = v
+        self._settings_file.parent.mkdir(parents=True, exist_ok=True)
+        self._settings_file.write_text(json.dumps(on_disk, indent=2), encoding="utf-8")
+
+    @property
+    def auto_deploy(self) -> bool:
+        """If True, the manager will automatically deploy after every filemap rebuild."""
+        return self._load_settings().get("auto_deploy", False)
+
+    @auto_deploy.setter
+    def auto_deploy(self, value: bool) -> None:
+        data = self._load_settings()
+        data["auto_deploy"] = bool(value)
+        self._save_settings(data)
+
+    @property
+    def archive_invalidation(self) -> bool:
+        """If True, archive invalidation is applied on deploy (Bethesda games)."""
+        return self._load_settings().get("archive_invalidation", True)
+
+    @archive_invalidation.setter
+    def archive_invalidation(self, value: bool) -> None:
+        data = self._load_settings()
+        data["archive_invalidation"] = bool(value)
+        self._save_settings(data)
+
+    @property
+    def case_alias_links(self) -> bool:
+        """If True, deploy creates the case-variant symlink aliases named by
+        ``case_alias_dirs`` (GH#374 Wine load-time fix); if False, deploy
+        removes any existing aliases instead."""
+        return self._load_settings().get(
+            "case_alias_links", self.case_alias_links_default)
+
+    @case_alias_links.setter
+    def case_alias_links(self, value: bool) -> None:
+        data = self._load_settings()
+        data["case_alias_links"] = bool(value)
+        self._save_settings(data)
+
+    def _migrate_old_config(self) -> None:
+        """One-time migration: copy paths.json from the old in-tree location.
+
+        Previous versions stored config at Games/<name>/paths.json inside the
+        project directory.  On first run after upgrading, this copies any
+        existing file to the new ~/.config location so settings are preserved.
+        The original file is left in place (harmless, and safe for rollback).
+        """
+        old_path = Path(__file__).parent / self.name / "paths.json"
+        new_path = self._paths_file
+        if old_path.is_file() and not new_path.is_file():
+            shutil.copy2(old_path, new_path)
+
+    # Subclass hooks for the shared load_paths/save_paths implementation.
+    # Override _save_paths_extra() / _load_paths_extra() to persist additional
+    # JSON keys (e.g. heroic_app_name, script_extender_swap) without rewriting the
+    # whole boilerplate.
+    def _save_paths_extra(self) -> dict:
+        """Extra JSON fields to merge into save_paths() output. Override in
+        subclasses that persist additional config beyond the standard set."""
+        return {}
+
+    def _load_paths_extra(self, data: dict) -> None:
+        """Apply extra JSON fields read by load_paths(). Pair with
+        :meth:`_save_paths_extra`."""
+        return None
+
+    def _find_prefix_for_load(self) -> "Path | None":
+        """Locate a Proton prefix for this game during load_paths().
+
+        Tries a saved non-Steam shortcut App ID first, then ``steam_id``, then
+        any ``alt_steam_ids``, then a Lutris install matching the handler's exe
+        name, then a Faugus install the same way, and finally an unconfigured
+        non-Steam shortcut found by exe name. Subclasses with other non-Steam
+        prefix sources (Heroic-only games, etc.) can override.
+
+        The game path is passed through so the Steam lookup can tell which
+        library owns the app - without it a stale compatdata in another
+        library can win.
+        """
+        try:
+            from Utils.launchers.bottles import find_bottles_launch_info
+            saved = self.get_saved_launcher_id("bottles_program")
+            if saved:
+                program = find_bottles_launch_info([saved])
+                return program.prefix if program is not None else None
+        except Exception:
+            pass
+        if self._shortcut_appid:
+            # The shortcut's own compatdata is the only prefix this install
+            # has; the handler's steam_id names the store release, whose
+            # prefix (if any) belongs to a different copy of the game.
+            found = _find_steam_prefix(self._shortcut_appid,
+                                       getattr(self, "_game_path", None))
+            if found:
+                return found
+        for sid in [self.steam_id, *self.alt_steam_ids]:
+            if not sid:
+                continue
+            found = _find_steam_prefix(sid, getattr(self, "_game_path", None))
+            if found:
+                return found
+        try:
+            from Utils.launchers.lutris import find_lutris_game_info_by_exe
+            for exe in [getattr(self, "exe_name", None),
+                        *(getattr(self, "exe_name_alts", []) or [])]:
+                if not exe:
+                    continue
+                info = find_lutris_game_info_by_exe(exe)
+                if info is not None and info[1] is not None:
+                    return info[1]
+        except Exception:
+            pass
+        try:
+            from Utils.launchers.faugus import find_faugus_game_info_by_exe
+            for exe in [getattr(self, "exe_name", None),
+                        *(getattr(self, "exe_name_alts", []) or [])]:
+                if not exe:
+                    continue
+                info = find_faugus_game_info_by_exe(exe)
+                if info is not None and info[1] is not None:
+                    return info[1]
+        except Exception:
+            pass
+        try:
+            from Utils.launchers.bottles import find_bottles_game_info_by_exes
+            info = find_bottles_game_info_by_exes(
+                [getattr(self, "exe_name", None),
+                 *(getattr(self, "exe_name_alts", []) or [])],
+                game_path=getattr(self, "_game_path", None))
+            if info is not None:
+                return info[1]
+        except Exception:
+            pass
+        try:
+            from Utils.launchers.steam_shortcuts import find_shortcut_game_info_by_exe
+            for exe in [getattr(self, "exe_name", None),
+                        *(getattr(self, "exe_name_alts", []) or [])]:
+                if not exe:
+                    continue
+                info = find_shortcut_game_info_by_exe(exe)
+                if info is not None and info[1] is not None:
+                    return info[1]
+        except Exception:
+            pass
+        return None
+
+    def load_paths(self) -> bool:
+        """Load path configuration from the user config directory.
+
+        Returns True if a valid ``game_path`` was loaded, False otherwise.
+        Subclasses customise this via :meth:`_load_paths_extra` and
+        :meth:`_find_prefix_for_load` rather than overriding this method.
+        """
+        self._migrate_old_config()
+        if not self._paths_file.exists():
+            self._game_path = None
+            self._prefix_path = None
+            self._prefix_path_cleared = False
+            self._staging_path = None
+            # A non-default profile may still carry overrides even with no global
+            # paths.json yet, so apply them before giving up.
+            self._apply_profile_path_overrides()
+            return bool(self._game_path)
+        try:
+            data = json.loads(self._paths_file.read_text(encoding="utf-8"))
+            raw = data.get("game_path", "")
+            if raw:
+                self._game_path = Path(raw)
+            self._prefix_path = None
+            self._prefix_path_cleared = data.get("prefix_path_cleared") is True
+            raw_pfx = data.get("prefix_path", "")
+            if raw_pfx:
+                self._prefix_path = Path(raw_pfx)
+                self._prefix_path_cleared = False
+            raw_mode = data.get("deploy_mode", "hardlink")
+            self._deploy_mode = self._deploy_mode_from_str(raw_mode)
+            raw_staging = data.get("staging_path", "")
+            if raw_staging:
+                self._staging_path = Path(raw_staging)
+            raw_saves = data.get("save_path_override", "")
+            self._save_path_override = Path(raw_saves) if raw_saves else None
+            self._shortcut_appid = str(data.get("shortcut_appid", "") or "")
+            self._load_paths_extra(data)
+            # Overlay any per-profile overrides on top of the default's values
+            # before the prefix-autolocate check, so a profile-specific prefix is
+            # respected and never overwritten by the default's auto-detection.
+            self._apply_profile_path_overrides(data)
+            if self.missing_configured_paths():
+                return bool(self._game_path)
+            if (not self._prefix_path_cleared
+                    and (not self._prefix_path or not self._prefix_path.is_dir())):
+                found = self._find_prefix_for_load()
+                if found:
+                    self._prefix_path = found
+                    # The auto-located prefix is a fallback for the default, not a
+                    # deliberate per-profile choice, so persist it globally rather
+                    # than as a spurious override on a non-default profile.
+                    self._save_global_prefix(found)
+            else:
+                self._heal_wrong_library_prefix()
+            _ensure_lutris_prefix_compat(self._prefix_path)
+            return bool(self._game_path)
+        except (json.JSONDecodeError, OSError):
+            pass
+        self._game_path = None
+        self._prefix_path = None
+        self._prefix_path_cleared = False
+        return False
+
+    def _profile_overrides_prefix(self) -> bool:
+        """True when the active non-default profile pins its prefix choice."""
+        if self._is_default_profile():
+            return False
+        try:
+            from Utils.profiles.state import read_profile_settings
+            pset = read_profile_settings(self._active_profile_dir)
+        except Exception:
+            return False
+        return bool(
+            (isinstance(pset.get("prefix_path"), str) and pset["prefix_path"])
+            or pset.get("prefix_path_cleared") is True
+        )
+
+    def _heal_wrong_library_prefix(self) -> None:
+        """Repoint a saved Steam prefix that lives in the wrong library.
+
+        Multi-library users who moved a game between drives can end up with a
+        stale ``compatdata/<id>`` in the old library. It is a real directory, so
+        load_paths() keeps it forever - auto-detection only runs when the saved
+        prefix is missing. Only Steam compatdata paths whose owning library is
+        known and different are touched; everything else is left alone.
+        """
+        prefix = self._prefix_path
+        if prefix is None:
+            return
+        if self._profile_overrides_prefix():
+            # A per-profile prefix is a deliberate choice - never second-guess it.
+            return
+        try:
+            from Utils.launchers.steam import (prefix_is_in_wrong_library,
+                                            find_prefix as _fp)
+            for sid in [self.steam_id, *self.alt_steam_ids]:
+                if not sid:
+                    continue
+                game_path = getattr(self, "_game_path", None)
+                if not prefix_is_in_wrong_library(prefix, sid, game_path):
+                    continue
+                found = _fp(sid, game_path)
+                if not found or found == prefix:
+                    continue
+                from Utils.app_log import app_log
+                app_log(f"[{self.name}] Proton prefix {prefix} is in a Steam "
+                        f"library that does not own app {sid}; switching to {found}")
+                self._prefix_path = found
+                self._save_global_prefix(found)
+                return
+        except Exception:
+            pass
+
+    def _save_global_prefix(self, prefix: Path) -> None:
+        """Write an auto-located prefix into the global paths.json.
+
+        Used during load_paths() so an auto-detected prefix never becomes a
+        per-profile override (it is a fallback shared by all profiles).
+        """
+        self._paths_file.parent.mkdir(parents=True, exist_ok=True)
+        data = self._read_global_paths()
+        data["prefix_path"] = str(prefix)
+        data["prefix_path_cleared"] = False
+        self._paths_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _read_global_paths(self) -> dict:
+        """Read paths.json verbatim, without any per-profile overlay."""
+        try:
+            if self._paths_file.exists():
+                data = json.loads(self._paths_file.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, OSError):
+            pass
+        return {}
+
+    def _profile_pinnable_paths_keys(self) -> tuple[str, ...]:
+        """paths.json keys a non-default profile may pin as its own."""
+        return ("game_path", "prefix_path", "prefix_path_cleared", "deploy_mode",
+                *self.launcher_id_keys,
+                *self.profile_overridable_paths_extras)
+
+    def _effective_paths_value(self, key: str, default: str = "") -> str:
+        """String value of a paths.json *key* as the active profile sees it.
+
+        A non-default profile's pinned override wins over the global value, so
+        a launcher id reads back per profile exactly as game_path does.
+        """
+        if not self._is_default_profile():
+            try:
+                from Utils.profiles.state import read_profile_settings
+                pset = read_profile_settings(self._active_profile_dir)
+            except Exception:
+                pset = {}
+            if key in pset:
+                val = pset[key]
+                return default if val is None else str(val)
+        val = self._read_global_paths().get(key, default)
+        return default if val is None else str(val)
+
+    def get_saved_launcher_id(self, key: str) -> str:
+        """Launcher id saved for the active profile, or "" when unset.
+
+        *key* is one of :attr:`launcher_id_keys`. Reading through here rather
+        than straight out of paths.json is what makes a per-profile install
+        choice apply - launch routing must not see another profile's launcher.
+        """
+        if key not in self.launcher_id_keys:
+            return ""
+        return self._effective_paths_value(key).strip()
+
+    def _persist_paths_value(self, key: str, value: str) -> None:
+        """Write one paths.json *key* for the active profile only.
+
+        Default profile: into paths.json, after freezing the outgoing value
+        into every profile still inheriting it. Non-default profile: pinned
+        into that profile's profile_settings, so no other profile is touched.
+        """
+        value = "" if value is None else str(value)
+        if not self._is_default_profile():
+            if self._effective_paths_value(key) == value:
+                return
+            try:
+                from Utils.profiles.state import merge_profile_settings
+                merge_profile_settings(self._active_profile_dir, {key: value})
+            except Exception:
+                pass
+            return
+        data = self._read_global_paths()
+        old = data.get(key, "")
+        old = "" if old is None else str(old)
+        if old == value:
+            return
+        self._freeze_inherited_paths_keys({key: old})
+        data[key] = value
+        try:
+            self._paths_file.parent.mkdir(parents=True, exist_ok=True)
+            self._paths_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _other_profile_dirs(self) -> list[Path]:
+        """Every non-default profile folder of this game ([] if unknown)."""
+        try:
+            root = self.get_profile_root() / "profiles"
+            return [p for p in sorted(root.iterdir())
+                    if p.is_dir() and p.name != "default"]
+        except (OSError, AttributeError, TypeError):
+            return []
+
+    def _freeze_inherited_paths_keys(self, old_values: dict) -> None:
+        """Pin *old_values* into the profiles that were still inheriting them.
+
+        The default's paths are the fallback for every profile that never
+        pinned its own, so repointing the default at another install used to
+        drag every already-configured profile along with it. Freezing the
+        outgoing value first leaves those profiles exactly where they were,
+        while profiles created later still start from the new default.
+
+        Empty outgoing values are skipped: they carry no install to preserve,
+        and pinning one would only mask the default the profile still needs.
+        """
+        frozen = {k: v for k, v in old_values.items()
+                  if v not in ("", None) and k in self._profile_pinnable_paths_keys()}
+        if not frozen:
+            return
+        try:
+            from Utils.profiles.state import (merge_profile_settings,
+                                             read_profile_settings)
+        except Exception:
+            return
+        for pdir in self._other_profile_dirs():
+            try:
+                pset = read_profile_settings(pdir)
+                updates = {k: v for k, v in frozen.items() if k not in pset}
+                if updates:
+                    merge_profile_settings(pdir, updates)
+            except Exception:
+                continue
+
+    def save_paths(self) -> None:
+        """Write path configuration to the user config directory.
+
+        Default profile: everything goes to paths.json, and any value it
+        replaces is frozen into the profiles that were inheriting it, so
+        repointing the default never moves an already-configured profile.
+        Non-default profile: game_path/prefix_path/deploy_mode, the launcher
+        ids and overridable extras are stored as sticky per-profile overrides,
+        but only for fields whose new value differs from the profile's current
+        effective value (global overlaid with any existing override). A field
+        the user actually changed gets pinned and survives later default
+        changes; an unchanged field is not written and keeps following the
+        default. staging_path and non-overridable extras stay global.
+        """
+        self._paths_file.parent.mkdir(parents=True, exist_ok=True)
+        mode_str = _DEPLOY_MODE_TO_STR.get(self._deploy_mode, "hardlink")
+
+        if self._is_default_profile():
+            fresh = {
+                "game_path":    str(self._game_path)    if self._game_path    else "",
+                "prefix_path":  str(self._prefix_path)  if self._prefix_path  else "",
+                "prefix_path_cleared": bool(
+                    self._prefix_path is None and self._prefix_path_cleared),
+                "deploy_mode":  mode_str,
+                "staging_path": str(self._staging_path) if self._staging_path else "",
+                "save_path_override": (str(self._save_path_override)
+                                       if self._save_path_override else ""),
+                "shortcut_appid": self._shortcut_appid or "",
+            }
+            fresh.update(self._save_paths_extra())
+            # Merge over what's on disk rather than rebuilding: the launcher ids
+            # written by set_launcher_ids() are not part of *fresh*, and dropping
+            # them would strand a configured install without the id that
+            # identifies it. Mutual exclusivity is the caller's job - it clears
+            # the ruled-out launchers explicitly.
+            data = self._read_global_paths()
+            self._freeze_inherited_paths_keys(
+                {k: data[k] for k in self._profile_pinnable_paths_keys()
+                 if k in data and k in fresh and fresh[k] != data[k]})
+            data.update(fresh)
+            self._paths_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return
+
+        # Non-default profile. Build the current effective value for each field
+        # (global overlaid with the existing override) and pin only the fields
+        # that the incoming value actually changes.
+        from Utils.profiles.state import merge_profile_settings, read_profile_settings
+        glb = self._read_global_paths()
+        existing = read_profile_settings(self._active_profile_dir)
+        extras = self._save_paths_extra()
+
+        def _pin(key: str, value, missing_default):
+            effective = existing.get(key, glb.get(key, missing_default))
+            # Only write when the value changed; never None (clear) so a
+            # deliberate value equal to the default still stays pinned.
+            return value if value != effective else _UNSET
+
+        candidates = {
+            "game_path":   _pin("game_path",   str(self._game_path) if self._game_path else "", ""),
+            "prefix_path": _pin("prefix_path", str(self._prefix_path) if self._prefix_path else "", ""),
+            "prefix_path_cleared": _pin(
+                "prefix_path_cleared",
+                bool(self._prefix_path is None and self._prefix_path_cleared),
+                False),
+            "deploy_mode": _pin("deploy_mode", mode_str, ""),
+            # Which install this profile manages, so it pins with the paths it
+            # belongs to. Writing it globally moved every other profile onto
+            # the launcher this one picked.
+            "shortcut_appid": _pin("shortcut_appid", self._shortcut_appid or "", ""),
+        }
+        for key, value in extras.items():
+            if (key in self.profile_overridable_paths_extras
+                    or key in self.launcher_id_keys):
+                candidates[key] = _pin(key, value, None)
+        override_updates = {k: v for k, v in candidates.items() if v is not _UNSET}
+        if override_updates:
+            merge_profile_settings(self._active_profile_dir, override_updates)
+
+        # Write only the still-global fields to paths.json, preserving the
+        # default's overridable values already stored there.
+        global_extras = {
+            k: v for k, v in extras.items()
+            if k not in self.profile_overridable_paths_extras
+            and k not in self.launcher_id_keys
+        }
+        data = self._read_global_paths()
+        data["staging_path"] = str(self._staging_path) if self._staging_path else ""
+        # Saves live where the game puts them, not where a profile says - the
+        # override stays global rather than joining the per-profile pins.
+        data["save_path_override"] = (str(self._save_path_override)
+                                      if self._save_path_override else "")
+        data.update(global_extras)
+        self._paths_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def set_game_path(self, path: Path | str | None) -> None:
+        """Convenience: set game_path and immediately persist it. Pass None to clear."""
+        self._game_path = Path(path) if path else None
+        self.save_paths()
+
+    def set_heroic_app_name(self, app_name: str | None) -> None:
+        """Persist a discovered Heroic app name for the active profile.
+
+        Used by the Add Game dialog so GOG/Epic titles keep a record of
+        which Heroic library entry they resolved to. Launch code still
+        prefers live detection via installed.json, so this field is an
+        informational fallback rather than the source of truth.
+        """
+        try:
+            self.save_paths()
+        except Exception:
+            pass
+        self._persist_paths_value("heroic_app_name", app_name or "")
+
+    def set_lutris_slug(self, slug: str | None) -> None:
+        """Persist a discovered Lutris slug for the active profile.
+
+        Written when the Configure-Game scan resolves the game via Lutris.
+        Launch code still prefers live detection against Lutris's database,
+        so this field is an informational fallback rather than the source of
+        truth.
+        """
+        try:
+            self.save_paths()
+        except Exception:
+            pass
+        self._persist_paths_value("lutris_slug", slug or "")
+
+    def set_shortcut_appid(self, appid: "str | int | None") -> None:
+        """Persist the non-Steam shortcut App ID this game resolved to.
+
+        Written when the Configure-Game scan resolves the install through
+        shortcuts.vdf, and cleared (pass None) when the user picks a different
+        launcher, so a stale shortcut never shadows the real Steam app.
+        Unlike the other launcher-id setters this goes through save_paths(),
+        which persists the field as a first-class key.
+        """
+        self._shortcut_appid = str(appid or "").strip()
+        self.save_paths()
+
+    def get_shortcut_appid(self) -> str:
+        """The saved non-Steam shortcut App ID, or ""."""
+        return self._shortcut_appid or ""
+
+    def set_faugus_gameid(self, gameid: str | None) -> None:
+        """Persist a discovered Faugus gameid for the active profile.
+
+        Written when the Configure-Game scan resolves the game via Faugus.
+        Launch code still prefers live detection against games.json, so
+        this field is an informational fallback rather than the source of
+        truth.
+        """
+        try:
+            self.save_paths()
+        except Exception:
+            pass
+        self._persist_paths_value("faugus_gameid", gameid or "")
+
+    def set_bottles_program(self, program_id: str | None) -> None:
+        try:
+            self.save_paths()
+        except Exception:
+            pass
+        self._persist_paths_value("bottles_program", program_id or "")
+
+    def set_launcher_ids(self, *, heroic_app_name: "str | None" = None,
+                         lutris_slug: "str | None" = None,
+                         faugus_gameid: "str | None" = None,
+                         bottles_program: "str | None" = None,
+                         shortcut_appid: "str | None" = None) -> None:
+        """Persist the whole launcher-identity set in one call.
+
+        An install is reached through exactly one launcher, so the ones the
+        user ruled out have to be cleared as deliberately as the winner is
+        written: pass "" to clear a key and None to leave it untouched.
+        Everything lands in the active profile's scope, so switching one
+        profile's install leaves the others on the launcher they had.
+        """
+        for key, value in (("heroic_app_name", heroic_app_name),
+                           ("lutris_slug", lutris_slug),
+                           ("faugus_gameid", faugus_gameid),
+                           ("bottles_program", bottles_program),
+                           ("shortcut_appid", shortcut_appid)):
+            if value is None:
+                continue
+            setter = getattr(self, _LAUNCHER_ID_SETTERS[key], None)
+            if callable(setter):
+                # Via the public setter so a handler that keeps its own copy of
+                # the id (BepInEx's _saved_heroic_app_name) stays in step.
+                setter(str(value).strip())
+            else:
+                self._persist_paths_value(key, str(value).strip())
+
+    def missing_configured_paths(self) -> list[Path]:
+        data = self._read_global_paths()
+        raw_game = data.get("game_path")
+        if not isinstance(raw_game, str) or not raw_game:
+            return []
+        game_path = Path(raw_game)
+        missing = [] if game_path.is_dir() else [game_path]
+        raw_staging = data.get("staging_path")
+        if isinstance(raw_staging, str) and raw_staging:
+            staging = Path(raw_staging)
+            if not (staging / "profiles").is_dir():
+                missing.append(staging)
+        return missing
+
+    # -----------------------------------------------------------------------
+    # Validation (concrete - subclasses may override)
+    # -----------------------------------------------------------------------
+
+    def is_configured(self) -> bool:
+        """Return whether the saved game and staging paths are available."""
+        p = self.get_game_path()
+        return (p is not None and p.is_dir()
+                and (self._staging_path is None
+                     or (self._staging_path / "profiles").is_dir()))
+
+    def validate_install(self) -> list[str]:
+        """
+        Check that the game is ready to receive mod installs.
+        Returns a list of human-readable error strings; empty list = all good.
+        """
+        errors: list[str] = []
+        if not self.is_configured():
+            errors.append(
+                f"Game path not set or does not exist for '{self.name}'."
+            )
+        data_path = self.get_mod_data_path()
+        if data_path is not None and not data_path.exists():
+            errors.append(f"Mod data directory does not exist: {data_path}")
+        return errors
+
+    def post_build_filemap(self, filemap_path: "Path", staging_path: "Path") -> None:
+        """Called after build_filemap() writes filemap.txt.
+
+        Override in game handlers that need to rewrite the filemap paths to
+        reflect the actual deployed layout rather than the staging layout.
+        For example, Witcher 3 transforms staging paths such as
+        ``TrueFires_v1.01/modTrueFires/content/x.xml`` into the routed path
+        ``mods/modTrueFires/content/x.xml`` so the treeview and filemap both
+        match the real game-root structure.
+
+        The default implementation is a no-op.
+        """
+
+    def post_deploy(self, log_fn=None) -> None:
+        """Called by run_deploy_pipeline after a successful deploy (after the
+        launcher swap). Override in game handlers that need a fix-up step on
+        the deployed game folder (e.g. Fallout NV auto-applies the 4GB patch).
+        Failures are logged by the pipeline and never fail the deploy.
+
+        The default implementation is a no-op.
+        """
+
+    def post_clean_game_folder(self, log_fn=None) -> None:
+        """Called after Clean Game Folder removes deployed files.
+        Override in game handlers that need extra cleanup (e.g. resetting
+        modsettings.lsx to vanilla for BG3).
+        """

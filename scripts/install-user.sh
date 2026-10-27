@@ -7,6 +7,7 @@ config="${XDG_CONFIG_HOME:-$HOME/.config}"
 mkdir -p "$bin"
 (cd "$here" && go build -trimpath -o "$bin/hikarid" ./cmd/hikarid)
 (cd "$here" && go build -trimpath -o "$bin/hikari" ./cmd/hikari)
+"$here/scripts/build-backend.sh" "$data/hikari/amethyst_filegraph.abi3.so"
 install -m755 "$here/scripts/hikari-app" "$bin/hikari-app"
 install -m755 "$here/scripts/hikari-update" "$bin/hikari-update"
 "$here/scripts/deploy.sh" "$config/quickshell/hikari" >/dev/null
@@ -20,6 +21,7 @@ fi
 cat <<MSG
 installed:
   $bin/hikarid, $bin/hikari, $bin/hikari-app, $bin/hikari-update
+  $data/hikari/amethyst_filegraph.abi3.so (the mods catalog extension)
   $config/quickshell/hikari
   $data/applications/hikari.desktop (Hikari appears in your app launcher)
 

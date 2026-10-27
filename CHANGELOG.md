@@ -1,5 +1,69 @@
 # Changelog
 
+## Unreleased
+
+- The Mods page drives the Amethyst Mod Manager's own backend as a
+  supervised child process: list the games Amethyst can mod, pick a profile,
+  deploy it, restore the game to vanilla, and install a mod archive (FOMOD
+  installers take Amethyst's default selections) or an `nxm://` download —
+  from the UI or with `hikari mods`. Amethyst owns the mod state; Hikari
+  never keeps a second copy of it. `hikari mods setup` gives the backend its
+  own Python environment under `$XDG_DATA_HOME/hikari/mods`.
+- **Game settings → Game** now has the executable: a field with **Choose…**
+  (starts in the game's folder) and **Use game's**, plus a line naming the
+  executable the game reports. It is the fix for a launcher that starts the
+  wrong file — a pre-launcher that closes on its own, or the exe a mod loader
+  needs. A path with nothing at it is refused when you save instead of when the
+  game fails.
+- **Repair mods** in the Installed tab, and `hikari mods health <game>` /
+  `hikari mods repair <game>`: the launcher now checks the ground truth that
+  decides whether mods load at all — are the loader DLLs actually in the game
+  folder, has each loader written a log, does the prefix have the overrides the
+  mods need — and redeploys only when a redeploy is the fix. It catches the two
+  failures that look like "my mods do nothing": a half-finished deploy and an
+  override Wine never got.
+- Launching a modded game now sets the Wine DLL overrides those mods need
+  (`WINEDLLOVERRIDES`, from Amethyst's per-game table), merged after whatever
+  the game's settings already ask for. Proxy loaders such as RED4ext's
+  `winmm.dll` and CET's `version.dll` only load when Wine prefers the native
+  copy, so a game launched straight from Hikari used to start with no mods at
+  all — silent, since nothing in the log mentioned it. `hikari mods overrides
+  <game>` prints the table.
+- Mods can be uninstalled and switched off where they are listed: click a row
+  in Installed to enable or disable it, **Uninstall** asks once and then
+  removes the files, plugins and staging folder the way Amethyst does.
+  **Check requirements** asks Nexus what the installed mods still need and
+  offers a **Get** button for each missing dependency.
+- Install on a free account now works from the sheet: **Install** opens that
+  file's Nexus page and Hikari watches the download folder, installing the
+  archive as soon as the browser finishes with it — no link copying. Premium
+  accounts still get the file straight from the API.
+- Hikari is the `nxm://` handler: `hikari mods scheme set` writes the desktop
+  entry and takes the default, so "Mod manager download" on the site opens
+  Hikari on that game's Mods page and installs the file. `hikari mods nxm <url>`
+  is the handler itself.
+- Install from Nexus on a free account too: press "Mod manager download" on
+  the mod page, paste the `nxm://` link into the files sheet (or
+  `hikari mods install <game> --url nxm://…`) and Hikari downloads and
+  installs it through Amethyst's own downloader. A failed job now says what
+  went wrong instead of looking like nothing happened.
+- Sign in to Nexus the way Amethyst does: `hikari mods login` (or Sign in on
+  the Mods page) opens Nexus in your browser, you approve there, and the
+  tokens land in the same store Amethyst reads — one sign-in covers both
+  apps. `hikari mods logout` forgets it, and a pasted API key
+  (`hikari mods nexus set`) still works if you have one.
+- Browse Nexus as a grid of cards — artwork, author, category, when it was
+  last updated, downloads — the way the Nexus site arranges mods, with New /
+  Updated / Popular / Endorsed chips above it instead of one sort button.
+  Files are listed newest first, and retired builds stay hidden unless you
+  ask for them.
+- Browse Nexus from the Mods page (or `hikari mods browse`): search a game's
+  mods, sort by downloads/endorsements/newest/updated, see a mod's files and
+  install one — using the API key Amethyst already stores. The profile's own
+  modlist is a tab of its own, in priority order (`hikari mods installed`).
+  Direct downloads need a premium account; a free account is told to use Mod
+  manager download on the site, which Hikari already installs.
+
 ## 0.1.2
 
 - The daemon stages the release's own `hikari-update` into the install
