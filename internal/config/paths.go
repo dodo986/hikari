@@ -50,12 +50,26 @@ func ResolveFrom(configRoot, dataRoot string) Paths {
 	}
 }
 
+func RuntimeDir() string {
+	base := os.Getenv("XDG_RUNTIME_DIR")
+	if base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "hikari")
+}
+
 func SocketPath() string {
 	base := os.Getenv("XDG_RUNTIME_DIR")
 	if base == "" {
 		base = os.TempDir()
 	}
 	return filepath.Join(base, "hikari.sock")
+}
+
+// WSEndpointPath holds the websocket address and token for local UI clients.
+// It is readable by this user only and rewritten on every daemon start.
+func WSEndpointPath() string {
+	return filepath.Join(RuntimeDir(), "ws.json")
 }
 
 func (p Paths) Ensure() error {

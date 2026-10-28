@@ -1,0 +1,23 @@
+.pill {
+  height: var(--ctl-h);
+  padding: 0 var(--s3);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-ui);
+  font-size: var(--f-small);
+  cursor: pointer;
+  transition: background var(--snap) var(--ease), border-color var(--snap) var(--ease);
+}
+
+.pill[data-on='true'] {
+  background: var(--bone);
+  border-color: var(--bone);
+  color: var(--ink-on-bone);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}

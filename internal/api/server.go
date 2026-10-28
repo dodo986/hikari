@@ -24,7 +24,7 @@ type Server struct {
 	mu      sync.Mutex
 	methods map[string]Handler
 	subs    map[*subscriber]struct{}
-	conns   map[net.Conn]struct{}
+	conns   map[peer]struct{}
 }
 
 func NewServer(log *slog.Logger) *Server {
@@ -35,7 +35,7 @@ func NewServer(log *slog.Logger) *Server {
 		log:     log,
 		methods: map[string]Handler{},
 		subs:    map[*subscriber]struct{}{},
-		conns:   map[net.Conn]struct{}{},
+		conns:   map[peer]struct{}{},
 	}
 	s.methods["events.subscribe"] = s.handleSubscribe
 	return s
@@ -98,13 +98,13 @@ func removeStaleSocket(path string) error {
 	return os.Remove(path)
 }
 
-func (s *Server) addConn(c net.Conn) {
+func (s *Server) addConn(c peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.conns[c] = struct{}{}
 }
 
-func (s *Server) removeConn(c net.Conn) {
+func (s *Server) removeConn(c peer) {
 	s.mu.Lock()
 	sub := (*subscriber)(nil)
 	for sc := range s.subs {
@@ -125,7 +125,7 @@ func (s *Server) removeConn(c net.Conn) {
 
 func (s *Server) closeAll() {
 	s.mu.Lock()
-	conns := make([]net.Conn, 0, len(s.conns))
+	conns := make([]peer, 0, len(s.conns))
 	for c := range s.conns {
 		conns = append(conns, c)
 	}
@@ -182,19 +182,21 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 	}
 }
 
-func (s *Server) reply(wmu *sync.Mutex, conn net.Conn, resp *Response) {
+func (s *Server) reply(wmu *sync.Mutex, conn peer, resp *Response) {
 	b, err := json.Marshal(resp)
 	if err != nil {
 		b = []byte(`{"jsonrpc":"2.0","error":{"code":-32003,"message":"reply marshal failed"}}`)
 	}
 	wmu.Lock()
 	defer wmu.Unlock()
-	_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	if nc, ok := conn.(net.Conn); ok {
+		_ = nc.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		defer nc.SetWriteDeadline(time.Time{})
+	}
 	_, _ = conn.Write(append(b, '\n'))
-	_ = conn.SetWriteDeadline(time.Time{})
 }
 
-func (s *Server) dispatch(ctx context.Context, conn net.Conn, req Request) *Response {
+func (s *Server) dispatch(ctx context.Context, conn peer, req Request) *Response {
 	s.mu.Lock()
 	h := s.methods[req.Method]
 	s.mu.Unlock()

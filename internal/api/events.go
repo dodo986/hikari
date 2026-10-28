@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"sync"
 )
 
 type subscriber struct {
-	conn   net.Conn
+	conn   peer
 	mu     sync.Mutex
 	topics map[string]bool
 	frames chan []byte
@@ -18,7 +17,7 @@ type subscriber struct {
 }
 
 func (s *Server) handleSubscribe(ctx context.Context, params json.RawMessage) (any, error) {
-	conn, ok := ctx.Value(connKey{}).(net.Conn)
+	conn, ok := ctx.Value(connKey{}).(peer)
 	if !ok {
 		return nil, errors.New("no connection in context")
 	}

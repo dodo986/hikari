@@ -1,0 +1,32 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.label {
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+  min-width: 72px;
+}
+
+.field {
+  flex: 1;
+}
+
+.badges {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.progress {
+  font-size: var(--f-small);
+  color: var(--sun);
+}

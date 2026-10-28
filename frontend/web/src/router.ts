@@ -1,0 +1,48 @@
+export type PageName =
+  | 'library'
+  | 'store'
+  | 'mods'
+  | 'downloads'
+  | 'accounts'
+  | 'settings'
+  | 'about'
+  | 'game'
+
+export interface Route {
+  page: PageName
+  store?: string
+  id?: string
+  game?: string
+}
+
+const PAGES: PageName[] = ['library', 'store', 'mods', 'downloads', 'accounts', 'settings', 'about']
+
+// A pasted hash can carry a broken escape; it must not blank the window.
+const decode = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+export function parseRoute(hash: string): Route {
+  const clean = hash.replace(/^#\/?/, '')
+  const [head = '', store, id] = clean.split('/')
+  if (head === 'game' && store && id) return { page: 'game', store, id: decode(id) }
+  if (head === 'mods' && store) return { page: 'mods', game: decode(store) }
+  const page = PAGES.find((name) => name === head)
+  return { page: page ?? 'library' }
+}
+
+export function href(route: Route): string {
+  if (route.page === 'game' && route.store && route.id) {
+    return `#/game/${route.store}/${encodeURIComponent(route.id)}`
+  }
+  if (route.page === 'mods' && route.game) return `#/mods/${encodeURIComponent(route.game)}`
+  return `#/${route.page}`
+}
+
+export function navigate(route: Route): void {
+  window.location.hash = href(route)
+}

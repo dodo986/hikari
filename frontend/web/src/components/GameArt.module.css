@@ -1,0 +1,69 @@
+.frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--paper-lift);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 18%;
+  display: block;
+  opacity: 0;
+  transition: opacity var(--swap) var(--ease);
+}
+
+.shown {
+  opacity: 1;
+}
+
+.wide {
+  object-fit: contain;
+  object-position: center;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: linear-gradient(180deg, var(--tint-16), var(--paper-lift));
+  text-align: center;
+}
+
+.initial {
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--ink-faint);
+  line-height: 1;
+}
+
+.placeholderTitle {
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.logo {
+  position: absolute;
+  inset-inline-start: var(--s3);
+  bottom: var(--s3);
+  max-width: calc(100% - var(--s6));
+  max-height: 34%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgb(0 0 0 / 60%));
+}

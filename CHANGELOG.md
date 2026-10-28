@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+- The frontend is now React and TypeScript inside a native window, in
+  `frontend/`. It speaks to the same daemon over a loopback websocket with a
+  per-run token, keeps secrets in the system keyring, and covers every screen
+  the old QML window had: library, store, game detail with settings and launch
+  sheets, downloads, accounts, settings, about and mods.
+- The daemon can serve artwork over the same token-checked listener, with an
+  optional width-bounded copy so a 260 pixel tile does not decode a 600 pixel
+  cover.
+- SteamGridDB keys, and every other secret, move out of `settings.toml` into the
+  system keyring, with a `0600` fallback file and write-only RPC methods.
+- The window speaks the Nexus protocol: `nxm://` links from a browser open it on
+  the game they belong to and start the download, and the mods game view is a
+  route so a link can be bookmarked.
+- Pages fill a maximised window instead of stopping at a 1000 pixel column, and
+  the engine cards split into two columns the way the QML settings page does.
+- The library grid animates a reorder: sorting or filtering slides the tiles to
+  their new cells and fades the ones that left, instead of snapping.
+- The layout mirrors under a right to left document: margins, insets, borders
+  and the toggle travel are logical properties, and count phrases are isolated
+  so they keep their reading order.
+- The Quickshell window is gone. One UI ships now, the React one: the tarball,
+  the AppImage and the package all carry `hikari-ui`, `hikari-app` starts it,
+  and the QML tree, its dev scripts and its QML tests left the repository.
+- Steam games show their artwork again: art that lives in Steam's own
+  `librarycache` is copied into Hikari's cache, so the window can serve it.
+- The window stops opening a second event handler, notices a token that no
+  longer works instead of retrying forever, and keeps the library, browse and
+  settings screens from refetching in a loop.
+- Fixes carried by the rewrite: DLC selection before an install, the favourite
+  toggle, a repair that kept saying `Repairing...`, the launch command sheet
+  showing nothing while it loaded, mods health separated from mods repair,
+  browsing that replaced a page instead of appending, and a mods game with no
+  folder now offering to set one.
+
 ## 0.8.3
 
 - An AppImage now updates itself without squashfs-tools: the new build is

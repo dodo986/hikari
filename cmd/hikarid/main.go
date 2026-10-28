@@ -38,6 +38,7 @@ func main() {
 	socket := flag.String("socket", "", "socket path (default $XDG_RUNTIME_DIR/hikari.sock)")
 	verbose := flag.Bool("v", false, "debug logging")
 	demo := flag.Bool("demo", false, "fake in-memory library, simulated installs and launches (UI development)")
+	noWS := flag.Bool("no-ws", false, "do not serve the local websocket the browser UI uses")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -80,6 +81,16 @@ func main() {
 	d.commit = commit
 	srv := api.NewServer(log)
 	d.register(srv, ctx)
+
+	if !*noWS {
+		ep, err := startWS(ctx, log, srv, d.art)
+		if err != nil {
+			log.Error("hikarid cannot serve the local websocket", "err", err)
+			os.Exit(1)
+		}
+		defer removeEndpoint()
+		log.Info("hikarid websocket ready", "url", ep.URL, "token_file", config.WSEndpointPath())
+	}
 
 	log.Info("hikarid starting", "version", version, "commit", commit, "socket", path)
 	if err := srv.ListenAndServe(ctx, path); err != nil {

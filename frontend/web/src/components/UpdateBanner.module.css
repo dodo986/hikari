@@ -1,0 +1,36 @@
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s4);
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--tint-5);
+}
+
+.head {
+  margin: 0;
+  font-size: var(--f-small);
+  color: var(--ink);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--f-small);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version {
+  font-size: var(--f-tiny);
+  color: var(--ink-faint);
+}

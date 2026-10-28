@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strings"
+	"time"
+
 	"hikari/internal/api"
 	"hikari/internal/art"
 	"hikari/internal/library"
-	"time"
 )
 
 func (d *daemon) registerLibrary(srv *api.Server) {
@@ -85,15 +88,39 @@ func (d *daemon) decorateArtwork(games []library.Game) {
 	}
 }
 
-func (d *daemon) cachedPath(url string) string {
-	if url == "" {
+// cachedPath is the local copy of a piece of artwork. Providers hand over either
+// a remote URL or a file they found on disk, which is what Steam does with its
+// librarycache, and a window cannot read the second kind: both are copied into
+// the cache so one path shape reaches the clients.
+func (d *daemon) cachedPath(source string) string {
+	if source == "" {
 		return ""
 	}
-	p := d.art.PathFor(url)
-	if d.art.Has(url) {
-		return p
+	if isRemoteArt(source) {
+		if d.art.Has(source) {
+			return d.art.PathFor(source)
+		}
+		return ""
 	}
-	return ""
+	return d.seedLocalArt(source)
+}
+
+func (d *daemon) seedLocalArt(source string) string {
+	info, err := os.Stat(source)
+	if err != nil || info.IsDir() {
+		return ""
+	}
+	file, err := os.Open(source)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	path, err := d.art.SeedFile(source, file)
+	if err != nil {
+		d.log.Debug("local artwork could not be cached", "path", source, "err", err)
+		return ""
+	}
+	return path
 }
 
 func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
@@ -140,11 +167,17 @@ func (d *daemon) fetchMissingArtwork(srv *api.Server, games []library.Game) {
 	}
 }
 
+// anyMissing only asks about the artwork that has to travel over the network.
+// A provider path is local by definition, so there is nothing to fetch for it.
 func anyMissing(c *art.Cache, a library.Artwork) bool {
 	for _, u := range []string{a.Cover, a.Square, a.Logo, a.Icon} {
-		if u != "" && !c.Has(u) {
+		if isRemoteArt(u) && !c.Has(u) {
 			return true
 		}
 	}
 	return false
+}
+
+func isRemoteArt(source string) bool {
+	return strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://")
 }

@@ -1,0 +1,28 @@
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 6px 0;
+  border-bottom: var(--border) solid var(--line-soft);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  flex: 0 0 104px;
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+}
+
+.value {
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+  word-break: break-all;
+}

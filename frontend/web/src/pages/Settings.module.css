@@ -1,0 +1,68 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: var(--s5) var(--s5) 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: 0 0 var(--s7);
+  overflow-y: auto;
+  width: 100%;
+}
+
+.body > * {
+  flex: 0 0 auto;
+}
+
+.daemon {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+}
+
+.stack,
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.right {
+  align-items: flex-end;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.value {
+  font-size: var(--f-row);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.faint,
+.mark {
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+}
+
+.mark {
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-mark);
+}
+
+.socket {
+  max-width: 380px;
+  font-family: var(--font-mono);
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,24 @@
+.input {
+  height: var(--field-h-sm);
+  padding: 0 9px;
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  transition: border-color var(--snap) var(--ease);
+}
+
+.input::placeholder {
+  color: var(--ink-faint);
+}
+
+.input:hover {
+  border-color: var(--line-strong);
+}
+
+.input:focus-visible {
+  border: 2px solid var(--ink);
+  outline: none;
+}

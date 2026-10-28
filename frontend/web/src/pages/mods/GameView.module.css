@@ -1,0 +1,67 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 60px;
+  padding: 0 var(--s5);
+  border-bottom: var(--border) solid var(--line-soft);
+  flex: 0 0 auto;
+}
+
+.crumb {
+  font-size: var(--f-micro);
+  letter-spacing: var(--track-label);
+  color: var(--ink-faint);
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s4) var(--s5) var(--s5);
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.account {
+  font-size: var(--f-tiny);
+  color: var(--ink-faint);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: var(--border) solid var(--color-alert, var(--alert));
+  border-radius: var(--radius);
+  background: var(--tint-5);
+}
+
+.errorText {
+  flex: 1;
+  font-size: var(--f-small);
+  color: var(--ink);
+}

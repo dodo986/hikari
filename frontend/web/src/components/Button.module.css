@@ -1,0 +1,85 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  height: var(--ctl-h);
+  padding: 0 15px;
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--f-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    background var(--snap) var(--ease-snap),
+    border-color var(--snap) var(--ease-snap),
+    color var(--snap) var(--ease-snap),
+    opacity var(--snap) linear;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--tint-10);
+  border-color: var(--line-strong);
+}
+
+.button:active:not(:disabled) {
+  background: var(--tint-16);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--bone);
+  border-color: var(--bone);
+  color: var(--ink-on-bone);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--bone);
+  border-color: var(--bone);
+  opacity: 0.88;
+}
+
+.quiet {
+  border-color: transparent;
+  color: var(--ink-dim);
+}
+
+.quiet:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.danger {
+  color: var(--alert);
+  border-color: color-mix(in srgb, var(--alert) 55%, transparent);
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--alert) 14%, transparent);
+  border-color: var(--alert);
+}
+
+.small {
+  height: var(--ctl-h-sm);
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.small svg {
+  width: 12px;
+  height: 12px;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}

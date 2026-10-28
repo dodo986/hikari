@@ -1,0 +1,190 @@
+.rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  width: var(--rail-w);
+  flex: 0 0 var(--rail-w);
+  padding: var(--s4);
+  background: var(--paper-lift);
+  border-inline-end: var(--border) solid var(--line-soft);
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-inline-start: var(--s2);
+  margin-bottom: var(--s4);
+}
+
+.brandName {
+  font-family: var(--font-display);
+  font-size: var(--f-body);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  color: var(--ink);
+}
+
+.brandMark {
+  font-family: var(--font-ui);
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-mark);
+  color: var(--ink-faint);
+}
+
+.nav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.fold {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: calc(var(--f-tiny) + var(--s3) * 2);
+}
+
+.foldRule {
+  flex: 1;
+  height: var(--border);
+  background: var(--line-soft);
+}
+
+.foldLabel {
+  font-family: var(--font-mono);
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-label);
+  color: var(--ink-muted);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 36px;
+  padding: 0 var(--s3);
+  border-radius: var(--radius-pill);
+  color: var(--ink-dim);
+  text-decoration: none;
+  transition: background var(--snap) var(--ease), color var(--snap) var(--ease);
+}
+
+.item:hover {
+  background: var(--tint-10);
+}
+
+.item[data-active='true'] {
+  background: var(--tint-16);
+  color: var(--ink);
+}
+
+.item:focus-visible {
+  outline: var(--border) solid var(--bone);
+  outline-offset: -1px;
+}
+
+.glyph {
+  width: 20px;
+  font-family: var(--font-icon);
+  font-size: var(--f-icon);
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  color: var(--ink-muted);
+  font-feature-settings: 'liga';
+  transition: color var(--snap) var(--ease);
+}
+
+.item[data-active='true'] .glyph {
+  color: var(--ink);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: var(--f-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item[data-active='true'] .label {
+  font-weight: 500;
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: var(--f-tiny);
+  color: var(--ink-faint);
+}
+
+.item[data-active='true'] .badge {
+  color: var(--ink-dim);
+}
+
+.marker {
+  position: absolute;
+  top: 0;
+  inset-inline-start: var(--s1);
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--sun);
+  opacity: 0;
+  pointer-events: none;
+  /* Travel is a transform: the rail does not relayout on every navigation. */
+  transition:
+    transform 260ms cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 120ms linear;
+}
+
+.marker[data-visible='true'] {
+  opacity: 1;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s3);
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--tint-5);
+  text-decoration: none;
+}
+
+.cardMark {
+  font-family: var(--font-ui);
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-mark);
+  color: var(--ink-faint);
+}
+
+.cardValue {
+  /* A count and its word stay in reading order inside a mirrored layout. */
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-ui);
+  font-size: var(--f-row);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.cardNote {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-ui);
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

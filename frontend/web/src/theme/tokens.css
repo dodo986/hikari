@@ -1,0 +1,116 @@
+/* Ported from Ryoku.Ui Tokens.qml; the daemon palette overrides these at runtime. */
+
+@font-face {
+  font-family: 'Fraunces';
+  src: url('/fonts/Fraunces.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  --paper: #000000;
+  --paper-lift: #0a0a0a;
+  --light: 0;
+
+  --ink: #cdc4ba;
+  --ink-dim: #b0a9a0;
+  --ink-muted: color-mix(in srgb, var(--ink-dim) 88%, transparent);
+  --ink-faint: color-mix(in srgb, var(--ink-dim) 68%, transparent);
+
+  --bone: #cdc4ba;
+  --ink-on-bone: #000000;
+
+  --line: color-mix(in srgb, var(--ink) 26%, transparent);
+  --line-soft: color-mix(in srgb, var(--ink) 13%, transparent);
+  --line-strong: color-mix(in srgb, var(--ink) 42%, transparent);
+  --tint-5: color-mix(in srgb, var(--ink) 5%, transparent);
+  --tint-10: color-mix(in srgb, var(--ink) 10%, transparent);
+  --tint-16: color-mix(in srgb, var(--ink) 16%, transparent);
+
+  --sun: #e2342a;
+  --sun-deep: color-mix(in srgb, var(--sun) 70%, black);
+  --alert: #e2342a;
+
+  --font-display: 'Fraunces', serif;
+  --font-ui: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'SpaceMono Nerd Font', 'Noto Sans Mono', ui-monospace, monospace;
+  --font-icon: 'Material Symbols Rounded';
+  --font-jp: 'Noto Sans CJK JP', 'Noto Sans JP', sans-serif;
+  --f-icon: 26px;
+  --f-title: 32px;
+  --f-hero: 34px;
+  --f-value: 26px;
+  --f-row: 15px;
+  --f-body: 14px;
+  --f-small: 13px;
+  --f-micro: 11px;
+  --f-tiny: 9px;
+  --track-label: 1.4px;
+  --track-mark: 2.2px;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  --radius: 6px;
+  --radius-card: 8px;
+  --radius-pill: 999px;
+  --border: 1px;
+  --row-h: 48px;
+  --rail-w: 224px;
+  --ctl-h: 32px;
+  --ctl-h-sm: 24px;
+  --field-h-sm: 30px;
+
+  --snap: 90ms;
+  --move: 170ms;
+  --swap: 210ms;
+  --ease: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-snap: cubic-bezier(0.5, 1, 0.89, 1);
+  --dur-small: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.05, 0, 0.13, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --snap: 0ms;
+    --move: 0ms;
+    --swap: 0ms;
+    --dur-small: 0ms;
+  }
+}
+
+a:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}

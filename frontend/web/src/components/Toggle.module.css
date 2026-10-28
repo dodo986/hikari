@@ -1,0 +1,44 @@
+.track {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  padding: 0;
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--snap) var(--ease), border-color var(--snap) var(--ease);
+}
+
+.track[data-on='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.track:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.track:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}
+
+.knob {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition:
+    transform var(--move) var(--ease),
+    background var(--snap) var(--ease);
+}
+
+.track[data-on='true'] .knob {
+  transform: translateX(16px);
+  background: var(--ink-on-bone);
+}

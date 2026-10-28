@@ -80,7 +80,7 @@ never more than a couple of changes in a session before reporting.
    runs outside the shell, gets a small tool server that forwards to
    `hikarid` RPCs, and answers in the JobPanel or a dedicated page. No new
    process model in the launcher; the daemon stays the only writer.
-2. **In-shell agent.** The Quickshell UI grows a "Fix this" button next to a
+2. **In-window agent.** The window grows a "Fix this" button next to a
    problem, which runs one *playbook* with the agent choosing only from that
    playbook's tools. Smaller model, tighter scope, much easier to make safe.
 3. **Full agent later.** A long-lived session with the whole tool surface and

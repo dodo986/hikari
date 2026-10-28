@@ -77,15 +77,15 @@ func tgz(t *testing.T, entries map[string]string) string {
 
 func TestExtractTgzKeepsPathsInside(t *testing.T) {
 	file := tgz(t, map[string]string{
-		"hikarid":          "bin",
-		"quickshell/a.qml": "qml",
-		"../escape":        "nope",
+		"hikarid":               "bin",
+		"share/hikari/note.txt": "text",
+		"../escape":             "nope",
 	})
 	dest := t.TempDir()
 	if err := ExtractTgz(file, dest); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{"hikarid", "quickshell/a.qml", "escape"} {
+	for _, p := range []string{"hikarid", "share/hikari/note.txt", "escape"} {
 		if _, err := os.Stat(filepath.Join(dest, p)); err != nil {
 			t.Fatalf("%s: %v", p, err)
 		}

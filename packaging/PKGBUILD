@@ -2,15 +2,13 @@
 pkgname=hikari
 pkgver=0.8.3
 pkgrel=1
-pkgdesc="Game launcher: daemon, CLI and Quickshell UI (legendary, gogdl, nile, steam, umu)"
+pkgdesc="Game launcher: daemon, CLI and the React window (legendary, gogdl, nile, steam, umu)"
 arch=('x86_64')
 url="https://github.com/dodo986"
 license=('GPL-3.0-or-later')
-depends=()
-makedepends=('go' 'rust' 'cc')
-optdepends=('quickshell: the UI runtime (qs)'
-            'ryoku-desktop: the Ryoku.Ui QML module the UI is themed with'
-            'umu-launcher: run Proton games through umu'
+depends=('gtk3' 'webkit2gtk-4.1')
+makedepends=('go' 'rust' 'cc' 'nodejs' 'npm' 'gtk3' 'webkit2gtk-4.1')
+optdepends=('umu-launcher: run Proton games through umu'
             'wine: run plain Wine games'
             'legendary: Epic Games store engine'
             'gogdl: GOG store engine'
@@ -26,6 +24,8 @@ build() {
   CGO_ENABLED=0 go build -trimpath -mod=vendor -ldflags "-X main.version=$pkgver -X main.commit=$(git rev-parse HEAD 2>/dev/null || true)" -o "$srcdir/hikarid" ./cmd/hikarid
   CGO_ENABLED=0 go build -trimpath -mod=vendor -ldflags "-X main.version=$pkgver -X main.commit=$(git rev-parse HEAD 2>/dev/null || true)" -o "$srcdir/hikari" ./cmd/hikari
   "$_repo/scripts/build-backend.sh" "$srcdir/amethyst_filegraph.abi3.so"
+  # The window: typecheck, bundle, embed, link against WebKitGTK 4.1.
+  "$_repo/scripts/build-window.sh" "$srcdir/hikari-ui"
 }
 package() {
   install -Dm755 "$srcdir/hikarid" "$pkgdir/usr/bin/hikarid"
@@ -34,14 +34,14 @@ package() {
     "$pkgdir/usr/lib/systemd/user/hikarid.service"
   install -Dm755 "$_repo/scripts/hikari-app" "$pkgdir/usr/bin/hikari-app"
   install -Dm755 "$_repo/scripts/hikari-update" "$pkgdir/usr/bin/hikari-update"
+  install -Dm755 "$srcdir/hikari-ui" "$pkgdir/usr/lib/hikari/hikari-ui"
+  install -Dm755 "$_repo/packaging/hikari-ui.sh" "$pkgdir/usr/bin/hikari-ui"
   install -Dm644 "$_repo/packaging/hikari.desktop" \
     "$pkgdir/usr/share/applications/hikari.desktop"
   install -Dm644 "$_repo/packaging/hikari.svg" \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/hikari.svg"
   install -Dm755 "$srcdir/amethyst_filegraph.abi3.so" \
     "$pkgdir/usr/lib/hikari/amethyst_filegraph.abi3.so"
-  install -d "$pkgdir/etc/xdg/quickshell/hikari"
-  cp -r "$_repo"/quickshell/. "$pkgdir/etc/xdg/quickshell/hikari/"
   install -Dm644 "$_repo/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 "$_repo/NOTICE" "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
 }

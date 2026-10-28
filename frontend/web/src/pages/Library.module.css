@@ -1,0 +1,95 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  height: 100%;
+  padding: var(--s5) var(--s5) var(--s6);
+  overflow: hidden;
+}
+
+.search {
+  width: 280px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  align-items: center;
+}
+
+.chip {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-flex;
+  align-items: center;
+  height: var(--ctl-h-sm);
+  padding: 0 10px;
+  border: var(--border) solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  transition:
+    background var(--snap) var(--ease),
+    color var(--snap) var(--ease),
+    border-color var(--snap) var(--ease);
+}
+
+.chip:hover {
+  background: var(--tint-5);
+  color: var(--ink);
+}
+
+.chipActive {
+  border-color: var(--bone);
+  background: var(--bone);
+  color: var(--ink-on-bone);
+}
+
+.chipCount {
+  margin-inline-start: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--f-tiny);
+  color: var(--ink-faint);
+}
+
+.chipActive .chipCount {
+  color: color-mix(in srgb, var(--ink-on-bone) 70%, transparent);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.sortLabel {
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+}
+
+.rule {
+  height: var(--border);
+  margin: 0;
+  border: 0;
+  background: var(--line-soft);
+}
+
+.gridWrap {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--s2));
+  padding: 0 var(--s2) var(--s6);
+}
+
+.note {
+  font-size: var(--f-micro);
+  color: var(--ink-faint);
+}
+
+.error {
+  direction: ltr;
+  unicode-bidi: isolate;
+  color: var(--alert);
+}

@@ -1,0 +1,44 @@
+.panel {
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius-card);
+  background: var(--paper-lift);
+  padding: var(--s5);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+
+.text {
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--f-row);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.subtitle {
+  margin: var(--s1) 0 0;
+  font-size: var(--f-small);
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
+
+.body {
+  margin-top: var(--s3);
+}

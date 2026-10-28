@@ -1,0 +1,71 @@
+.dialog:not([open]) {
+  display: none;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - var(--s7)));
+  max-height: min(84vh, 900px);
+  padding: 0;
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper-lift);
+  color: var(--ink);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 55%);
+}
+
+.dialog::backdrop {
+  /* QML dims the page under a sheet; a blurred backdrop costs a full repaint. */
+  background: rgb(0 0 0 / 66%);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s4) var(--s5);
+  border-bottom: var(--border) solid var(--line-soft);
+  background: var(--paper-lift);
+  flex: 0 0 auto;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--f-value);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+  padding: var(--s3) var(--s5);
+  border-top: var(--border) solid var(--line-soft);
+  background: var(--paper-lift);
+  flex: 0 0 auto;
+}
+
+.body {
+  padding: var(--s5);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dialog[open] {
+    animation: sheet-in var(--dur-small) var(--ease-emphasized);
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+}

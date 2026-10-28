@@ -25,8 +25,7 @@ if [ "$("$appdir/usr/bin/hikarid" --version | awk '{print $2}')" != "$version" ]
 	exit 1
 fi
 
-cp -r "$here/quickshell" "$appdir/usr/share/hikari/quickshell"
-rm -rf "$appdir/usr/share/hikari/quickshell/tests" "$appdir/usr/share/hikari/quickshell/README.md"
+"$here/scripts/build-window.sh" "$appdir/usr/bin/hikari-ui"
 install -m755 "$here/packaging/appimage/AppRun" "$appdir/AppRun"
 install -m644 "$here/packaging/hikari-appimage.desktop" "$appdir/hikari.desktop"
 install -m644 "$here/packaging/hikari-appimage.desktop" "$appdir/usr/share/applications/hikari.desktop"
