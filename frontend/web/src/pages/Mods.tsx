@@ -12,7 +12,7 @@ import { modsConfigure, modsDownloads, modsInstallArchive, modsInstallFile, mods
 import { refreshMods } from '../daemon/modsLink'
 import { useDaemon } from '../daemon/store'
 import type { ModFile, ModsGame } from '../daemon/types'
-import { pickFolder } from '../host/bridge'
+import { openUrl, pickFolder } from '../host/bridge'
 import { useT } from '../i18n/t'
 import { GameList, profileOf } from './mods/GameList'
 import { GameView } from './mods/GameView'
@@ -73,7 +73,7 @@ export function Mods() {
     const timer = window.setInterval(() => {
       ticks += 1
       void modsDownloads({ game: game.id, profile: '' }, waiting.modId, waiting.fileId)
-        .then((result) => {
+        .then(async (result) => {
           if (!result.found) {
             if (ticks >= 300) {
               window.clearInterval(timer)
@@ -84,11 +84,12 @@ export function Mods() {
           }
           window.clearInterval(timer)
           setWaiting(null)
-          return modsInstallArchive({ game: game.id, profile: profileOf(game, profiles) }, result.found)
+          await modsInstallArchive({ game: game.id, profile: profileOf(game, profiles) }, result.found)
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           window.clearInterval(timer)
           setWaiting(null)
+          fail(errorMessage(error))
         })
     }, 3000)
     return () => window.clearInterval(timer)
@@ -104,7 +105,7 @@ export function Mods() {
         fail(t('This game has no Nexus domain, so the file page cannot be opened.'))
         return
       }
-      window.open(nexusFilePage(domain, files.modId, file.file_id), '_blank', 'noopener')
+      void openUrl(nexusFilePage(domain, files.modId, file.file_id))
       setWaiting({ modId: files.modId, fileId: file.file_id, label: file.name })
       return
     }

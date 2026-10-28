@@ -34,11 +34,11 @@
   border-radius: 50%;
   background: var(--ink);
   transition:
-    margin-inline-start var(--move) var(--ease),
+    transform var(--move) var(--ease),
     background var(--snap) var(--ease);
 }
 
 .track[data-on='true'] .knob {
-  margin-inline-start: 18px;
+  transform: translateX(16px);
   background: var(--ink-on-bone);
 }

@@ -15,6 +15,7 @@ interface SheetProps {
 // The native dialog gives focus trapping and escape for free.
 export function Sheet({ open, title, closeLabel, onClose, children, footer }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
+  const pressed = useRef<Element | null>(null)
 
   useEffect(() => {
     const dialog = ref.current
@@ -29,7 +30,11 @@ export function Sheet({ open, title, closeLabel, onClose, children, footer }: Sh
       className={styles.dialog}
       onClose={onClose}
       onClick={(event) => {
-        if (event.target === ref.current) onClose()
+        // A drag that ends on the backdrop keeps its selection instead of closing.
+        if (event.target === ref.current && pressed.current === ref.current) onClose()
+      }}
+      onMouseDown={(event) => {
+        pressed.current = event.target as Element
       }}
       aria-label={title}
     >

@@ -43,7 +43,7 @@
 .content {
   position: absolute;
   inset-inline-start: var(--s5);
-  inset-inline-end: 204px;
+  inset-inline-end: var(--s5);
   bottom: var(--s5);
   display: flex;
   flex-direction: column;
@@ -96,6 +96,10 @@
 @media (min-width: 900px) {
   .square {
     display: block;
+  }
+
+  .content {
+    inset-inline-end: 204px;
   }
 }
 

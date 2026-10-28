@@ -28,6 +28,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
   const [latest, setLatest] = useState('')
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState('')
+  const [busy, setBusy] = useState(false)
   const [tag, setTag] = useState('')
   const [hook, setHook] = useState(HOOKS[0]!)
   const [upscaler, setUpscaler] = useState('auto')
@@ -47,6 +48,8 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
   }, [open, latest])
 
   const install = async (advanced: boolean) => {
+    if (busy) return
+    setBusy(true)
     try {
       await optiInstall(
         key,
@@ -62,18 +65,25 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
       )
       onNote(t('OptiScaler installing'))
       setPhase('starting')
+      onChanged()
     } catch (error) {
       onFailed(errorMessage(error))
+    } finally {
+      setBusy(false)
     }
   }
 
   const remove = async () => {
+    if (busy) return
+    setBusy(true)
     try {
       await optiRemove(key)
       onNote('')
       onChanged()
     } catch (error) {
       onFailed(errorMessage(error))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -103,7 +113,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
 
         <div className={styles.actions}>
           {on ? (
-            <Button size="small" onClick={() => void remove()}>
+            <Button size="small" busy={busy} onClick={() => void remove()}>
               {t('Remove')}
             </Button>
           ) : (
@@ -111,6 +121,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
               size="small"
               variant="primary"
               disabled={!installed}
+              busy={busy}
               onClick={() => void install(false)}
             >
               {t('Enable OptiScaler')}
@@ -179,6 +190,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
               size="small"
               variant="primary"
               disabled={!installed}
+              busy={busy}
               onClick={() => void install(true)}
             >
               {t('Install with these options')}

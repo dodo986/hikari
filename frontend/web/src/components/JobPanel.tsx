@@ -2,15 +2,11 @@ import { Button } from './Button'
 import { Panel } from './Panel'
 import { useDaemon } from '../daemon/store'
 import { modsCancel } from '../daemon/mods'
+import { openUrl } from '../host/bridge'
 import { useT } from '../i18n/t'
 import styles from './JobPanel.module.css'
 
-interface JobPanelProps {
-  actionLabel?: string
-  onAction?: () => void
-}
-
-export function JobPanel({ actionLabel, onAction }: JobPanelProps) {
+export function JobPanel() {
   const t = useT()
   const job = useDaemon((state) => state.mods.job)
   const log = useDaemon((state) => state.mods.log)
@@ -23,19 +19,15 @@ export function JobPanel({ actionLabel, onAction }: JobPanelProps) {
   return (
     <Panel title={title} subtitle={job?.message ?? ''}>
       <div className={styles.track} aria-hidden="true">
-        <div className={styles.fill} style={{ width: `${ratio * 100}%` }} />
+        <div className={styles.fill} style={{ transform: `scaleX(${ratio})` }} />
       </div>
       <div className={styles.row}>
         <span className={styles.tail} title={last}>
           {last}
         </span>
         {authUrl ? (
-          <Button size="small" onClick={() => window.open(authUrl, '_blank', 'noopener')}>
+          <Button size="small" onClick={() => void openUrl(authUrl)}>
             {t('Open the Nexus page')}
-          </Button>
-        ) : actionLabel && onAction ? (
-          <Button size="small" onClick={onAction}>
-            {actionLabel}
           </Button>
         ) : null}
         <Button size="small" onClick={() => void modsCancel()}>

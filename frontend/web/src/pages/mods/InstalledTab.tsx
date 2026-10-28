@@ -69,7 +69,8 @@ export function InstalledTab({
   }
 
   const repair = async () => {
-    setChecking('health')
+    if (checking) return
+    setChecking('repair')
     try {
       const result = await modsRepair(target)
       if (!result.job) onNote(result.detail || t('Nothing to repair'))
@@ -107,7 +108,6 @@ export function InstalledTab({
 
   const toggle = async (name: string) => {
     if (busy) return
-    setPending('')
     try {
       await modsToggle(target, name)
       load()
@@ -135,7 +135,7 @@ export function InstalledTab({
         <Button size="small" onClick={() => void checkHealth()} busy={checking === 'health'}>
           {t('Check health')}
         </Button>
-        <Button size="small" onClick={() => void repair()}>
+        <Button size="small" busy={checking === 'repair'} onClick={() => void repair()}>
           {t('Repair mods')}
         </Button>
         <Button size="small" busy={checking === 'missing'} onClick={() => void checkMissing()}>
@@ -174,7 +174,15 @@ export function InstalledTab({
 
       <div className={styles.rows}>
         {(installed?.mods ?? []).map((mod, index) => (
-          <div className={styles.row} key={mod.name} onMouseLeave={() => setPending('')}>
+          <div
+            className={styles.row}
+            key={mod.name}
+            onMouseLeave={() => setPending('')}
+            onBlur={() => setPending('')}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setPending('')
+            }}
+          >
             <button
               type="button"
               className={styles.toggle}
@@ -199,7 +207,7 @@ export function InstalledTab({
                 setPending('')
                 void modsRemove(target, mod.name)
                   .then(load)
-                  .catch((error: Error) => onFailed(error.message))
+                  .catch((error: unknown) => onFailed(errorMessage(error)))
               }}
             >
               {pending === mod.name ? t('Remove?') : t('Uninstall')}

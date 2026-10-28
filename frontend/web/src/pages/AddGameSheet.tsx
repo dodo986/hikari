@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { rpc } from '../daemon/link'
+import { refreshLibrary, rpc } from '../daemon/link'
 import { searchArtwork } from '../daemon/api'
-import { refreshLibrary } from '../daemon/link'
+import { pickFile } from '../host/bridge'
 import { useT } from '../i18n/t'
 import { Button } from '../components/Button'
 import { Sheet } from '../components/Sheet'
@@ -28,6 +28,7 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
   const [note, setNote] = useState('')
   const [failed, setFailed] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const reset = () => {
     setTitle('')
@@ -66,7 +67,7 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
 
   const browse = async () => {
     try {
-      const picked = await window.hikari?.pickFile(t('All files (*)'))
+      const picked = await pickFile(t('All files (*)'))
       if (picked) setExecutable(picked)
     } catch (error) {
       setNote(errorMessage(error))
@@ -75,11 +76,13 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
   }
 
   const submit = async () => {
+    if (adding) return
     if (title.trim() === '' || executable.trim() === '') {
       setNote(t('A title and an absolute executable path are required'))
       setFailed(true)
       return
     }
+    setAdding(true)
     try {
       await rpc.call('game.add_local', {
         title: title.trim(),
@@ -92,6 +95,8 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
     } catch (error) {
       setNote(errorMessage(error))
       setFailed(true)
+    } finally {
+      setAdding(false)
     }
   }
 
@@ -108,7 +113,7 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
             <Button variant="quiet" onClick={close}>
               {t('Cancel')}
             </Button>
-            <Button variant="primary" onClick={() => void submit()}>
+            <Button variant="primary" busy={adding} onClick={() => void submit()}>
               {t('Add to library')}
             </Button>
           </span>
@@ -125,14 +130,16 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
             className={styles.input}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            autoFocus
           />
         </div>
 
         <div className={styles.field}>
-          <span className={styles.label}>{t('Executable')}</span>
+          <label className={styles.label} htmlFor="add-exe">
+            {t('Executable')}
+          </label>
           <div className={styles.rowFields}>
             <input
+              id="add-exe"
               className={styles.input}
               value={executable}
               onChange={(event) => setExecutable(event.target.value)}
@@ -161,9 +168,12 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
         </div>
 
         <div className={styles.field}>
-          <span className={styles.label}>{t('Cover')}</span>
+          <label className={styles.label} htmlFor="add-cover">
+            {t('Cover')}
+          </label>
           <div className={styles.rowFields}>
             <input
+              id="add-cover"
               className={styles.input}
               value={cover}
               onChange={(event) => setCover(event.target.value)}

@@ -9,7 +9,9 @@
   height: 100%;
   border-radius: 3px;
   background: var(--sun);
-  transition: width 400ms var(--ease);
+  width: 100%;
+  transform-origin: inline-start;
+  transition: transform 400ms var(--ease);
 }
 
 .row {

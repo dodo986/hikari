@@ -90,7 +90,9 @@
 .progressFill {
   height: 100%;
   background: var(--sun);
-  transition: width var(--move) var(--ease);
+  width: 100%;
+  transform-origin: inline-start;
+  transition: transform var(--move) var(--ease);
 }
 
 .title {

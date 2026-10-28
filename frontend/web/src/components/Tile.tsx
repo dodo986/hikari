@@ -70,7 +70,7 @@ export const Tile = memo(function Tile({
         )}
         {progress != null ? (
           <div className={styles.progress}>
-            <div className={styles.progressFill} style={{ width: `${Math.min(100, Math.max(3, progress))}%` }} />
+            <div className={styles.progressFill} style={{ transform: `scaleX(${Math.min(1, Math.max(0.03, progress / 100))})` }} />
           </div>
         ) : null}
       </div>

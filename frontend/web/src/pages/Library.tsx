@@ -17,7 +17,7 @@ const CHIPS: { key: string; label: string }[] = [
   { key: 'gog', label: 'GOG' },
   { key: 'amazon', label: 'Amazon' },
   { key: 'steam', label: 'Steam' },
-  { key: 'heroic', label: 'From Heroic' },
+  { key: 'heroic-import', label: 'From Heroic' },
   { key: 'local', label: 'Local' },
 ]
 
@@ -27,7 +27,9 @@ function matches(game: Game, query: string, store: string, storeMode: boolean): 
   if (storeMode ? game.installed === true : game.installed !== true) return false
   if (store !== 'all') {
     const source = game.source && SOURCES.has(game.source) ? game.source : game.store
-    if (source !== store) return false
+    // A heroic import keeps its store, so the chip is an or on both fields.
+    const hit = store === 'heroic-import' ? game.source === store : source === store
+    if (!hit) return false
   }
   if (query.length > 0 && !game.title.toLowerCase().includes(query.toLowerCase())) return false
   return true
@@ -70,6 +72,11 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
       return a.title.localeCompare(b.title)
     })
   }, [games, query, store, storeMode, sortBy, running])
+
+  const order = useMemo(
+    () => new Map(shown.map((game, index) => [gameKey(game.store, game.id), index])),
+    [shown],
+  )
 
   const openers = useMemo(() => {
     const map = new Map<string, () => void>()
@@ -194,7 +201,7 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
               if (!open) return null
               return (
                 <Tile
-                  index={shown.indexOf(game)}
+                  index={order.get(key) ?? 0}
                   game={game}
                   running={Boolean(running[key])}
                   progress={installs[key]?.percent ?? null}

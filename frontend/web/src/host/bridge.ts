@@ -45,18 +45,20 @@ function host(): HikariHost | undefined {
 
 export const hasHost = (): boolean => typeof host() !== 'undefined'
 
-export async function pickFile(label: string): Promise<string | null> {
-  const bound = host()
-  if (bound) return bound.pickFile(label)
+// A plain browser has no native dialog, so the path is typed instead.
+function manualPath(label: string): string | null {
   const typed = window.prompt(label)
   return typed && typed.trim() !== '' ? typed.trim() : null
 }
 
+export async function pickFile(label: string): Promise<string | null> {
+  const bound = host()
+  return bound ? bound.pickFile(label) : manualPath(label)
+}
+
 export async function pickFolder(label: string): Promise<string | null> {
   const bound = host()
-  if (bound) return bound.pickFolder(label)
-  const typed = window.prompt(label)
-  return typed && typed.trim() !== '' ? typed.trim() : null
+  return bound ? bound.pickFolder(label) : manualPath(label)
 }
 
 export async function openUrl(url: string): Promise<void> {

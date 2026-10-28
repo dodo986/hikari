@@ -124,7 +124,7 @@ export function Downloads() {
                     aria-valuemax={100}
                     aria-valuenow={percent ?? 0}
                   >
-                    <span className={styles.fill} style={{ width: `${percent ?? 0}%` }} />
+                    <span className={styles.fill} style={{ transform: `scaleX(${(percent ?? 0) / 100})` }} />
                   </span>
                 )}
                 <span className={styles.meta}>{meta}</span>

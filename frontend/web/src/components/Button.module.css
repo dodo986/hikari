@@ -84,6 +84,6 @@
 }
 
 .button:focus-visible {
-  outline: none;
-  border-color: var(--bone);
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
 }
