@@ -12,7 +12,7 @@ import {
   syncSaves,
   wineReleases,
   wineVersions,
-} from '../daemon/detail'
+} from '../daemon/api'
 import type { Game, GameSettings, LaunchOption, WineVersion } from '../daemon/types'
 import { pickFile } from '../host/bridge'
 import { useT } from '../i18n/t'

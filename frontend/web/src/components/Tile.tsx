@@ -16,8 +16,7 @@ interface TileProps {
   onOpen: () => void
 }
 
-// The grid keeps one tile per game across reflows, and install progress repaints
-// one of them per tick, so the props stay shallow comparable.
+// Install progress repaints one tile per tick, so the props stay comparable.
 export const Tile = memo(function Tile({
   game,
   running,

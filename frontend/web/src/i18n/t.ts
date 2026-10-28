@@ -28,7 +28,6 @@ export function useT(): (text: string, values?: Replacements) => string {
   return useCallback((text: string, values?: Replacements) => t(text, values), [])
 }
 
-// Re-renders every subscriber when the language changes.
 const listeners = new Set<() => void>()
 
 export function onLanguageChange(listener: () => void): () => void {

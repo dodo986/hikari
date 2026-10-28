@@ -12,7 +12,6 @@ import type {
   LibraryListResult,
 } from './types'
 
-/** The one client the app talks through. */
 export const rpc = new RpcClient(async () => {
   try {
     const config = await loadEndpoint()

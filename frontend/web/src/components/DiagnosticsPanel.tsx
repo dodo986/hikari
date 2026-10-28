@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from './Button'
 import { Panel } from './Panel'
-import { report, tailLog } from '../daemon/detail'
+import { report, tailLog } from '../daemon/api'
 import { useDaemon } from '../daemon/store'
 import { useT } from '../i18n/t'
 import { middle } from '../lib/text'

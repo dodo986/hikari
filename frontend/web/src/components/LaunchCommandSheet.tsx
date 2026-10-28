@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Sheet } from './Sheet'
-import { dryRun } from '../daemon/detail'
-import type { Key, LaunchPlan } from '../daemon/detail'
+import { dryRun } from '../daemon/api'
+import type { Key, LaunchPlan } from '../daemon/api'
 import { useT } from '../i18n/t'
 import styles from './TextSheet.module.css'
 

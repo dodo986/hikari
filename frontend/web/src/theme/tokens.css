@@ -30,22 +30,18 @@
 }
 
 :root {
-  /* paper */
   --paper: #000000;
   --paper-lift: #0a0a0a;
   --light: 0;
 
-  /* ink */
   --ink: #cdc4ba;
   --ink-dim: #b0a9a0;
   --ink-muted: color-mix(in srgb, var(--ink-dim) 88%, transparent);
   --ink-faint: color-mix(in srgb, var(--ink-dim) 68%, transparent);
 
-  /* bone */
   --bone: #cdc4ba;
   --ink-on-bone: #000000;
 
-  /* hairlines */
   --line: color-mix(in srgb, var(--ink) 26%, transparent);
   --line-soft: color-mix(in srgb, var(--ink) 13%, transparent);
   --line-strong: color-mix(in srgb, var(--ink) 42%, transparent);
@@ -53,13 +49,11 @@
   --tint-10: color-mix(in srgb, var(--ink) 10%, transparent);
   --tint-16: color-mix(in srgb, var(--ink) 16%, transparent);
 
-  /* accent */
   --sun: #e2342a;
   --sun-deep: color-mix(in srgb, var(--sun) 70%, black);
   --alert: #e2342a;
   --good: #7ea87e;
 
-  /* type */
   --font-display: 'Fraunces', serif;
   --font-ui: 'Space Grotesk', system-ui, sans-serif;
   --font-mono: 'SpaceMono Nerd Font', 'Noto Sans Mono', ui-monospace, monospace;
@@ -77,7 +71,6 @@
   --track-label: 1.4px;
   --track-mark: 2.2px;
 
-  /* space */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -86,7 +79,6 @@
   --s6: 32px;
   --s7: 48px;
 
-  /* geometry */
   --radius: 6px;
   --border: 1px;
   --row-h: 48px;
@@ -97,7 +89,6 @@
   --field-h: 36px;
   --field-h-sm: 30px;
 
-  /* motion */
   --snap: 90ms;
   --move: 170ms;
   --swap: 210ms;

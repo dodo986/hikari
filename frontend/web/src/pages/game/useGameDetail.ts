@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { gameSettings, installInfo, launchOptions, loadGame, optiStatus, runLog } from '../../daemon/detail'
-import type { Key } from '../../daemon/detail'
+import { gameSettings, installInfo, launchOptions, loadGame, optiStatus, runLog } from '../../daemon/api'
+import type { Key } from '../../daemon/api'
 import { rpc } from '../../daemon/link'
 import { useDaemon } from '../../daemon/store'
 import type { Game, GameSettings, InstallInfo, LaunchOption, OptiStatus, RunLog } from '../../daemon/types'

@@ -3,12 +3,10 @@ import type { ReactNode } from 'react'
 import styles from './GameGrid.module.css'
 
 interface GameGridProps {
-  /** Ordered game keys; the index decides the cell. */
   keys: string[]
   render: (key: string, leaving: boolean) => ReactNode
   tileWidth?: number
   gap?: number
-  /** Cell height when the first tile has not been measured yet. */
   fallbackHeight?: number
 }
 
@@ -20,12 +18,9 @@ interface Leaving {
 
 const LEAVE_MS = 200
 
-/**
- * The QML grid keeps one delegate per game and animates its x and y, which is
- * the only way a reflow can show movement: a CSS grid snaps. Tiles are placed
- * on absolute slots here for the same reason, and a filtered out tile holds its
- * last slot while it fades.
- */
+// A CSS grid snaps on reflow; the QML grid animates each delegate's x and y, so
+// tiles live on absolute slots here and a filtered out tile holds its cell while
+// it fades.
 export function GameGrid({
   keys,
   render,
@@ -37,8 +32,7 @@ export function GameGrid({
   const [width, setWidth] = useState(0)
   const [cellHeight, setCellHeight] = useState(fallbackHeight)
   const [leaving, setLeaving] = useState<Leaving[]>([])
-  // The first placement is not a move: it must not slide in from wherever the
-  // tiles happened to mount before the width was known.
+  // The first placement is not a move: no slide from the pre-measure position.
   const [settled, setSettled] = useState(false)
   const slots = useRef(new Map<string, number>())
   const timers = useRef<number[]>([])

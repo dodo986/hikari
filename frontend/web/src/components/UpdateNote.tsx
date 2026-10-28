@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from './Button'
-import { applyUpdate, checkUpdate } from '../daemon/detail'
+import { applyUpdate, checkUpdate } from '../daemon/api'
 import { useDaemon } from '../daemon/store'
 import { useT } from '../i18n/t'
 import styles from './UpdateNote.module.css'
