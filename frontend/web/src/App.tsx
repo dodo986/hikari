@@ -8,6 +8,7 @@ import { About } from './pages/About'
 import { Accounts } from './pages/Accounts'
 import { Downloads } from './pages/Downloads'
 import { GameDetail } from './pages/GameDetail'
+import { Mods } from './pages/Mods'
 import { Settings } from './pages/Settings'
 import { Library } from './pages/Library'
 import { parseRoute } from './router'
@@ -67,6 +68,8 @@ export function App() {
           <Library />
         ) : route.page === 'game' && route.store && route.id ? (
           <GameDetail store={route.store} id={route.id} />
+        ) : route.page === 'mods' ? (
+          <Mods />
         ) : route.page === 'settings' ? (
           <Settings />
         ) : route.page === 'downloads' ? (

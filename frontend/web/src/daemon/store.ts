@@ -7,7 +7,21 @@ import type {
   GameStateEvent,
   InstallProgress,
   LibraryChangedEvent,
+  ModsAccount,
+  ModsGame,
+  ModsProgress,
+  ModsStatus,
 } from './types'
+
+export interface ModsState {
+  status: ModsStatus | null
+  games: ModsGame[]
+  account: ModsAccount | null
+  job: ModsProgress | null
+  log: string[]
+  authUrl: string
+  error: string
+}
 
 export interface DaemonState {
   connection: ConnectionState
@@ -26,6 +40,9 @@ export interface DaemonState {
   applyGameState: (event: GameStateEvent) => void
   setAuth: (stores: Record<string, AuthStatus>) => void
   applyLibraryChanged: (event: LibraryChangedEvent) => void
+  mods: ModsState
+  setMods: (patch: Partial<ModsState>) => void
+  pushModsLog: (line: string) => void
 }
 
 export const gameKey = (store: string, id: string): string => `${store}/${id}`
@@ -38,6 +55,7 @@ export const useDaemon = create<DaemonState>((set) => ({
   running: {},
   auth: {},
   error: null,
+  mods: { status: null, games: [], account: null, job: null, log: [], authUrl: '', error: '' },
 
   setConnection: (connection) => set({ connection }),
   setGames: (games) => set({ games }),
@@ -45,6 +63,11 @@ export const useDaemon = create<DaemonState>((set) => ({
   setError: (error) => set({ error }),
 
   setAuth: (auth) => set({ auth }),
+
+  setMods: (patch) => set((state) => ({ mods: { ...state.mods, ...patch } })),
+
+  pushModsLog: (line) =>
+    set((state) => ({ mods: { ...state.mods, log: [...state.mods.log, line].slice(-8) } })),
 
   applyProgress: (progress) =>
     set((state) => ({

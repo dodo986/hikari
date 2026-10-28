@@ -34,6 +34,10 @@ const EVENTS = [
   'auth.changed',
   'opti.progress',
   'wine.progress',
+  'mods.progress',
+  'mods.log',
+  'mods.auth_url',
+  'mods.done',
 ]
 
 export function startDaemonLink(): void {

@@ -276,3 +276,136 @@ export interface OptiRelease {
 export interface OptiDetect {
   gpus?: OptiGpu[]
 }
+
+export interface ModsStatus {
+  available: boolean
+  python?: string
+  src?: string
+  reason: string
+}
+
+export interface ModsGame {
+  id: string
+  name: string
+  steam_app_id?: string
+  configured: boolean
+  path?: string
+  profiles: string[]
+  deployed_profile?: string
+  deploy_active: boolean
+  nexus_domain?: string
+  store?: string
+}
+
+export interface ModsAccount {
+  stored: boolean
+  mode?: string
+  user?: string
+  premium: boolean
+}
+
+export interface Mod {
+  mod_id: number
+  name: string
+  summary?: string
+  author?: string
+  version?: string
+  downloads: number
+  endorsements: number
+  adult?: boolean
+  created?: string
+  updated?: string
+  category?: string
+  picture_url?: string
+}
+
+export interface ModFile {
+  file_id: number
+  name: string
+  version?: string
+  category?: string
+  size?: string
+  uploaded?: string
+  primary?: boolean
+}
+
+export interface ModsBrowse {
+  game: string
+  domain?: string
+  page: number
+  more: boolean
+  results: Mod[]
+  error?: string
+}
+
+export interface ModsFiles {
+  mod: Mod
+  files: ModFile[]
+  error?: string
+}
+
+export interface InstalledMod {
+  name: string
+  enabled: boolean
+}
+
+export interface ModsInstalled {
+  game: string
+  profile: string
+  mods: InstalledMod[]
+}
+
+export interface ModUpdate {
+  mod: string
+  mod_id: number
+  installed_version: string
+  latest_version: string
+  file_id: number
+  file_name: string
+  url: string
+}
+
+export interface ModsUpdates {
+  game: string
+  updates: ModUpdate[]
+  error?: string
+}
+
+export interface ModFinding {
+  id: string
+  severity: string
+  mod?: string
+  file?: string
+  detail: string
+  fixable: boolean
+}
+
+export interface ModRequirement {
+  mod_id: number
+  name: string
+  external?: boolean
+  notes?: string
+}
+
+export interface ModMissing {
+  mod: string
+  mod_id: number
+  needs: ModRequirement[]
+}
+
+export interface ModsProgress {
+  job: string
+  game: string
+  phase: string
+  current: number
+  total: number
+  message: string
+}
+
+export interface ModsDone {
+  job: string
+  game: string
+  ok: boolean
+  error?: string
+  mod?: string
+}

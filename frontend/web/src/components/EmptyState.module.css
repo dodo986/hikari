@@ -2,25 +2,52 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: var(--s2);
-  padding: var(--s7) var(--s5);
-  border: var(--border) solid var(--line-soft);
-  border-radius: var(--radius);
+  padding: var(--s6) var(--s5);
   text-align: center;
+}
+
+.motif {
+  display: grid;
+  place-items: center;
+  width: 116px;
+  height: 116px;
+  margin-bottom: var(--s2);
+  border: var(--border) solid var(--line-soft);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 14px color-mix(in srgb, var(--line) 22%, transparent),
+    inset 0 0 0 30px color-mix(in srgb, var(--line) 10%, transparent);
+}
+
+.kanji {
+  font-family: var(--font-display), 'Noto Sans CJK JP', 'Noto Sans JP', sans-serif;
+  font-size: 42px;
+  line-height: 1;
+  color: var(--ink-faint);
+  opacity: 0.5;
+}
+
+.mark {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--f-tiny);
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
 }
 
 .title {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 20px;
-  color: var(--ink);
+  max-width: 380px;
+  font-size: var(--f-small);
+  line-height: 1.5;
+  color: var(--ink-dim);
 }
 
 .note {
   margin: 0;
   max-width: 46ch;
-  font-size: var(--f-small);
+  font-size: var(--f-tiny);
   color: var(--ink-faint);
   line-height: 1.5;
 }

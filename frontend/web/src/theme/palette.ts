@@ -38,6 +38,12 @@ export function applyPalette(palette: PaletteRoles | null | undefined): void {
   }
   if (palette.inverseSurface) root.setProperty('--bone', palette.inverseSurface)
   if (palette.inverseOnSurface) root.setProperty('--ink-on-bone', palette.inverseOnSurface)
+  // Greyscale wallpapers hand back an error role indistinguishable from body text,
+  // so failures keep the house red there instead of disappearing into the page.
+  const error = palette.error
+  if (error && ink && Math.abs(LUMINANCE(error) - LUMINANCE(ink)) > 0.08) {
+    root.setProperty('--alert', error)
+  }
   root.setProperty('--light', paper && LUMINANCE(paper) > 0.5 ? '1' : '0')
   document.documentElement.dataset.light = paper && LUMINANCE(paper) > 0.5 ? 'true' : 'false'
 }
