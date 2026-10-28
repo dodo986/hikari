@@ -37,7 +37,9 @@ export function GameArt({
 }: GameArtProps) {
   const [loaded, setLoaded] = useState(false)
   const [wide, setWide] = useState(false)
-  const source = artUrl(pick(artwork, artworkLocal, role))
+  // Ask for roughly what the slot paints, doubled for a high density screen.
+  const requested = typeof window === 'undefined' ? 0 : Math.round(260 * Math.min(2, window.devicePixelRatio || 1))
+  const source = artUrl(pick(artwork, artworkLocal, role), requested)
   const logo = artUrl(artworkLocal?.logo ?? artwork?.logo)
 
   return (

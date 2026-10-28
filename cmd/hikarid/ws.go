@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"hikari/internal/api"
+	"hikari/internal/art"
 	"hikari/internal/atomicfile"
 	"hikari/internal/config"
 )
@@ -27,7 +29,7 @@ type Endpoint struct {
 
 // startWS binds loopback only and publishes the address plus a token that is
 // regenerated on every start, so a stale page cannot reconnect after a restart.
-func startWS(ctx context.Context, log *slog.Logger, srv *api.Server, artRoot string) (*Endpoint, error) {
+func startWS(ctx context.Context, log *slog.Logger, srv *api.Server, artCache *art.Cache) (*Endpoint, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("cannot bind the local websocket: %w", err)
@@ -46,7 +48,7 @@ func startWS(ctx context.Context, log *slog.Logger, srv *api.Server, artRoot str
 		_ = ln.Close()
 		return nil, err
 	}
-	cfg := api.WSConfig{Token: token, Origins: wsOrigins(), Assets: artAssets(artRoot)}
+	cfg := api.WSConfig{Token: token, Origins: wsOrigins(), Assets: artAssets(artCache)}
 	go func() {
 		if err := srv.ServeWS(ctx, ln, cfg); err != nil {
 			log.Error("websocket endpoint stopped", "err", err)
@@ -56,11 +58,14 @@ func startWS(ctx context.Context, log *slog.Logger, srv *api.Server, artRoot str
 }
 
 // artAssets lets the browser load cached artwork over the same authorised
-// listener, since a webview cannot read file:// paths.
-func artAssets(root string) http.Handler {
-	if root == "" {
+// listener, since a webview cannot read file:// paths. ?w=N asks for a copy no
+// wider than N pixels, which keeps the grid's decode memory proportional to
+// what it actually paints.
+func artAssets(cache *art.Cache) http.Handler {
+	if cache == nil {
 		return nil
 	}
+	root := cache.Dir()
 	files := http.StripPrefix("/art/", http.FileServer(http.Dir(root)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/art/") {
@@ -68,6 +73,20 @@ func artAssets(root string) http.Handler {
 			return
 		}
 		w.Header().Set("cache-control", "private, max-age=86400")
+		width := 0
+		if raw := r.URL.Query().Get("w"); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil {
+				width = parsed
+			}
+		}
+		name := strings.TrimPrefix(r.URL.Path, "/art/")
+		if width > 0 && name != "" && !strings.Contains(name, "/") {
+			source := filepath.Join(root, name)
+			if scaled, err := cache.Scaled(source, width); err == nil && scaled != source {
+				http.ServeFile(w, r, scaled)
+				return
+			}
+		}
 		files.ServeHTTP(w, r)
 	})
 }

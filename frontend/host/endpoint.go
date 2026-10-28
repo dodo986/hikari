@@ -1,0 +1,53 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+// Endpoint mirrors what hikarid writes to $XDG_RUNTIME_DIR/hikari/ws.json. The
+// host reads the same file the dev server does; it is rewritten on every daemon
+// start, so a token never outlives the daemon that issued it.
+type Endpoint struct {
+	URL   string `json:"url"`
+	Token string `json:"token"`
+	PID   int    `json:"pid"`
+}
+
+func runtimePath(name string) string {
+	base := os.Getenv("XDG_RUNTIME_DIR")
+	if base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "hikari", name)
+}
+
+func readEndpoint() (map[string]any, error) {
+	b, err := os.ReadFile(runtimePath("ws.json"))
+	if err != nil {
+		return nil, fmt.Errorf("hikarid is not running")
+	}
+	var endpoint Endpoint
+	if err := json.Unmarshal(b, &endpoint); err != nil || endpoint.URL == "" {
+		return nil, fmt.Errorf("the daemon endpoint file is unreadable")
+	}
+	return map[string]any{"url": endpoint.URL, "token": endpoint.Token, "pid": endpoint.PID}, nil
+}
+
+func readPalette() any {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".cache", "ryoku", "colors.json"))
+	if err != nil {
+		return nil
+	}
+	var roles map[string]any
+	if err := json.Unmarshal(b, &roles); err != nil {
+		return nil
+	}
+	return roles
+}

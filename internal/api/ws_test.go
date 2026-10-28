@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -239,5 +241,49 @@ func TestSameToken(t *testing.T) {
 	}
 	if sameToken("abc", "abd") || sameToken("", "") || sameToken("abc", "") {
 		t.Error("a different or empty token was accepted")
+	}
+}
+
+func TestWSServesAssetsBehindTheToken(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "cover.jpg"), []byte("jpeg-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assets := http.StripPrefix("/art/", http.FileServer(http.Dir(dir)))
+	h := startWS(t, func(cfg *WSConfig) {
+		cfg.Assets = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !strings.HasPrefix(r.URL.Path, "/art/") {
+				http.NotFound(w, r)
+				return
+			}
+			assets.ServeHTTP(w, r)
+		})
+	})
+
+	base := "http://" + strings.TrimPrefix(h.url, "ws://")[:strings.LastIndex(strings.TrimPrefix(h.url, "ws://"), "/")]
+	get := func(path string) *http.Response {
+		t.Helper()
+		resp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+
+	if code := get("/art/cover.jpg?token=" + h.token).StatusCode; code != http.StatusOK {
+		t.Fatalf("authorised asset = %d, want 200", code)
+	}
+	if code := get("/art/cover.jpg").StatusCode; code != http.StatusForbidden {
+		t.Fatalf("asset without a token = %d, want 403", code)
+	}
+	if code := get("/art/cover.jpg?token=wrong").StatusCode; code != http.StatusForbidden {
+		t.Fatalf("asset with a wrong token = %d, want 403", code)
+	}
+	if code := get("/elsewhere?token=" + h.token).StatusCode; code != http.StatusNotFound {
+		t.Fatalf("unknown path = %d, want 404", code)
+	}
+	if code := get("/art/missing.jpg?token=" + h.token).StatusCode; code != http.StatusNotFound {
+		t.Fatalf("missing asset = %d, want 404", code)
 	}
 }

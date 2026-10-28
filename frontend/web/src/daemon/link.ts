@@ -1,5 +1,5 @@
 import { RpcClient } from './client'
-import { artUrl, loadEndpoint } from './endpoint'
+import { loadEndpoint } from './endpoint'
 import { gameKey, useDaemon } from './store'
 import type {
   DaemonStatus,
@@ -18,7 +18,7 @@ export const rpc = new RpcClient(loadEndpoint, (connection) => {
 
 if (import.meta.env.DEV) {
   // The e2e tests read state from here instead of scraping the DOM.
-  Object.assign(window, { __hikari: { rpc, useDaemon, artUrl } })
+  Object.assign(window, { __hikari: { rpc, useDaemon } })
 }
 
 const EVENTS = ['library.changed', 'install.progress', 'game.state', 'auth.changed']

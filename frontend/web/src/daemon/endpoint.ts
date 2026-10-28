@@ -21,18 +21,16 @@ function bridgeBase(config: EndpointConfig): string {
  * A cached cover is a path on disk; a browser cannot read it, so it goes
  * through the daemon's own loopback route. Remote URLs pass straight through.
  */
-export function artUrl(value: string | undefined): string {
+export function artUrl(value: string | undefined, width = 0): string {
   if (!value) return ''
   if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) return value
   const config = current
-  if (!config) {
-    if (import.meta.env.DEV) console.warn('artUrl before the endpoint resolved', value)
-    return ''
-  }
+  if (!config) return ''
   const clean = value.replace(/^file:\/\//, '')
   const name = clean.slice(clean.lastIndexOf('/') + 1)
   if (!name) return ''
-  return `${bridgeBase(config)}/art/${encodeURIComponent(name)}?token=${encodeURIComponent(config.token)}`
+  const size = width > 0 ? `&w=${Math.min(1024, Math.round(width))}` : ''
+  return `${bridgeBase(config)}/art/${encodeURIComponent(name)}?token=${encodeURIComponent(config.token)}${size}`
 }
 
 export async function loadEndpoint(): Promise<EndpointConfig> {
