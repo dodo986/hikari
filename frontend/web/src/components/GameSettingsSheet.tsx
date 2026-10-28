@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from './Button'
+import { Pill } from './Pill'
 import { Sheet } from './Sheet'
 import { SettingsToggle } from './SettingsToggle'
 import { TextInput } from './TextInput'
@@ -210,18 +211,16 @@ export function GameSettingsSheet({
         ) : (
           <div className={styles.pills}>
             {options.map((option, position) => (
-              <button
+              <Pill
                 key={option.name}
-                type="button"
-                className={styles.pill}
-                data-on={position === index}
-                onClick={() => {
+                on={position === index}
+                onSelect={() => {
                   setIndex(position)
                   onLaunchOption(option)
                 }}
               >
                 {option.name}
-              </button>
+              </Pill>
             ))}
           </div>
         )}
@@ -279,12 +278,10 @@ export function GameSettingsSheet({
         {picking ? (
           <div className={styles.pills}>
             {versions.map((version) => (
-              <button
+              <Pill
                 key={version.bin}
-                type="button"
-                className={styles.pill}
-                data-on={version.bin === draft?.wine_version?.bin}
-                onClick={() => {
+                on={version.bin === draft?.wine_version?.bin}
+                onSelect={() => {
                   void save(
                     {
                       wine_version: {
@@ -300,7 +297,7 @@ export function GameSettingsSheet({
                 }}
               >
                 {`${version.name} (${version.type})`}
-              </button>
+              </Pill>
             ))}
           </div>
         ) : null}

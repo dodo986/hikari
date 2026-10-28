@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Pill } from './Pill'
 import { Panel } from './Panel'
 import { TextInput } from './TextInput'
 import { optiDetect, optiInstall, optiRemove, optiReleases } from '../daemon/api'
@@ -148,40 +149,23 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
             <div className={styles.pills}>
               <span className={styles.label}>{t('Hook')}</span>
               {HOOKS.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={styles.pill}
-                  data-on={hook === name}
-                  onClick={() => setHook(name)}
-                >
+                <Pill key={name} on={hook === name} onSelect={() => setHook(name)}>
                   {name}
-                </button>
+                </Pill>
               ))}
             </div>
             <div className={styles.pills}>
               <span className={styles.label}>{t('Upscaler')}</span>
               {UPSCALERS.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={styles.pill}
-                  data-on={upscaler === name}
-                  onClick={() => setUpscaler(name)}
-                >
+                <Pill key={name} on={upscaler === name} onSelect={() => setUpscaler(name)}>
                   {name}
-                </button>
+                </Pill>
               ))}
             </div>
             <div className={styles.pills}>
-              <button
-                type="button"
-                className={styles.pill}
-                data-on={framegen}
-                onClick={() => setFramegen((value) => !value)}
-              >
+              <Pill on={framegen} onSelect={() => setFramegen((value) => !value)}>
                 {t('Frame generation')}
-              </button>
+              </Pill>
               {framegen ? (
                 <span className={styles.hint}>{t('input fsrfg (works on every GPU)')}</span>
               ) : null}

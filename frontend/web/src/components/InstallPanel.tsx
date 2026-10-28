@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Badge } from './Badge'
 import { Button } from './Button'
+import { Pill } from './Pill'
 import { Panel } from './Panel'
 import { TextInput } from './TextInput'
 import { installTo } from '../daemon/api'
@@ -69,16 +70,9 @@ export function InstallPanel({ game, info, progress, onStarted, onFailed }: Inst
         {info?.dlcs?.length ? (
           <div className={styles.badges}>
             {info.dlcs.map((dlc) => (
-              <button
-                key={dlc.id}
-                type="button"
-                className={styles.pill}
-                data-on={picked.includes(dlc.id)}
-                onClick={() => toggleDlc(dlc.id)}
-                aria-pressed={picked.includes(dlc.id)}
-              >
+              <Pill key={dlc.id} on={picked.includes(dlc.id)} onSelect={() => toggleDlc(dlc.id)}>
                 {dlc.title}
-              </button>
+              </Pill>
             ))}
           </div>
         ) : null}
