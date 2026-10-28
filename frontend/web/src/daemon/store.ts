@@ -69,10 +69,15 @@ export const useDaemon = create<DaemonState>((set) => ({
   pushModsLog: (line) =>
     set((state) => ({ mods: { ...state.mods, log: [...state.mods.log, line].slice(-8) } })),
 
+  // A finished job leaves the list; a failed one stays for the user to dismiss.
   applyProgress: (progress) =>
-    set((state) => ({
-      installs: { ...state.installs, [gameKey(progress.store, progress.id)]: progress },
-    })),
+    set((state) => {
+      const key = gameKey(progress.store, progress.id)
+      const installs = { ...state.installs }
+      if (progress.state === 'done') delete installs[key]
+      else installs[key] = progress
+      return { installs }
+    }),
 
   clearProgress: (key) =>
     set((state) => {

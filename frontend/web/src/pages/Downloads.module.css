@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--s4);
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--s5) var(--s5) var(--s7);
 }
 
@@ -75,4 +78,10 @@
   border-radius: inherit;
   background: var(--sun);
   transition: width var(--move) var(--ease);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--f-small);
+  color: var(--alert);
 }

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { GameArt } from '../components/GameArt'
 import { PageHeader } from '../components/PageHeader'
 import { Badge } from '../components/Badge'
@@ -7,13 +7,18 @@ import { EmptyState } from '../components/EmptyState'
 import { Card } from '../components/Card'
 import { cancelInstall, stopGame } from '../daemon/api'
 import { gameKey, useDaemon } from '../daemon/store'
+import { errorMessage } from '../lib/errors'
 import { useT } from '../i18n/t'
 import { formatPercent, formatSpeed } from '../lib/format'
 import styles from './Downloads.module.css'
 
+const FINISHED = new Set(['error', 'canceled', 'failed', 'cancelled'])
+
 export function Downloads() {
   const t = useT()
   const installs = useDaemon((state) => state.installs)
+  const clearProgress = useDaemon((state) => state.clearProgress)
+  const [error, setError] = useState('')
   const running = useDaemon((state) => state.running)
   const games = useDaemon((state) => state.games)
 
@@ -34,6 +39,8 @@ export function Downloads() {
         subtitle={`${rows.length} ${t('in flight')}  ·  ${playing.length} ${t('playing')}`}
         actions={rows.length + playing.length > 0 ? <Badge accent>{t('ACTIVE')}</Badge> : null}
       />
+
+      {error ? <p className={styles.error}>{error}</p> : null}
 
       {rows.length === 0 && playing.length === 0 ? (
         <EmptyState
@@ -66,7 +73,11 @@ export function Downloads() {
               </div>
               <Button
                 size="small"
-                onClick={() => void stopGame({ store: event.store, id: event.id })}
+                onClick={() =>
+                  void stopGame({ store: event.store, id: event.id }).catch((failure: unknown) =>
+                    setError(errorMessage(failure)),
+                  )
+                }
               >
                 {t('Stop')}
               </Button>
@@ -79,6 +90,7 @@ export function Downloads() {
       {rows.map((progress) => {
         const game = byKey.get(gameKey(progress.store, progress.id))
         const percent = typeof progress.percent === 'number' ? progress.percent : null
+        const finished = FINISHED.has(progress.state ?? '')
         const meta = [
           formatPercent(percent),
           progress.bytes ?? '',
@@ -103,16 +115,31 @@ export function Downloads() {
                   <span className={styles.name}>{title(progress.store, progress.id)}</span>
                   <Badge accent>{progress.state}</Badge>
                 </span>
-                <span className={styles.bar} role="progressbar" aria-valuenow={percent ?? 0}>
-                  <span className={styles.fill} style={{ width: `${percent ?? 0}%` }} />
-                </span>
+                {finished ? null : (
+                  <span
+                    className={styles.bar}
+                    role="progressbar"
+                    aria-label={game?.title ?? progress.id}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={percent ?? 0}
+                  >
+                    <span className={styles.fill} style={{ width: `${percent ?? 0}%` }} />
+                  </span>
+                )}
                 <span className={styles.meta}>{meta}</span>
               </div>
               <Button
                 size="small"
-                onClick={() => void cancelInstall({ store: progress.store, id: progress.id })}
+                onClick={() =>
+                  finished
+                    ? clearProgress(gameKey(progress.store, progress.id))
+                    : void cancelInstall({ store: progress.store, id: progress.id }).catch((error: unknown) =>
+                        setError(errorMessage(error)),
+                      )
+                }
               >
-                {t('Cancel')}
+                {finished ? t('Dismiss') : t('Cancel')}
               </Button>
             </div>
           </Card>

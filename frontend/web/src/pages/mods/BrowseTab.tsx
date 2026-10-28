@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '../../components/Badge'
 import { Button } from '../../components/Button'
 import { Panel } from '../../components/Panel'
@@ -32,13 +32,14 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
   const [sort, setSort] = useState('downloads')
   const [result, setResult] = useState<ModsBrowse | null>(null)
   const [searching, setSearching] = useState(false)
-  const searched = useRef(false)
 
+  // Query and sort travel as arguments; reading them from state made every
+  // keystroke a new callback and fired a request per character.
   const search = useCallback(
-    async (page: number, replace: boolean) => {
+    async (page: number, replace: boolean, terms: string, order: string) => {
       setSearching(true)
       try {
-        const reply = await modsBrowse(game.id, query, sort, page)
+        const reply = await modsBrowse(game.id, terms, order, page)
         setResult((current) =>
           replace || !current ? reply : { ...reply, results: [...current.results, ...reply.results] },
         )
@@ -49,19 +50,19 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
         setSearching(false)
       }
     },
-    [game.id, query, sort, onFailed],
+    [game.id, onFailed],
   )
 
   useEffect(() => {
-    if (!account?.stored || searched.current) return
-    searched.current = true
-    void search(0, true)
-  }, [account?.stored, search])
-
-  useEffect(() => {
-    searched.current = false
+    setQuery('')
+    setSort('downloads')
     setResult(null)
   }, [game.id])
+
+  useEffect(() => {
+    if (!account?.stored) return
+    void search(0, true, '', 'downloads')
+  }, [account?.stored, search])
 
   if (!account) return null
 
@@ -91,10 +92,10 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
           placeholder={t('Search Nexus, or leave empty for the most downloaded')}
           className={styles.field}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') void search(0, true)
+            if (event.key === 'Enter') void search(0, true, query, sort)
           }}
         />
-        <Button size="small" busy={searching} onClick={() => void search(0, true)}>
+        <Button size="small" busy={searching} onClick={() => void search(0, true, query, sort)}>
           {t('Search')}
         </Button>
       </div>
@@ -108,7 +109,7 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
             data-on={sort === entry.key}
             onClick={() => {
               setSort(entry.key)
-              void search(0, true)
+              void search(0, true, query, entry.key)
             }}
           >
             {t(entry.label)}
@@ -157,7 +158,11 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
 
       {result?.more && result.results.length > 0 ? (
         <div className={styles.more}>
-          <Button size="small" disabled={searching} onClick={() => void search(result.page + 1, false)}>
+          <Button
+            size="small"
+            disabled={searching}
+            onClick={() => void search(result.page + 1, false, query, sort)}
+          >
             {t('Load more')}
           </Button>
         </div>

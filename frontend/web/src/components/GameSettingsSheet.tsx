@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from './Button'
 import { Sheet } from './Sheet'
 import { SettingsToggle } from './SettingsToggle'
@@ -55,40 +55,73 @@ export function GameSettingsSheet({
   const [picking, setPicking] = useState(false)
   const [repairing, setRepairing] = useState(false)
   const [index, setIndex] = useState(-1)
+  // Edits and their writes queue behind each other: two switches flipped quickly
+  // must not drop the first write, and a saved reply must not reset the draft.
+  const touched = useRef(false)
+  const draftRef = useRef<GameSettings | null>(settings)
+  const writing = useRef(false)
+  const dirty = useRef(false)
+  const pendingNote = useRef('')
 
   useEffect(() => {
     if (!open) return
-    setDraft(settings)
-    setExe(settings?.target_exe ?? '')
-    setPrefix(settings?.wine_prefix ?? '')
-    setSaves(settings?.saves_path ?? '')
+    touched.current = false
     void wineVersions()
       .then((result) => setVersions(result.versions ?? []))
       .catch(() => setVersions([]))
     void launchOptions({ store: game.store, id: game.id })
       .then((result) => setIndex((result.options ?? []).findIndex((item) => item.name === options[0]?.name)))
       .catch(() => {})
-  }, [open, settings, game.store, game.id, options])
+  }, [open, game.store, game.id, options])
 
-  const save = async (patch: Partial<GameSettings>, note: string) => {
-    if (!draft) {
+  useEffect(() => {
+    if (!open || touched.current) return
+    draftRef.current = settings
+    setDraft(settings)
+    setExe(settings?.target_exe ?? '')
+    setPrefix(settings?.wine_prefix ?? '')
+    setSaves(settings?.saves_path ?? '')
+  }, [open, settings])
+
+  const flush = async () => {
+    if (writing.current) {
+      dirty.current = true
+      return
+    }
+    const target = draftRef.current
+    if (!target) return
+    writing.current = true
+    try {
+      await saveGameSettings({ store: game.store, id: game.id }, target)
+      onSaved(target, pendingNote.current)
+    } catch (error) {
+      onFailed(errorMessage(error))
+    } finally {
+      writing.current = false
+      if (dirty.current) {
+        dirty.current = false
+        void flush()
+      }
+    }
+  }
+
+  const save = (patch: Partial<GameSettings>, note: string) => {
+    if (!draftRef.current) {
       onNote(t('Settings are still loading'))
       return
     }
+    touched.current = true
     const next: GameSettings = {
-      ...draft,
+      ...draftRef.current,
       ...patch,
       target_exe: exe.trim(),
       wine_prefix: prefix.trim(),
       saves_path: saves.trim(),
     }
-    try {
-      await saveGameSettings({ store: game.store, id: game.id }, next)
-      setDraft(next)
-      onSaved(next, note)
-    } catch (error) {
-      onFailed(errorMessage(error))
-    }
+    draftRef.current = next
+    pendingNote.current = note
+    setDraft(next)
+    void flush()
   }
 
   const proton = isProton(draft?.wine_version)
@@ -97,6 +130,7 @@ export function GameSettingsSheet({
   const chooseExe = async () => {
     const path = await pickFile(t('Choose the game executable'))
     if (!path) return
+    touched.current = true
     setExe(path)
     void save({ target_exe: path }, t('Game executable saved'))
   }
@@ -141,8 +175,9 @@ export function GameSettingsSheet({
                   await repairGame({ store: game.store, id: game.id })
                   onNote(t('Verifying the install'))
                 } catch (error) {
-                  setRepairing(false)
                   onFailed(errorMessage(error))
+                } finally {
+                  setRepairing(false)
                 }
               }}
             >
@@ -198,7 +233,10 @@ export function GameSettingsSheet({
           <TextInput
             label={t('Executable')}
             value={exe}
-            onValue={setExe}
+            onValue={(value) => {
+              touched.current = true
+              setExe(value)
+            }}
             placeholder={t("the game's own executable")}
             className={styles.field}
           />
@@ -209,6 +247,7 @@ export function GameSettingsSheet({
             <Button
               size="small"
               onClick={() => {
+                touched.current = true
                 setExe('')
                 void save({ target_exe: '' }, t("Back to the game's own executable"))
               }}
@@ -270,7 +309,10 @@ export function GameSettingsSheet({
           <TextInput
             label={t('Wine prefix')}
             value={prefix}
-            onValue={setPrefix}
+            onValue={(value) => {
+              touched.current = true
+              setPrefix(value)
+            }}
             placeholder={t('one prefix per game')}
             className={styles.field}
           />
@@ -283,7 +325,10 @@ export function GameSettingsSheet({
           <TextInput
             label={t('Save path')}
             value={saves}
-            onValue={setSaves}
+            onValue={(value) => {
+              touched.current = true
+              setSaves(value)
+            }}
             placeholder={t("the game's save directory")}
             className={styles.field}
           />

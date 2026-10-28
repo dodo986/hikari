@@ -36,7 +36,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
   const [error, setError] = useState('')
   const [option, setOption] = useState<LaunchOption | null>(null)
   const [busy, setBusy] = useState(false)
-  const crashedAt = useRef(0)
+  const logReloaded = useRef(false)
 
   const game = detail.game
   const isRunning = Boolean(running)
@@ -58,11 +58,14 @@ export function GameDetail({ store, id }: GameDetailProps) {
     return () => window.clearTimeout(timer)
   }, [note])
 
+  // Reload the log once per crash: reloadLog rewrites `log`, which rebuilds the
+  // hook's memo, so depending on `detail` here would loop.
+  const { reloadLog } = detail
   useEffect(() => {
-    if (!crashed || detail.crashed === false) return
-    crashedAt.current = Date.now()
-    void detail.reloadLog()
-  }, [crashed, detail])
+    if (!crashed || logReloaded.current) return
+    logReloaded.current = true
+    void reloadLog()
+  }, [crashed, reloadLog])
 
   const play = async () => {
     if (!game) return
@@ -78,32 +81,43 @@ export function GameDetail({ store, id }: GameDetailProps) {
   }
 
   const stop = async () => {
+    if (busy) return
+    setBusy(true)
     try {
       await stopGame(key)
       say(t('Stopped'))
     } catch (failure) {
       fail(errorMessage(failure))
+    } finally {
+      setBusy(false)
     }
   }
 
   const update = async () => {
+    if (busy) return
+    setBusy(true)
     try {
       await updateGame(key)
       say(t('Updating'))
     } catch (failure) {
       fail(errorMessage(failure))
+    } finally {
+      setBusy(false)
     }
   }
 
   const pin = async () => {
-    if (!game) return
+    if (!game || busy) return
     const next = !game.favorite
+    setBusy(true)
     try {
       await setFavorite(key, next)
       detail.setGame({ ...game, favorite: next })
       say(next ? t('Pinned') : t('Unpinned'))
     } catch (failure) {
       fail(errorMessage(failure))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -143,7 +157,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
         <div className={styles.actions}>
           {installed ? (
             isRunning ? (
-              <Button variant="primary" onClick={() => void stop()}>
+              <Button variant="primary" busy={busy} onClick={() => void stop()}>
                 {`■ ${t('Stop playing')}`}
               </Button>
             ) : (
@@ -157,7 +171,9 @@ export function GameDetail({ store, id }: GameDetailProps) {
             </Button>
           )}
           {installed && game?.update_available ? (
-            <Button onClick={() => void update()}>{t('Update')}</Button>
+            <Button busy={busy} onClick={() => void update()}>
+              {t('Update')}
+            </Button>
           ) : null}
           {installed ? (
             <Button onClick={() => setCommandOpen(true)}>{t('Launch command')}</Button>
@@ -166,7 +182,9 @@ export function GameDetail({ store, id }: GameDetailProps) {
             {t('Settings')}
           </Button>
           {installed ? <Button onClick={() => setLogOpen(true)}>{t('Log')}</Button> : null}
-          <Button onClick={() => void pin()}>{game?.favorite ? `★ ${t('Pinned')}` : `☆ ${t('Pin')}`}</Button>
+          <Button disabled={busy} onClick={() => void pin()}>
+            {game?.favorite ? `★ ${t('Pinned')}` : `☆ ${t('Pin')}`}
+          </Button>
           <span className={styles.spacer} />
           {status || error ? (
             <span className={styles.status} data-crashed={crashed}>
