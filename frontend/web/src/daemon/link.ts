@@ -1,6 +1,7 @@
 import { RpcClient } from './client'
 import { loadEndpoint } from './endpoint'
 import { gameKey, useDaemon } from './store'
+import { errorMessage } from '../lib/errors'
 import type {
   AuthStatus,
   AuthStatusResult,
@@ -19,7 +20,7 @@ export const rpc = new RpcClient(async () => {
     return config
   } catch (error) {
     // The offline screen quotes this, so a stale daemon reads as what it is.
-    useDaemon.getState().setError(error instanceof Error ? error.message : String(error))
+    useDaemon.getState().setError(errorMessage(error))
     throw error
   }
 }, (connection) => {

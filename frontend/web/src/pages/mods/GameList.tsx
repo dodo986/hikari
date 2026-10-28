@@ -10,6 +10,7 @@ import type { Game, ModsGame } from '../../daemon/types'
 import { pickFolder } from '../../host/bridge'
 import { useT } from '../../i18n/t'
 import styles from './GameList.module.css'
+import { errorMessage } from '../../lib/errors'
 
 interface GameListProps {
   onOpen: (game: ModsGame) => void
@@ -41,7 +42,7 @@ export function GameList({ onOpen, onNote, onFailed }: GameListProps) {
       else onNote(`${game.name}: ${t('folder saved')}`)
       await refreshMods()
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 

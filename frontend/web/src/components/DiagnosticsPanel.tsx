@@ -6,6 +6,7 @@ import { useDaemon } from '../daemon/store'
 import { useT } from '../i18n/t'
 import { middle } from '../lib/text'
 import styles from './DiagnosticsPanel.module.css'
+import { errorMessage } from '../lib/errors'
 
 export function DiagnosticsPanel() {
   const t = useT()
@@ -20,7 +21,7 @@ export function DiagnosticsPanel() {
       setLines(result.lines ?? [])
       setPath(result.path ?? '')
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error))
+      setStatus(errorMessage(error))
     }
   }
 

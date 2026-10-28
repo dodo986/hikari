@@ -10,6 +10,7 @@ import { useDaemon } from '../daemon/store'
 import { openUrl } from '../host/bridge'
 import { useT } from '../i18n/t'
 import styles from './Accounts.module.css'
+import { errorMessage } from '../lib/errors'
 
 const STORES = ['epic', 'gog', 'amazon'] as const
 type Store = (typeof STORES)[number]
@@ -62,7 +63,7 @@ export function Accounts() {
       say(t('Finish in your browser, then paste the code'))
       if (started.url) void openUrl(started.url)
     } catch (error) {
-      say(error instanceof Error ? error.message : String(error), true)
+      say(errorMessage(error), true)
     }
   }
 
@@ -78,7 +79,7 @@ export function Accounts() {
       await refreshAuth()
       say(`${t('Signed in to ')}${STORE_NAMES[store]}`)
     } catch (error) {
-      say(error instanceof Error ? error.message : String(error), true)
+      say(errorMessage(error), true)
     }
   }
 
@@ -88,7 +89,7 @@ export function Accounts() {
       await refreshAuth()
       say(`${t('Signed out of ')}${STORE_NAMES[store]}`)
     } catch (error) {
-      say(error instanceof Error ? error.message : String(error), true)
+      say(errorMessage(error), true)
     }
   }
 

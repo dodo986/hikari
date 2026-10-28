@@ -2,6 +2,7 @@ import { rpc } from './link'
 import { useDaemon } from './store'
 import { modsAccount, modsGames, modsStatus } from './mods'
 import type { ModsAccount, ModsDone, ModsGame, ModsProgress, ModsStatus } from './types'
+import { errorMessage } from '../lib/errors'
 
 // mods.status and mods.games travel together and share one error slot.
 export async function refreshMods(): Promise<void> {
@@ -15,7 +16,7 @@ export async function refreshMods(): Promise<void> {
       error: '',
     })
   } catch (error) {
-    state.setMods({ error: error instanceof Error ? error.message : String(error) })
+    state.setMods({ error: errorMessage(error) })
   }
 }
 

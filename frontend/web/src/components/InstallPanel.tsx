@@ -7,6 +7,7 @@ import { installTo } from '../daemon/api'
 import type { Game, InstallInfo, InstallProgress } from '../daemon/types'
 import { useT } from '../i18n/t'
 import styles from './InstallPanel.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface InstallPanelProps {
   game: Game
@@ -38,7 +39,7 @@ export function InstallPanel({ game, info, progress, onStarted, onFailed }: Inst
       await installTo({ store: game.store, id: game.id }, path, game.platform ?? 'Windows', picked)
       onStarted(t('Installing'))
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     } finally {
       setBusy(false)
     }

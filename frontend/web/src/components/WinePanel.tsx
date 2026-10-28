@@ -7,6 +7,7 @@ import { rpc } from '../daemon/link'
 import type { WineRelease, WineVersion } from '../daemon/types'
 import { useT } from '../i18n/t'
 import styles from './WinePanel.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface WinePanelProps {
   onEnginesChanged: () => void
@@ -66,7 +67,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
       setStatus('')
     } catch (error) {
       setBad(true)
-      setStatus(error instanceof Error ? error.message : String(error))
+      setStatus(errorMessage(error))
     }
   }
 
@@ -80,7 +81,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
     } catch (error) {
       setBusy(false)
       setBad(true)
-      setStatus(error instanceof Error ? error.message : String(error))
+      setStatus(errorMessage(error))
     }
   }
 
@@ -93,7 +94,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
       onEnginesChanged()
     } catch (error) {
       setBad(true)
-      setStatus(error instanceof Error ? error.message : String(error))
+      setStatus(errorMessage(error))
     }
   }
 

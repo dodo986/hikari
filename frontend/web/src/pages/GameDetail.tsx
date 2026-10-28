@@ -16,6 +16,7 @@ import { useT } from '../i18n/t'
 import { navigate } from '../router'
 import { useGameDetail } from './game/useGameDetail'
 import styles from './GameDetail.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface GameDetailProps {
   store: string
@@ -70,7 +71,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
       await launchWith(key, option ?? undefined)
       say(t('Launching'))
     } catch (failure) {
-      fail(failure instanceof Error ? failure.message : String(failure))
+      fail(errorMessage(failure))
     } finally {
       setBusy(false)
     }
@@ -81,7 +82,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
       await stopGame(key)
       say(t('Stopped'))
     } catch (failure) {
-      fail(failure instanceof Error ? failure.message : String(failure))
+      fail(errorMessage(failure))
     }
   }
 
@@ -90,7 +91,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
       await updateGame(key)
       say(t('Updating'))
     } catch (failure) {
-      fail(failure instanceof Error ? failure.message : String(failure))
+      fail(errorMessage(failure))
     }
   }
 
@@ -102,7 +103,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
       detail.setGame({ ...game, favorite: next })
       say(next ? t('Pinned') : t('Unpinned'))
     } catch (failure) {
-      fail(failure instanceof Error ? failure.message : String(failure))
+      fail(errorMessage(failure))
     }
   }
 

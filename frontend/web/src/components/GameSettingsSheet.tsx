@@ -17,6 +17,7 @@ import type { Game, GameSettings, LaunchOption, WineVersion } from '../daemon/ty
 import { pickFile } from '../host/bridge'
 import { useT } from '../i18n/t'
 import styles from './GameSettingsSheet.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface GameSettingsSheetProps {
   open: boolean
@@ -86,7 +87,7 @@ export function GameSettingsSheet({
       setDraft(next)
       onSaved(next, note)
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 
@@ -111,7 +112,7 @@ export function GameSettingsSheet({
       await installWine(tag)
       onNote(`${t('Downloading')} ${tag}`)
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 
@@ -141,7 +142,7 @@ export function GameSettingsSheet({
                   onNote(t('Verifying the install'))
                 } catch (error) {
                   setRepairing(false)
-                  onFailed(error instanceof Error ? error.message : String(error))
+                  onFailed(errorMessage(error))
                 }
               }}
             >

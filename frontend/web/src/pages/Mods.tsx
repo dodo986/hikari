@@ -17,6 +17,7 @@ import { useT } from '../i18n/t'
 import { GameList, profileOf } from './mods/GameList'
 import { GameView } from './mods/GameView'
 import styles from './Mods.module.css'
+import { errorMessage } from '../lib/errors'
 
 export function Mods() {
   const t = useT()
@@ -115,7 +116,7 @@ export function Mods() {
       await modsInstallFile(target, files.modId, file.file_id)
       say(`${t('Downloading')} ${file.name}`)
     } catch (failure) {
-      fail(failure instanceof Error ? failure.message : String(failure))
+      fail(errorMessage(failure))
     }
   }
 
@@ -128,7 +129,7 @@ export function Mods() {
       else say(`${target.name}: ${t('folder saved')}`)
       await refreshMods()
     } catch (failure) {
-      fail(failure instanceof Error ? failure.message : String(failure))
+      fail(errorMessage(failure))
     }
   }
 

@@ -8,6 +8,7 @@ import type { Key } from '../daemon/api'
 import type { OptiStatus } from '../daemon/types'
 import { useT } from '../i18n/t'
 import styles from './OptiPanel.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface OptiPanelProps {
   gameKey_: Key
@@ -62,7 +63,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
       onNote(t('OptiScaler installing'))
       setPhase('starting')
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 
@@ -72,7 +73,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
       onNote('')
       onChanged()
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 

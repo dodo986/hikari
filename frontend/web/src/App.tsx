@@ -17,6 +17,7 @@ import { parseRoute } from './router'
 import type { Route } from './router'
 import { startDaemon } from './host/bridge'
 import styles from './App.module.css'
+import { errorMessage } from './lib/errors'
 
 function useRoute(): Route {
   const [hash, setHash] = useState(() => window.location.hash)
@@ -66,7 +67,7 @@ export function App() {
       .catch((error: unknown) => {
         useDaemon
           .getState()
-          .setMods({ error: error instanceof Error ? error.message : String(error) })
+          .setMods({ error: errorMessage(error) })
       })
   }, [connection])
 
@@ -99,7 +100,7 @@ export function App() {
                 startDaemon()
                   .then(() => setStartNote(t('Starting hikarid')))
                   .catch((error: unknown) =>
-                    setStartNote(error instanceof Error ? error.message : String(error)),
+                    setStartNote(errorMessage(error)),
                   )
                   .finally(() => setStarting(false))
               }}

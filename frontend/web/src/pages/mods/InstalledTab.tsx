@@ -15,6 +15,7 @@ import type { ModsTarget } from '../../daemon/mods'
 import type { ModFinding, ModsGame, ModsInstalled, ModMissing, ModsUpdates } from '../../daemon/types'
 import { useT } from '../../i18n/t'
 import styles from './InstalledTab.module.css'
+import { errorMessage } from '../../lib/errors'
 
 interface InstalledTabProps {
   game: ModsGame
@@ -61,7 +62,7 @@ export function InstalledTab({
       const result = await modsHealth(target)
       setHealth(result.findings ?? [])
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     } finally {
       setChecking('')
     }
@@ -75,7 +76,7 @@ export function InstalledTab({
       else onNote(t('Repairing'))
       if (result.job) setHealth(null)
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     } finally {
       setChecking('')
     }
@@ -87,7 +88,7 @@ export function InstalledTab({
       const result = await modsMissing(target)
       setMissing(result.missing ?? [])
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     } finally {
       setChecking('')
     }
@@ -98,7 +99,7 @@ export function InstalledTab({
     try {
       onUpdates(await modsUpdates(target))
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     } finally {
       setLoadingUpdates(false)
     }
@@ -111,7 +112,7 @@ export function InstalledTab({
       await modsToggle(target, name)
       load()
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 

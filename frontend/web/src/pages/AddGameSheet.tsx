@@ -6,6 +6,7 @@ import { useT } from '../i18n/t'
 import { Button } from '../components/Button'
 import { Sheet } from '../components/Sheet'
 import styles from './AddGameSheet.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface AddGameSheetProps {
   open: boolean
@@ -56,7 +57,7 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
       setNote(result.candidates?.length ? '' : t('none found'))
       setFailed(false)
     } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error))
+      setNote(errorMessage(error))
       setFailed(true)
     } finally {
       setSearching(false)
@@ -68,7 +69,7 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
       const picked = await window.hikari?.pickFile(t('All files (*)'))
       if (picked) setExecutable(picked)
     } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error))
+      setNote(errorMessage(error))
       setFailed(true)
     }
   }
@@ -89,7 +90,7 @@ export function AddGameSheet({ open, onClose }: AddGameSheetProps) {
       await refreshLibrary()
       close()
     } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error))
+      setNote(errorMessage(error))
       setFailed(true)
     }
   }

@@ -9,6 +9,7 @@ import type { Mod, ModsBrowse, ModsGame } from '../../daemon/types'
 import { useT } from '../../i18n/t'
 import { compact, day } from '../../lib/format'
 import styles from './BrowseTab.module.css'
+import { errorMessage } from '../../lib/errors'
 
 interface BrowseTabProps {
   game: ModsGame
@@ -43,7 +44,7 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
         )
         if (reply.error) onFailed(reply.error)
       } catch (error) {
-        onFailed(error instanceof Error ? error.message : String(error))
+        onFailed(errorMessage(error))
       } finally {
         setSearching(false)
       }

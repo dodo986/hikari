@@ -6,6 +6,7 @@ import { TextInput } from './TextInput'
 import { deleteSecret, secretStatus, setSecret } from '../daemon/api'
 import { useT } from '../i18n/t'
 import styles from './SecretPanel.module.css'
+import { errorMessage } from '../lib/errors'
 
 const NAME = 'steamgriddb'
 
@@ -36,7 +37,7 @@ export function SecretPanel() {
       setNote(t('Key stored in the system keyring'))
       load()
     } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error))
+      setNote(errorMessage(error))
     }
   }
 
@@ -46,7 +47,7 @@ export function SecretPanel() {
       setNote(t('Key removed'))
       load()
     } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error))
+      setNote(errorMessage(error))
     }
   }
 

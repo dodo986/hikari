@@ -6,6 +6,7 @@ import { modsNexus } from '../daemon/mods'
 import { refreshModsAccount } from '../daemon/modsLink'
 import { useT } from '../i18n/t'
 import styles from './ModFilesSheet.module.css'
+import { errorMessage } from '../lib/errors'
 
 interface NexusKeySheetProps {
   open: boolean
@@ -26,7 +27,7 @@ export function NexusKeySheet({ open, onClose, onStored, onFailed }: NexusKeyShe
       await refreshModsAccount()
       onStored()
     } catch (error) {
-      onFailed(error instanceof Error ? error.message : String(error))
+      onFailed(errorMessage(error))
     }
   }
 

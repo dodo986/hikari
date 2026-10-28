@@ -4,6 +4,7 @@ import { applyUpdate, checkUpdate } from '../daemon/api'
 import { useDaemon } from '../daemon/store'
 import { useT } from '../i18n/t'
 import styles from './UpdateNote.module.css'
+import { errorMessage } from '../lib/errors'
 
 export function UpdateNote() {
   const t = useT()
@@ -43,7 +44,7 @@ export function UpdateNote() {
               setNote(t('Updating, the window restarts when it lands'))
               setVersion('')
             } catch (error) {
-              setNote(error instanceof Error ? error.message : String(error))
+              setNote(errorMessage(error))
             } finally {
               setBusy(false)
             }

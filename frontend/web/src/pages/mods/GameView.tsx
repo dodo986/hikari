@@ -21,6 +21,7 @@ import { middle } from '../../lib/text'
 import { BrowseTab } from './BrowseTab'
 import { InstalledTab } from './InstalledTab'
 import styles from './GameView.module.css'
+import { errorMessage } from '../../lib/errors'
 
 interface GameViewProps {
   game: ModsGame
@@ -81,7 +82,7 @@ export function GameView({
       await modsDeploy({ game: game.id, profile })
       onNote(t('Deploying'))
     } catch (failure) {
-      onFailed(failure instanceof Error ? failure.message : String(failure))
+      onFailed(errorMessage(failure))
     }
   }
 
@@ -92,7 +93,7 @@ export function GameView({
       await modsInstallArchive({ game: game.id, profile }, path)
       onNote(t('Installing'))
     } catch (failure) {
-      onFailed(failure instanceof Error ? failure.message : String(failure))
+      onFailed(errorMessage(failure))
     }
   }
 
@@ -101,7 +102,7 @@ export function GameView({
       await modsUpdate({ game: game.id, profile }, row.mod)
       onNote(`${t('Updating')} ${row.mod}`)
     } catch (failure) {
-      onFailed(failure instanceof Error ? failure.message : String(failure))
+      onFailed(errorMessage(failure))
     }
   }
 

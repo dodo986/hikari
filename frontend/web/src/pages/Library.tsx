@@ -9,6 +9,7 @@ import { Tile } from '../components/Tile'
 import { navigate } from '../router'
 import { AddGameSheet } from './AddGameSheet'
 import styles from './Library.module.css'
+import { errorMessage } from '../lib/errors'
 
 const CHIPS: { key: string; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -93,7 +94,7 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
       setNote(t('Library refreshed'))
       setFailed(false)
     } catch (error) {
-      setNote(error instanceof Error ? error.message : String(error))
+      setNote(errorMessage(error))
       setFailed(true)
     } finally {
       setRefreshing(false)
