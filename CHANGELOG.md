@@ -16,6 +16,10 @@
 - The window speaks the Nexus protocol: `nxm://` links from a browser open it on
   the game they belong to and start the download, and the mods game view is a
   route so a link can be bookmarked.
+- Pages fill a maximised window instead of stopping at a 1000 pixel column, and
+  the engine cards split into two columns the way the QML settings page does.
+- The library grid animates a reorder: sorting or filtering slides the tiles to
+  their new cells and fades the ones that left, instead of snapping.
 - The layout mirrors under a right to left document: margins, insets, borders
   and the toggle travel are logical properties, and count phrases are isolated
   so they keep their reading order.
