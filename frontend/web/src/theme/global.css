@@ -59,7 +59,7 @@ a {
 
 ::-webkit-scrollbar-thumb {
   background: var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 3px solid var(--paper);
 }
 

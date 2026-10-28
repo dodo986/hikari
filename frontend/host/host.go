@@ -19,7 +19,14 @@ type Host struct {
 
 func newHost() *Host { return &Host{} }
 
-func (h *Host) startup(ctx context.Context) { h.ctx = ctx }
+func (h *Host) startup(ctx context.Context) {
+	h.ctx = ctx
+	go h.watchPalette()
+}
+
+// Palette answers with the current roles, for a page that subscribed after the
+// window had already repainted.
+func (h *Host) Palette() any { return readPalette() }
 
 func (h *Host) PickFile(label string) (string, error) {
 	if label == "" {

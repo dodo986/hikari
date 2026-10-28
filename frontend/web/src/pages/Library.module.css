@@ -26,7 +26,7 @@
   height: var(--ctl-h-sm);
   padding: 0 10px;
   border: var(--border) solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--ink-dim);
   font-size: 10px;

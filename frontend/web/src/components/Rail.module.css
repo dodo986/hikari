@@ -66,7 +66,7 @@
   gap: var(--s3);
   height: 36px;
   padding: 0 var(--s3);
-  border-radius: calc(var(--radius) * 1.5);
+  border-radius: var(--radius-pill);
   color: var(--ink-dim);
   text-decoration: none;
   transition: background var(--snap) var(--ease), color var(--snap) var(--ease);
@@ -132,7 +132,7 @@
   inset-inline-start: var(--s1);
   width: 5px;
   height: 5px;
-  border-radius: 1.5px;
+  border-radius: var(--radius-pill);
   background: var(--sun);
   opacity: 0;
   pointer-events: none;

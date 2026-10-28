@@ -4,7 +4,7 @@
   height: 20px;
   padding: 0;
   border: var(--border) solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   cursor: pointer;
   transition: background var(--snap) var(--ease), border-color var(--snap) var(--ease);

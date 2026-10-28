@@ -2,7 +2,7 @@
   position: relative;
   height: 330px;
   border: var(--border) solid var(--line-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   background: var(--paper-lift);
   overflow: hidden;
 }
@@ -88,7 +88,7 @@
   width: 132px;
   height: 176px;
   border: var(--border) solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--radius);
   overflow: hidden;
   display: none;
 }

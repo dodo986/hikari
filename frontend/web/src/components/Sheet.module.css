@@ -9,7 +9,7 @@
   max-height: min(84vh, 900px);
   padding: 0;
   border: var(--border) solid var(--line);
-  border-radius: calc(var(--radius) + 4px);
+  border-radius: var(--radius-card);
   background: var(--paper-lift);
   color: var(--ink);
   box-shadow: 0 24px 80px rgb(0 0 0 / 55%);

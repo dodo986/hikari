@@ -35,7 +35,7 @@
   position: absolute;
   inset: 0;
   border: var(--border) solid var(--line-soft);
-  border-radius: calc(var(--radius) + 2px);
+  border-radius: var(--radius-card);
   transition: border-color var(--snap) var(--ease-snap);
 }
 

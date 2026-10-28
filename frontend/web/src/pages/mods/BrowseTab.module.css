@@ -32,7 +32,7 @@
   height: 24px;
   padding: 0 var(--s3);
   border: var(--border) solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--ink-dim);
   font-family: var(--font-ui);
@@ -67,7 +67,7 @@
   height: 301px;
   padding: 0;
   border: var(--border) solid var(--line-soft);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--paper);
   color: inherit;
   font: inherit;

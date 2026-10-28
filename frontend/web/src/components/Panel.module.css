@@ -1,6 +1,6 @@
 .panel {
   border: var(--border) solid var(--line-soft);
-  border-radius: calc(var(--radius) + 2px);
+  border-radius: var(--radius-card);
   background: var(--paper-lift);
   padding: var(--s5);
   overflow: hidden;

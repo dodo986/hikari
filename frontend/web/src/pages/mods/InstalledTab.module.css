@@ -59,7 +59,7 @@
   gap: var(--s2);
   height: 30px;
   padding: 0 var(--s3);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 .row:hover {
@@ -92,7 +92,7 @@
   width: 12px;
   height: 12px;
   border: var(--border) solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: transparent;
 }
 

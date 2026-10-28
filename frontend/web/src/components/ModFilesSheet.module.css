@@ -29,7 +29,7 @@
   min-height: 48px;
   padding: var(--s2) var(--s3);
   border: var(--border) solid var(--line-soft);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--paper);
 }
 

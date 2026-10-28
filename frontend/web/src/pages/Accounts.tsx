@@ -3,6 +3,7 @@ import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
+import { StoreIcon } from '../components/StoreIcon'
 import { TextInput } from '../components/TextInput'
 import { autoLogin, beginLogin, completeLogin, logout } from '../daemon/api'
 import { refreshAuth } from '../daemon/link'
@@ -21,8 +22,6 @@ const STORE_NAMES: Record<Store, string> = {
   gog: 'GOG',
   amazon: 'Amazon Games',
 }
-
-const STORE_LETTERS: Record<Store, string> = { epic: 'E', gog: 'G', amazon: 'A' }
 
 interface Flow {
   url?: string
@@ -138,8 +137,8 @@ export function Accounts() {
             }
           >
             <div className={styles.row}>
-              <span className={styles.letter} data-on={status.logged_in}>
-                {STORE_LETTERS[store]}
+              <span className={styles.mark} data-on={status.logged_in}>
+                <StoreIcon store={store} />
               </span>
               <div className={styles.who}>
                 <span className={styles.badges}>

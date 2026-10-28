@@ -32,7 +32,7 @@
   position: relative;
   width: 60px;
   height: 60px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   overflow: hidden;
   flex: 0 0 auto;
 }

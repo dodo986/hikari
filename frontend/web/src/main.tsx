@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { loadEndpoint } from './daemon/endpoint'
+import { onPalette } from './host/bridge'
 import { applyPalette } from './theme/palette'
 import './theme/global.css'
 
@@ -11,6 +12,9 @@ if (hostDir === 'rtl' || hostDir === 'ltr') document.documentElement.dir = hostD
 
 const root = document.getElementById('root')
 if (!root) throw new Error('the page has no #root element')
+
+// A wallpaper change recolours the open window instead of needing a restart.
+onPalette(applyPalette)
 
 // The palette has to be on the first paint; a missing daemon is not fatal.
 void loadEndpoint()

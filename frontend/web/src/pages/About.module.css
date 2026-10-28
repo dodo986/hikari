@@ -39,7 +39,7 @@
   height: 32px;
   padding: 0 var(--s4);
   border: var(--border) solid var(--line-soft);
-  border-radius: calc(var(--radius) + 2px);
+  border-radius: var(--radius-card);
   background: var(--tint-5);
   cursor: pointer;
   transition: background var(--snap) var(--ease), border-color var(--snap) var(--ease);

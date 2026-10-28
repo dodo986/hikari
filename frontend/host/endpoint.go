@@ -40,19 +40,3 @@ func readEndpoint() (map[string]any, error) {
 	}
 	return map[string]any{"url": endpoint.URL, "token": endpoint.Token, "pid": endpoint.PID}, nil
 }
-
-func readPalette() any {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	b, err := os.ReadFile(filepath.Join(home, ".cache", "ryoku", "colors.json"))
-	if err != nil {
-		return nil
-	}
-	var roles map[string]any
-	if err := json.Unmarshal(b, &roles); err != nil {
-		return nil
-	}
-	return roles
-}

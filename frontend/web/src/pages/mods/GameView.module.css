@@ -56,7 +56,7 @@
   gap: var(--s3);
   padding: var(--s3);
   border: var(--border) solid var(--color-alert, var(--alert));
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--tint-5);
 }
 

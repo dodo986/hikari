@@ -67,7 +67,7 @@
 .bar {
   display: block;
   height: 5px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: var(--tint-10);
   overflow: hidden;
 }

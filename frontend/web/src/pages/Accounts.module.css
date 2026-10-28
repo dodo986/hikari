@@ -14,7 +14,7 @@
   gap: var(--s3);
 }
 
-.letter {
+.mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -22,15 +22,13 @@
   height: 52px;
   flex-shrink: 0;
   border: var(--border) solid var(--line);
-  border-radius: calc(var(--radius) + 2px);
+  border-radius: var(--radius-card);
   background: var(--tint-5);
-  font-family: var(--font-display);
-  font-size: var(--f-value);
-  font-weight: 500;
-  color: var(--ink-dim);
+  color: var(--ink-faint);
+  transition: color var(--move) var(--ease);
 }
 
-.letter[data-on='true'] {
+.mark[data-on='true'] {
   border-color: var(--sun);
   color: var(--sun);
 }
