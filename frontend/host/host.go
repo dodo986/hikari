@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -41,9 +42,16 @@ func (h *Host) OpenUrl(url string) error {
 	return nil
 }
 
-// StartDaemon starts hikarid as a user service, which is the only thing the
-// offline screen can do. It never waits: the page reconnects by itself.
+// StartDaemon starts hikarid. A build tree keeps the daemon beside the window,
+// so that copy wins: it is the one this frontend was built against. Otherwise
+// the user service, then whatever is on PATH.
 func (h *Host) StartDaemon() error {
+	if self, err := os.Executable(); err == nil {
+		sibling := filepath.Join(filepath.Dir(self), "hikarid")
+		if info, statErr := os.Stat(sibling); statErr == nil && !info.IsDir() {
+			return spawn(sibling)
+		}
+	}
 	if err := exec.Command("systemctl", "--user", "start", "hikarid").Run(); err == nil {
 		return nil
 	}
@@ -51,6 +59,10 @@ func (h *Host) StartDaemon() error {
 	if err != nil {
 		return errors.New("hikarid is not installed and the user service could not start it")
 	}
+	return spawn(path)
+}
+
+func spawn(path string) error {
 	cmd := exec.Command(path)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
