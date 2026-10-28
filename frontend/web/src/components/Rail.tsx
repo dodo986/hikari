@@ -153,7 +153,7 @@ export function Rail({
         <span
           className={styles.marker}
           data-visible={marker.visible}
-          style={{ top: `${marker.top}px` }}
+          style={{ transform: `translateY(${marker.top}px)` }}
           aria-hidden="true"
         />
       </div>
