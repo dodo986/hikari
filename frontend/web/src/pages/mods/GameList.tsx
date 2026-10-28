@@ -3,14 +3,11 @@ import { Badge } from '../../components/Badge'
 import { Button } from '../../components/Button'
 import { EmptyState } from '../../components/EmptyState'
 import { GameArt } from '../../components/GameArt'
-import { modsConfigure } from '../../daemon/mods'
-import { refreshMods } from '../../daemon/modsLink'
+import { chooseModsFolder } from '../../daemon/modsLink'
 import { useDaemon } from '../../daemon/store'
 import type { Game, ModsGame } from '../../daemon/types'
-import { pickFolder } from '../../host/bridge'
 import { useT } from '../../i18n/t'
 import styles from './GameList.module.css'
-import { errorMessage } from '../../lib/errors'
 
 interface GameListProps {
   onOpen: (game: ModsGame) => void
@@ -33,18 +30,8 @@ export function GameList({ onOpen, onNote, onFailed }: GameListProps) {
   const rest = games.filter((game) => !game.configured)
   const art = (id: string): Game | undefined => library.find((game) => game.id === id)
 
-  const setFolder = async (game: ModsGame) => {
-    const path = await pickFolder(t('Choose the game folder'))
-    if (!path) return
-    try {
-      const result = await modsConfigure(game.id, path)
-      if (result.problems?.length) onFailed(result.problems.join('; '))
-      else onNote(`${game.name}: ${t('folder saved')}`)
-      await refreshMods()
-    } catch (error) {
-      onFailed(errorMessage(error))
-    }
-  }
+  const setFolder = (game: ModsGame) =>
+    chooseModsFolder(game, t('Choose the game folder'), t('folder saved'), onNote, onFailed)
 
   return (
     <div className={styles.list}>

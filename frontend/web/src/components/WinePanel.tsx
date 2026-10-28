@@ -43,6 +43,8 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
         return
       }
       if (event.error) {
+        // An error without a done flag would leave every Install button dead.
+        setBusy(false)
         setStatus(event.error)
         return
       }
@@ -85,6 +87,8 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
   }
 
   const remove = async (version: WineVersion) => {
+    if (busy) return
+    setBusy(true)
     setBad(false)
     try {
       await removeWine(version.name)
@@ -94,6 +98,8 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
     } catch (error) {
       setBad(true)
       setStatus(errorMessage(error))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -111,7 +117,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
             <Badge>{version.type === 'proton' ? t('PROTON') : t('WINE')}</Badge>
             <Badge accent={version.source === 'hikari'}>{(version.source || 'system').toUpperCase()}</Badge>
             {version.source === 'hikari' ? (
-              <Button size="small" onClick={() => void remove(version)}>
+              <Button size="small" busy={busy} onClick={() => void remove(version)}>
                 {t('Remove')}
               </Button>
             ) : null}
@@ -132,7 +138,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
             <div className={styles.row} key={release.tag}>
               <span className={styles.name}>{`${release.tag}  ·  ${release.variant}`}</span>
               <span className={styles.size}>{formatBytes(release.size)}</span>
-              <Button size="small" onClick={() => void download(release)}>
+              <Button size="small" busy={busy} onClick={() => void download(release)}>
                 {t('Install')}
               </Button>
             </div>

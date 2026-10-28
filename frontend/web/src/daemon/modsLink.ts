@@ -1,8 +1,8 @@
 import { rpc } from './link'
 import { useDaemon } from './store'
-import { openUrl } from '../host/bridge'
-import { modsAccount, modsGames, modsStatus } from './mods'
-import type { ModsAccount, ModsDone, ModsProgress } from './types'
+import { openUrl, pickFolder } from '../host/bridge'
+import { modsAccount, modsConfigure, modsGames, modsStatus } from './mods'
+import type { ModsAccount, ModsDone, ModsGame, ModsProgress } from './types'
 import { errorMessage } from '../lib/errors'
 
 // status, games and account share one error slot; the page reads them together.
@@ -28,6 +28,26 @@ export async function refreshModsAccount(): Promise<ModsAccount | null> {
     return account
   } catch {
     return null
+  }
+}
+
+/** Pick a folder for a game and persist it; both the list and the page use it. */
+export async function chooseModsFolder(
+  game: ModsGame,
+  label: string,
+  saved: string,
+  onNote: (note: string) => void,
+  onFailed: (message: string) => void,
+): Promise<void> {
+  const path = await pickFolder(label)
+  if (!path) return
+  try {
+    const result = await modsConfigure(game.id, path)
+    if (result.problems?.length) onFailed(result.problems.join('; '))
+    else onNote(`${game.name}: ${saved}`)
+    await refreshMods()
+  } catch (error) {
+    onFailed(errorMessage(error))
   }
 }
 

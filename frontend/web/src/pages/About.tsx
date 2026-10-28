@@ -10,7 +10,7 @@ const GITHUB = 'https://github.com/dodo986'
 export function About() {
   const t = useT()
   const status = useDaemon((state) => state.status)
-  const version = status?.version ?? '0.1.0'
+  const version = status?.version ?? 'dev'
 
   const references = [
     t('Heroic Games Launcher: store behaviour, launch pipeline and settings semantics.'),

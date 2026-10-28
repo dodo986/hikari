@@ -8,11 +8,11 @@ import { NexusKeySheet } from '../components/NexusKeySheet'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 import { RefreshButton } from '../components/RefreshButton'
-import { modsConfigure, modsDownloads, modsInstallArchive, modsInstallFile, modsSetup, nexusFilePage } from '../daemon/mods'
-import { refreshMods } from '../daemon/modsLink'
+import { modsDownloads, modsInstallArchive, modsInstallFile, modsSetup, nexusFilePage } from '../daemon/mods'
+import { chooseModsFolder, refreshMods } from '../daemon/modsLink'
 import { useDaemon } from '../daemon/store'
 import type { ModFile, ModsGame } from '../daemon/types'
-import { openUrl, pickFolder } from '../host/bridge'
+import { openUrl } from '../host/bridge'
 import { useT } from '../i18n/t'
 import { GameList, profileOf } from './mods/GameList'
 import { GameView } from './mods/GameView'
@@ -117,18 +117,8 @@ export function Mods() {
     }
   }
 
-  const setFolder = async (target: ModsGame) => {
-    const path = await pickFolder(t('Choose the game folder'))
-    if (!path) return
-    try {
-      const result = await modsConfigure(target.id, path)
-      if (result.problems?.length) fail(result.problems.join('; '))
-      else say(`${target.name}: ${t('folder saved')}`)
-      await refreshMods()
-    } catch (failure) {
-      fail(errorMessage(failure))
-    }
-  }
+  const setFolder = (target: ModsGame) =>
+    chooseModsFolder(target, t('Choose the game folder'), t('folder saved'), say, fail)
 
   const counts = `${ready} ${t('ready to mod')}  ·  ${games.length - ready} ${t('without a game folder')}`
 

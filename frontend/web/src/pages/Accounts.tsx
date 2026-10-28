@@ -4,7 +4,7 @@ import { Button } from '../components/Button'
 import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 import { TextInput } from '../components/TextInput'
-import { autoLogin, authStatus, beginLogin, completeLogin, logout } from '../daemon/api'
+import { autoLogin, beginLogin, completeLogin, logout } from '../daemon/api'
 import { refreshAuth } from '../daemon/link'
 import { useDaemon } from '../daemon/store'
 import { openUrl } from '../host/bridge'
@@ -38,12 +38,13 @@ export function Accounts() {
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null)
 
   useEffect(() => {
-    void authStatus().catch(() => {})
+    void refreshAuth().catch(() => {})
   }, [])
 
   const say = (text: string, error = false) => setNote({ text, error })
 
   const login = async (store: Store) => {
+    if (busy[store]) return
     setNote(null)
     setBusy((current) => ({ ...current, [store]: true }))
     try {
@@ -65,6 +66,8 @@ export function Accounts() {
       if (started.url) void openUrl(started.url)
     } catch (error) {
       say(errorMessage(error), true)
+    } finally {
+      setBusy((current) => ({ ...current, [store]: false }))
     }
   }
 
@@ -74,6 +77,8 @@ export function Accounts() {
       say(t('Paste the code from the browser to finish.'), true)
       return
     }
+    if (busy[store]) return
+    setBusy((current) => ({ ...current, [store]: true }))
     try {
       await completeLogin(store, code)
       setFlows((current) => ({ ...current, [store]: undefined }))
@@ -81,16 +86,22 @@ export function Accounts() {
       say(`${t('Signed in to ')}${STORE_NAMES[store]}`)
     } catch (error) {
       say(errorMessage(error), true)
+    } finally {
+      setBusy((current) => ({ ...current, [store]: false }))
     }
   }
 
   const signOut = async (store: Store) => {
+    if (busy[store]) return
+    setBusy((current) => ({ ...current, [store]: true }))
     try {
       await logout(store)
       await refreshAuth()
       say(`${t('Signed out of ')}${STORE_NAMES[store]}`)
     } catch (error) {
       say(errorMessage(error), true)
+    } finally {
+      setBusy((current) => ({ ...current, [store]: false }))
     }
   }
 

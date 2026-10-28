@@ -1,6 +1,5 @@
 import { rpc } from './link'
 import type {
-  AuthStatusResult,
   Game,
   GameSettings,
   InstallInfo,
@@ -42,8 +41,6 @@ export const repairGame = (key: Key) => rpc.call<unknown>('game.repair', { ...ke
 
 export const saveGameSettings = (key: Key, settings: GameSettings) =>
   rpc.call<unknown>('game.settings.set', { ...key, settings })
-
-export const authStatus = () => rpc.call<AuthStatusResult>('auth.status', {})
 
 export const beginLogin = (store: string) => rpc.call<LoginStart>('auth.login', { store })
 
