@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { hasHost, startDaemon } from '../src/host/bridge'
+import { hasHost, onPalette, startDaemon } from '../src/host/bridge'
 
 describe('the host bridge', () => {
   beforeEach(() => {
     vi.resetModules()
     delete window.hikari
     delete window.go
+    delete window.runtime
   })
 
   it('reports no host in a plain browser', () => {
@@ -27,5 +28,19 @@ describe('the host bridge', () => {
 
   it('refuses to start a daemon it cannot reach', async () => {
     await expect(startDaemon()).rejects.toThrow('desktop window')
+  })
+
+  it('hands wallpaper palettes from the runtime to the theme', () => {
+    const listeners: Record<string, (payload: unknown) => void> = {}
+    window.runtime = {
+      EventsOn: (name, callback) => {
+        listeners[name] = callback
+        return () => {}
+      },
+    }
+    const seen: unknown[] = []
+    onPalette((roles) => seen.push(roles))
+    listeners.palette?.({ primary: '#ff0000' })
+    expect(seen).toEqual([{ primary: '#ff0000' }])
   })
 })
