@@ -24,15 +24,3 @@ export function t(text: string, values?: Replacements): string {
 export function useT(): (text: string, values?: Replacements) => string {
   return useCallback((text: string, values?: Replacements) => t(text, values), [])
 }
-
-const listeners = new Set<() => void>()
-
-export function onLanguageChange(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-
-export function changeLanguage(next: string, catalogue?: Record<string, string>): void {
-  setLanguage(next, catalogue)
-  for (const listener of listeners) listener()
-}

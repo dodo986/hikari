@@ -54,7 +54,7 @@ export function SecretPanel() {
   return (
     <Panel
       title={t('Artwork')}
-      subtitle={t('A SteamGridDB key lets Hikari find covers for games the stores do not ship artwork for. It is stored in the system keyring and never sent back to this window.')}
+      note={t('A SteamGridDB key lets Hikari find covers for games the stores do not ship artwork for. It is stored in the system keyring and never sent back to this window.')}
       action={<Badge accent={set}>{set ? t('KEY SET') : t('NO KEY')}</Badge>}
     >
       <div className={styles.row}>

@@ -3,7 +3,7 @@ import styles from './PageHeader.module.css'
 
 interface PageHeaderProps {
   title: string
-  subtitle?: string
+  subtitle?: ReactNode
   actions?: ReactNode
 }
 

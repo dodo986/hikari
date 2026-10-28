@@ -7,53 +7,8 @@
   overflow: hidden;
 }
 
-.head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--s4);
-}
-
-.title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--f-title);
-  font-weight: 500;
-}
-
-.sub {
-  direction: ltr;
-  unicode-bidi: isolate;
-  margin-top: var(--s1);
-  font-size: var(--f-small);
-  color: var(--ink-faint);
-}
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-}
-
 .search {
   width: 280px;
-  height: var(--field-h);
-  padding: 0 9px;
-  border: var(--border) solid var(--line);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: var(--f-small);
-}
-
-.search::placeholder {
-  color: var(--ink-faint);
-}
-
-.search:focus {
-  border: var(--border) solid var(--ink);
-  outline: none;
 }
 
 .chips {
@@ -126,18 +81,6 @@
   overflow-y: auto;
   margin: 0 calc(-1 * var(--s2));
   padding: 0 var(--s2) var(--s6);
-}
-
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s2);
-  min-height: 240px;
-  color: var(--ink-faint);
-  font-size: var(--f-small);
-  text-align: center;
 }
 
 .note {

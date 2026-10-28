@@ -51,7 +51,6 @@
   --sun: #e2342a;
   --sun-deep: color-mix(in srgb, var(--sun) 70%, black);
   --alert: #e2342a;
-  --good: #7ea87e;
 
   --font-display: 'Fraunces', serif;
   --font-ui: 'Space Grotesk', system-ui, sans-serif;
@@ -81,21 +80,17 @@
   --radius: 6px;
   --border: 1px;
   --row-h: 48px;
-  --cell-h: 104px;
   --rail-w: 224px;
   --ctl-h: 32px;
   --ctl-h-sm: 24px;
-  --field-h: 36px;
   --field-h-sm: 30px;
 
   --snap: 90ms;
   --move: 170ms;
   --swap: 210ms;
-  --flap: 110ms;
   --ease: cubic-bezier(0.33, 1, 0.68, 1);
   --ease-snap: cubic-bezier(0.5, 1, 0.89, 1);
   --dur-small: 200ms;
-  --dur-normal: 400ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasized: cubic-bezier(0.05, 0, 0.13, 1);
 }
@@ -105,9 +100,7 @@
     --snap: 0ms;
     --move: 0ms;
     --swap: 0ms;
-    --flap: 0ms;
     --dur-small: 0ms;
-    --dur-normal: 0ms;
   }
 }
 

@@ -5,7 +5,6 @@ import styles from './FactsPanel.module.css'
 
 interface FactsPanelProps {
   game: Game | null
-  settings: { target_exe?: string; wine_prefix?: string } | null
   size: string
 }
 
@@ -23,7 +22,7 @@ export function FactsPanel({ game, size }: FactsPanelProps) {
   return (
     <Panel
       title={t('Game details')}
-      subtitle={t('What the daemon will start, and the rest of its record for this title.')}
+      note={t('What the daemon will start, and the rest of its record for this title.')}
     >
       <div className={styles.rows}>
         {row(t('Store'), game?.store.toUpperCase())}

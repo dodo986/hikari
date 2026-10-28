@@ -10,7 +10,6 @@ import styles from './TextSheet.module.css'
 interface LaunchLogSheetProps {
   open: boolean
   game: Key
-  record: RunLog | null
   initial: RunLog | null
   onNote: (note: string) => void
   onClose: () => void
@@ -18,14 +17,14 @@ interface LaunchLogSheetProps {
 
 const EMPTY = 'No output was recorded. The game may have failed before it started; see the command the launcher built under Launch command.'
 
-export function LaunchLogSheet({ open, game, record, initial, onNote, onClose }: LaunchLogSheetProps) {
+export function LaunchLogSheet({ open, game, initial, onNote, onClose }: LaunchLogSheetProps) {
   const t = useT()
-  const [current, setCurrent] = useState<RunLog | null>(initial ?? record)
+  const [current, setCurrent] = useState<RunLog | null>(initial)
   const body = useRef<HTMLPreElement>(null)
 
   useEffect(() => {
-    if (open) setCurrent(initial ?? record)
-  }, [open, initial, record])
+    if (open) setCurrent(initial)
+  }, [open, initial])
 
   const summary = (() => {
     if (!current) return t('No launch recorded yet.')

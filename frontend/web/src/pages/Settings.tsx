@@ -29,7 +29,7 @@ export function Settings() {
       <div className={styles.body}>
         <Panel
           title={t('Daemon')}
-          subtitle={t('One process owns the socket, the library and every engine run.')}
+          note={t('One process owns the socket, the library and every engine run.')}
         >
           <div className={styles.daemon}>
             <div className={styles.stack}>

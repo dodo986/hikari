@@ -45,7 +45,7 @@ export function InstallPanel({ game, info, progress, onStarted, onFailed }: Inst
   return (
     <Panel
       title={t('Install')}
-      subtitle={t('The engine reports the real download and disk requirements before anything is written.')}
+      note={t('The engine reports the real download and disk requirements before anything is written.')}
     >
       <div className={styles.stack}>
         <div className={styles.row}>

@@ -4,7 +4,10 @@ import { refreshAll } from '../daemon/api'
 import type { Game } from '../daemon/types'
 import { useT } from '../i18n/t'
 import { Button } from '../components/Button'
+import { EmptyState } from '../components/EmptyState'
 import { GameGrid } from '../components/GameGrid'
+import { PageHeader } from '../components/PageHeader'
+import { TextInput } from '../components/TextInput'
 import { Tile } from '../components/Tile'
 import { navigate } from '../router'
 import { AddGameSheet } from './AddGameSheet'
@@ -110,36 +113,38 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
 
   return (
     <div className={styles.page}>
-      <header className={styles.head}>
-        <div>
-          <h1 className={styles.title}>{storeMode ? t('Store') : t('Library')}</h1>
-          <p className={failed ? styles.error : note ? styles.note : styles.sub}>
-            {note
-              ? note
-              : storeMode
-                ? `${storeCount} ${t('available to install')}  ·  ${installed} ${t('installed')}`
-                : `${installed} ${t('installed')}  ·  ${storeCount} ${t('in the store')}`}
-          </p>
-        </div>
-        <div className={styles.controls}>
-          <input
-            className={styles.search}
-            type="search"
-            placeholder={t('Search games')}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            aria-label={t('Search games')}
-          />
-          {storeMode ? null : (
-            <Button size="small" onClick={() => setAdding(true)}>
-              {`+ ${t('Add game')}`}
+      <PageHeader
+        title={storeMode ? t('Store') : t('Library')}
+        subtitle={
+          note ? (
+            <span className={failed ? styles.error : styles.note}>{note}</span>
+          ) : storeMode ? (
+            `${storeCount} ${t('available to install')}  ·  ${installed} ${t('installed')}`
+          ) : (
+            `${installed} ${t('installed')}  ·  ${storeCount} ${t('in the store')}`
+          )
+        }
+        actions={
+          <>
+            <TextInput
+              label={t('Search games')}
+              type="search"
+              value={query}
+              onValue={setQuery}
+              placeholder={t('Search games')}
+              className={styles.search}
+            />
+            {storeMode ? null : (
+              <Button size="small" onClick={() => setAdding(true)}>
+                {`+ ${t('Add game')}`}
+              </Button>
+            )}
+            <Button size="small" onClick={() => void refresh()} busy={refreshing}>
+              {refreshing ? t('Checking') : t('Refresh')}
             </Button>
-          )}
-          <Button size="small" onClick={() => void refresh()} busy={refreshing}>
-            {refreshing ? t('Checking') : t('Refresh')}
-          </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className={styles.chips}>
         {CHIPS.map((chip) =>
@@ -181,16 +186,18 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
 
       <div className={styles.gridWrap}>
         {shown.length === 0 ? (
-          <div className={styles.empty}>
-            <span>{storeMode ? t('Nothing available to install here.') : t('Nothing installed yet.')}</span>
-            <Button
-              size="small"
-              variant="quiet"
-              onClick={() => navigate({ page: storeMode ? 'library' : 'store' })}
-            >
-              {storeMode ? t('Show installed') : t('Browse the store')}
-            </Button>
-          </div>
+          <EmptyState
+            title={storeMode ? t('Nothing available to install here.') : t('Nothing installed yet.')}
+            action={
+              <Button
+                size="small"
+                variant="quiet"
+                onClick={() => navigate({ page: storeMode ? 'library' : 'store' })}
+              >
+                {storeMode ? t('Show installed') : t('Browse the store')}
+              </Button>
+            }
+          />
         ) : (
           <GameGrid
             keys={shown.map((game) => gameKey(game.store, game.id))}

@@ -205,7 +205,7 @@ export function GameDetail({ store, id }: GameDetailProps) {
           />
         ) : null}
 
-        <FactsPanel game={game} settings={detail.settings} size={size} />
+        <FactsPanel game={game} size={size} />
 
         <OptiPanel
           key={`${store}/${id}`}
@@ -239,7 +239,6 @@ export function GameDetail({ store, id }: GameDetailProps) {
           <LaunchLogSheet
             open={logOpen}
             game={key}
-            record={detail.log}
             initial={detail.log}
             onNote={say}
             onClose={() => setLogOpen(false)}

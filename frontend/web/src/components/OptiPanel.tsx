@@ -92,7 +92,7 @@ export function OptiPanel({ gameKey_: key, status, installed, onNote, onFailed, 
   return (
     <Panel
       title={t('OptiScaler')}
-      subtitle={t('Clean-room upscaling and frame generation, installed beside the game executable.')}
+      note={t('Clean-room upscaling and frame generation, installed beside the game executable.')}
     >
       <div className={styles.stack}>
         <div className={styles.status}>

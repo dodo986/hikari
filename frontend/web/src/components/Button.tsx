@@ -6,7 +6,6 @@ type Variant = 'default' | 'primary' | 'quiet' | 'danger'
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
   size?: 'default' | 'small'
-  wide?: boolean
   busy?: boolean
   children: ReactNode
 }
@@ -14,7 +13,6 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({
   variant = 'default',
   size = 'default',
-  wide = false,
   busy = false,
   disabled,
   children,
@@ -24,7 +22,6 @@ export function Button({
   const classes = [styles.button]
   if (variant !== 'default') classes.push(styles[variant])
   if (size === 'small') classes.push(styles.small)
-  if (wide) classes.push(styles.wide)
   if (className) classes.push(className)
   return (
     <button {...rest} className={classes.join(' ')} disabled={disabled || busy} aria-busy={busy}>

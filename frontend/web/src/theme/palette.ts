@@ -34,7 +34,6 @@ export function applyPalette(palette: PaletteRoles | null | undefined): void {
   }
   if (palette.inverseSurface) root.setProperty('--bone', palette.inverseSurface)
   if (palette.inverseOnSurface) root.setProperty('--ink-on-bone', palette.inverseOnSurface)
-  // `alert` stays the fixed red, so a failure reads as one whatever the palette.
-  root.setProperty('--light', paper && LUMINANCE(paper) > 0.5 ? '1' : '0')
+  // CSS only needs the boolean; the palette decides every surface colour itself.
   document.documentElement.dataset.light = paper && LUMINANCE(paper) > 0.5 ? 'true' : 'false'
 }

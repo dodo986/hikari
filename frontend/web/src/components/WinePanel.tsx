@@ -100,7 +100,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
   return (
     <Panel
       title={t('Wine & Proton')}
-      subtitle={t('Builds Hikari can run games with, and one-click Proton downloads from the same releases Heroic uses.')}
+      note={t('Builds Hikari can run games with, and one-click Proton downloads from the same releases Heroic uses.')}
     >
       <p className={styles.mark}>{t('INSTALLED')}</p>
       {versions.length === 0 ? <p className={styles.empty}>{t('none found')}</p> : null}

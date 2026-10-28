@@ -68,7 +68,7 @@ export function BrowseTab({ game, onOpenMod, onApiKey, onFailed }: BrowseTabProp
 
   if (!account.stored) {
     return (
-      <Panel title={t('Sign in to Nexus')} subtitle={t('Your browser opens Nexus; approving there is the whole login.')}>
+      <Panel title={t('Sign in to Nexus')} note={t('Your browser opens Nexus; approving there is the whole login.')}>
         <div className={styles.signIn}>
           <span className={styles.spacer} />
           <Button size="small" onClick={onApiKey}>

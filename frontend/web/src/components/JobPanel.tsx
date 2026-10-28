@@ -17,7 +17,7 @@ export function JobPanel() {
   const last = log[log.length - 1] ?? ''
 
   return (
-    <Panel title={title} subtitle={job?.message ?? ''}>
+    <Panel title={title} note={job?.message ?? ''}>
       <div className={styles.track} aria-hidden="true">
         <div className={styles.fill} style={{ transform: `scaleX(${ratio})` }} />
       </div>

@@ -165,7 +165,7 @@ export function Mods() {
 
           <div className={styles.body}>
             {status && !status.available ? (
-              <Panel title={t('Modding backend unavailable')} subtitle={status.reason}>
+              <Panel title={t('Modding backend unavailable')} note={status.reason}>
                 <div className={styles.setup}>
                   <p className={styles.setupText}>
                     {t(
@@ -195,7 +195,7 @@ export function Mods() {
             ) : null}
 
             {error ? (
-              <Panel title={t('That did not work')} subtitle={error}>
+              <Panel title={t('That did not work')} note={error}>
                 <div className={styles.errorRow}>
                   <Button size="small" onClick={() => setMods({ error: '' })}>
                     {t('Dismiss')}

@@ -43,7 +43,7 @@ export function DiagnosticsPanel() {
   return (
     <Panel
       title={t('Diagnostics')}
-      subtitle={t(
+      note={t(
         "The daemon's own log. Copy a report when something fails; it has versions, engine paths and the recent log, no credentials.",
       )}
     >
