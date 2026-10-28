@@ -31,6 +31,7 @@ import (
 	"hikari/internal/providers/local"
 	"hikari/internal/providers/steam"
 	"hikari/internal/runtimes"
+	"hikari/internal/secrets"
 	umuresolver "hikari/internal/umu"
 	"hikari/internal/watcher"
 	"hikari/internal/winemgr"
@@ -40,6 +41,7 @@ type daemon struct {
 	log      *slog.Logger
 	paths    config.Paths
 	settings config.Settings
+	secrets  *secrets.Store
 	state    *config.StateStore
 	library  *library.Service
 	eng      *engine.Manager
@@ -169,10 +171,15 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 		})
 	}
 
+	store := secrets.New(filepath.Join(paths.DataDir, "secrets.json"))
+	migrateSecrets(log, store, paths, &settings)
+	sgdbKey, _ := store.Get(secrets.SteamGridDB)
+
 	return &daemon{
 		log:      log,
 		paths:    paths,
 		settings: settings,
+		secrets:  store,
 		state:    state,
 		library:  library.NewService(providers...),
 		eng:      eng,
@@ -180,7 +187,7 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 		games:    launch.NewManager(log, runner),
 		umu:      umuresolver.NewResolver(filepath.Join(paths.DataDir, "umu_ids.json")),
 		art:      art.New(filepath.Join(cacheDir(), "hikari", "art")),
-		artwork:  artwork.New(settings.Library.SteamGridDBKey),
+		artwork:  artwork.New(sgdbKey),
 		wine:     winemgr.New(paths.DataDir),
 		started:  time.Now(),
 
@@ -206,6 +213,7 @@ func (d *daemon) register(srv *api.Server, ctx context.Context) {
 	d.registerUpdate(srv)
 	d.registerLocal(srv)
 	d.registerArtwork(srv)
+	d.registerSecrets(srv)
 	d.registerOpti(srv)
 	d.registerMods(srv)
 	srv.Register("engine.versions", func(c context.Context, params json.RawMessage) (any, error) {

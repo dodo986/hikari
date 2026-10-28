@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -39,6 +40,22 @@ func New(apiKey string) *Searcher {
 		sgdbBase:  "https://www.steamgriddb.com/api/v2",
 		steamBase: "https://store.steampowered.com/api",
 	}
+}
+
+// SetKey swaps the SteamGridDB key at runtime, after the UI stores one.
+func (s *Searcher) SetKey(key string) { s.APIKey = key }
+
+// Check asks SteamGridDB whether it accepts a key before we store it, so a
+// mistyped key fails here instead of silently producing no covers.
+func (s *Searcher) Check(ctx context.Context, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("the key is empty")
+	}
+	var games []sgdbGame
+	if err := s.getJSON(ctx, s.sgdbBase+"/search/autocomplete/portal", key, &games); err != nil {
+		return fmt.Errorf("steamgriddb rejected that key: %w", err)
+	}
+	return nil
 }
 
 func (s *Searcher) Search(ctx context.Context, title string) ([]Candidate, error) {
