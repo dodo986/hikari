@@ -4,6 +4,7 @@ import { refreshAll } from '../daemon/api'
 import type { Game } from '../daemon/types'
 import { useT } from '../i18n/t'
 import { Button } from '../components/Button'
+import { GameGrid } from '../components/GameGrid'
 import { Tile } from '../components/Tile'
 import { navigate } from '../router'
 import { AddGameSheet } from './AddGameSheet'
@@ -68,6 +69,21 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
       return a.title.localeCompare(b.title)
     })
   }, [games, query, store, storeMode, sortBy, running])
+
+  const openers = useMemo(() => {
+    const map = new Map<string, () => void>()
+    for (const game of games) {
+      const key = gameKey(game.store, game.id)
+      map.set(key, () => navigate({ page: 'game', store: game.store, id: game.id }))
+    }
+    return map
+  }, [games])
+
+  const byKey = useMemo(() => {
+    const map = new Map<string, Game>()
+    for (const game of games) map.set(gameKey(game.store, game.id), game)
+    return map
+  }, [games])
 
   const refresh = async () => {
     setRefreshing(true)
@@ -168,21 +184,25 @@ export function Library({ storeMode = false }: { storeMode?: boolean }) {
             </Button>
           </div>
         ) : (
-          <div className={styles.grid}>
-            {shown.map((game, index) => {
-              const key = gameKey(game.store, game.id)
+          <GameGrid
+            keys={shown.map((game) => gameKey(game.store, game.id))}
+            render={(key, leaving) => {
+              const game = byKey.get(key)
+              if (!game) return null
+              const open = openers.get(key)
+              if (!open) return null
               return (
                 <Tile
-                  key={key}
-                  index={index}
+                  index={shown.indexOf(game)}
                   game={game}
                   running={Boolean(running[key])}
                   progress={installs[key]?.percent ?? null}
-                  onOpen={() => navigate({ page: 'game', store: game.store, id: game.id })}
+                  leaving={leaving}
+                  onOpen={open}
                 />
               )
-            })}
-          </div>
+            }}
+          />
         )}
       </div>
 

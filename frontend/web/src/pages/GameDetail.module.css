@@ -33,7 +33,6 @@
 
   padding: var(--s5) var(--s5) var(--s7);
   overflow-y: auto;
-  max-width: var(--content-max);
   width: 100%;
 }
 

@@ -35,7 +35,6 @@
   padding: var(--s4) var(--s5) var(--s5);
   min-height: 0;
   flex: 1;
-  max-width: var(--content-max);
   width: 100%;
 }
 

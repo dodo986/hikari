@@ -3,7 +3,6 @@
   flex-direction: column;
   gap: var(--s4);
   padding: var(--s5) var(--s5) var(--s7);
-  max-width: var(--content-max);
 }
 
 .row {

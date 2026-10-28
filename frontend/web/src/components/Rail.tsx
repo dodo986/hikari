@@ -111,7 +111,7 @@ export function Rail({
   useEffect(() => {
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  })
+  }, [])
 
   const row = (entry: Entry) => (
     <Row

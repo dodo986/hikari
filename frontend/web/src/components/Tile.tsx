@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { CSSProperties } from 'react'
 import type { Game } from '../daemon/types'
 import { useT } from '../i18n/t'
@@ -10,10 +11,21 @@ interface TileProps {
   running: boolean
   progress?: number | null
   index: number
+  /** A filtered out tile is still on screen while it fades. */
+  leaving?: boolean
   onOpen: () => void
 }
 
-export function Tile({ game, running, progress, index, onOpen }: TileProps) {
+// The grid keeps one tile per game across reflows, and install progress repaints
+// one of them per tick, so the props stay shallow comparable.
+export const Tile = memo(function Tile({
+  game,
+  running,
+  progress,
+  index,
+  leaving = false,
+  onOpen,
+}: TileProps) {
   const t = useT()
   const facts = [game.store.toUpperCase()]
   if (game.favorite === true) facts.unshift('★')
@@ -26,7 +38,9 @@ export function Tile({ game, running, progress, index, onOpen }: TileProps) {
       style={{ animationDelay: `${Math.min(index * 14, 260)}ms` } as CSSProperties}
       onClick={onOpen}
       aria-label={game.title}
-      data-testid="tile"
+      data-testid={leaving ? 'tile-leaving' : 'tile'}
+      aria-hidden={leaving || undefined}
+      tabIndex={leaving ? -1 : undefined}
       data-store={game.store}
       data-title={game.title}
     >
@@ -66,4 +80,4 @@ export function Tile({ game, running, progress, index, onOpen }: TileProps) {
       <span className={styles.facts}>{facts.join('  ·  ')}</span>
     </button>
   )
-}
+})

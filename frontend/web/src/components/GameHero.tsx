@@ -47,6 +47,7 @@ export function GameHero({ game, running, launching, crashed, size }: GameHeroPr
           artworkLocal={game?.artwork_local}
           role="cover"
           showTitle={false}
+          width={1200}
           className={styles.cover}
         />
       </div>
@@ -78,6 +79,7 @@ export function GameHero({ game, running, launching, crashed, size }: GameHeroPr
           artworkLocal={game?.artwork_local}
           role="square"
           showTitle={false}
+          width={180}
           className={styles.squareArt}
         />
       </div>

@@ -12,7 +12,6 @@
   gap: var(--s4);
   padding: 0 0 var(--s7);
   overflow-y: auto;
-  max-width: var(--content-max);
   width: 100%;
 }
 

@@ -7,9 +7,16 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--s4);
   margin-top: var(--s2);
+}
+
+/* SettingsPage.qml gives each card half the body once it is wider than 700. */
+@media (min-width: 940px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .card {

@@ -13,6 +13,8 @@ interface GameArtProps {
   showTitle?: boolean
   /** Cover art is portrait; a square slot crops it less from the top. */
   role?: 'cover' | 'square'
+  /** Painted width in CSS pixels; the bridge serves a cached copy at this size. */
+  width?: number
 }
 
 function pick(artwork: Artwork | undefined, local: Artwork | undefined, role: 'cover' | 'square') {
@@ -34,11 +36,13 @@ export function GameArt({
   style,
   showTitle = true,
   role = 'square',
+  width = 260,
 }: GameArtProps) {
   const [loaded, setLoaded] = useState(false)
   const [wide, setWide] = useState(false)
   // Ask for roughly what the slot paints, doubled for a high density screen.
-  const requested = typeof window === 'undefined' ? 0 : Math.round(260 * Math.min(2, window.devicePixelRatio || 1))
+  const requested =
+    typeof window === 'undefined' ? 0 : Math.round(width * Math.min(2, window.devicePixelRatio || 1))
   const source = artUrl(pick(artwork, artworkLocal, role), requested)
   const logo = artUrl(artworkLocal?.logo ?? artwork?.logo)
 

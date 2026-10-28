@@ -16,8 +16,8 @@
 }
 
 .dialog::backdrop {
-  background: rgb(0 0 0 / 62%);
-  backdrop-filter: blur(2px);
+  /* QML dims the page under a sheet; a blurred backdrop costs a full repaint. */
+  background: rgb(0 0 0 / 66%);
 }
 
 .head {

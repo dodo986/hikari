@@ -30,7 +30,6 @@
   padding: var(--s4) var(--s5) 0;
   flex: 1;
   min-height: 0;
-  max-width: var(--content-max);
   width: 100%;
 }
 

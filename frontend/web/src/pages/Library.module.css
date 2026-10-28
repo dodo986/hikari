@@ -128,13 +128,6 @@
   padding: 0 var(--s2) var(--s6);
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 220px);
-  gap: var(--s4);
-  align-items: start;
-}
-
 .empty {
   display: flex;
   flex-direction: column;
