@@ -1,0 +1,26 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 1px var(--s2);
+  border: var(--border) solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  color: var(--ink-dim);
+  font-size: var(--f-tiny);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+}
+
+.accent {
+  border-color: color-mix(in srgb, var(--sun) 55%, transparent);
+  color: var(--sun);
+}
+
+.solid {
+  background: var(--sun);
+  border-color: transparent;
+  color: #fff;
+}

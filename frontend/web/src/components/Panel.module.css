@@ -1,0 +1,29 @@
+.panel {
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--paper-lift) 70%, transparent);
+  padding: var(--s4) var(--s5);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s3);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--f-micro);
+  font-weight: 500;
+  letter-spacing: var(--track-mark);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.note {
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+}

@@ -1,0 +1,128 @@
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  width: 220px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  animation: tile-in var(--dur-small) var(--ease-emphasized) both;
+}
+
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.card {
+  position: relative;
+  width: 220px;
+  aspect-ratio: 3 / 4;
+  transition: transform var(--move) var(--ease-snap);
+}
+
+.tile:hover .card,
+.tile:focus-visible .card {
+  transform: translateY(calc(-1 * var(--s1))) scale(1.015);
+}
+
+.art {
+  position: absolute;
+  inset: 0;
+  border: var(--border) solid var(--line-soft);
+  transition: border-color var(--snap) var(--ease-snap);
+}
+
+.tile:hover .art,
+.tile:focus-visible .art {
+  border-color: var(--sun);
+}
+
+.scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 64px;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--paper) 88%, transparent));
+  pointer-events: none;
+}
+
+.corner {
+  position: absolute;
+  display: flex;
+  gap: var(--s1);
+}
+
+.topLeft {
+  top: var(--s2);
+  left: var(--s2);
+}
+
+.topRight {
+  top: var(--s2);
+  right: var(--s2);
+}
+
+.bottomLeft {
+  bottom: var(--s2);
+  left: var(--s2);
+}
+
+.bottomRight {
+  bottom: var(--s3);
+  right: var(--s3);
+}
+
+.progress {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 4px;
+  background: var(--tint-16);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--sun);
+  transition: width var(--move) var(--ease);
+}
+
+.title {
+  margin-top: var(--s2);
+  font-size: var(--f-body);
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile:hover .title,
+.tile:focus-visible .title {
+  color: var(--ink);
+}
+
+.facts {
+  font-size: var(--f-micro);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view {
+  font-size: var(--f-tiny);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  color: var(--ink);
+  opacity: 0;
+  transition: opacity var(--snap) var(--ease);
+}
+
+.tile:hover .view,
+.tile:focus-visible .view {
+  opacity: 1;
+}

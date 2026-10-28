@@ -83,7 +83,7 @@ func main() {
 	d.register(srv, ctx)
 
 	if !*noWS {
-		ep, err := startWS(ctx, log, srv)
+		ep, err := startWS(ctx, log, srv, d.art.Dir())
 		if err != nil {
 			log.Error("hikarid cannot serve the local websocket", "err", err)
 			os.Exit(1)

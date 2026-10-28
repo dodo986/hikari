@@ -1,0 +1,56 @@
+.app {
+  display: flex;
+  height: 100%;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.offline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s3);
+  height: 100%;
+  padding: var(--s7);
+  text-align: center;
+}
+
+.offlineTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--f-hero);
+  font-weight: 500;
+}
+
+.offlineText {
+  max-width: 52ch;
+  color: var(--ink-dim);
+  font-size: var(--f-small);
+  line-height: 1.6;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--f-micro);
+  color: var(--ink-faint);
+  background: var(--tint-5);
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: var(--s1) var(--s2);
+}
+
+.stub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ink-faint);
+  font-size: var(--f-small);
+}

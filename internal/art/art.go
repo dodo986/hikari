@@ -73,6 +73,34 @@ func (c *Cache) Seed(url string, r io.Reader) error {
 	return err
 }
 
+// Dir is the cache root, safe to serve over the local HTTP bridge.
+func (c *Cache) Dir() string { return c.dir }
+
+// SeedFile stores an image the user picked from disk under a stable name and
+// returns where it landed, so local covers live beside the fetched ones.
+func (c *Cache) SeedFile(source string, r io.Reader) (string, error) {
+	if source == "" {
+		return "", fmt.Errorf("no source for the artwork")
+	}
+	sum := sha256.Sum256([]byte(source))
+	p := filepath.Join(c.dir, hex.EncodeToString(sum[:16])+extOf(source))
+	if _, err := os.Stat(p); err == nil {
+		return p, nil
+	}
+	if err := os.MkdirAll(c.dir, 0o755); err != nil {
+		return "", err
+	}
+	f, err := os.Create(p)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, r); err != nil {
+		return "", err
+	}
+	return p, nil
+}
+
 func (c *Cache) Has(url string) bool {
 	p := c.PathFor(url)
 	if p == "" {

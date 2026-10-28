@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ type Endpoint struct {
 
 // startWS binds loopback only and publishes the address plus a token that is
 // regenerated on every start, so a stale page cannot reconnect after a restart.
-func startWS(ctx context.Context, log *slog.Logger, srv *api.Server) (*Endpoint, error) {
+func startWS(ctx context.Context, log *slog.Logger, srv *api.Server, artRoot string) (*Endpoint, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("cannot bind the local websocket: %w", err)
@@ -45,13 +46,30 @@ func startWS(ctx context.Context, log *slog.Logger, srv *api.Server) (*Endpoint,
 		_ = ln.Close()
 		return nil, err
 	}
-	cfg := api.WSConfig{Token: token, Origins: wsOrigins()}
+	cfg := api.WSConfig{Token: token, Origins: wsOrigins(), Assets: artAssets(artRoot)}
 	go func() {
 		if err := srv.ServeWS(ctx, ln, cfg); err != nil {
 			log.Error("websocket endpoint stopped", "err", err)
 		}
 	}()
 	return ep, nil
+}
+
+// artAssets lets the browser load cached artwork over the same authorised
+// listener, since a webview cannot read file:// paths.
+func artAssets(root string) http.Handler {
+	if root == "" {
+		return nil
+	}
+	files := http.StripPrefix("/art/", http.FileServer(http.Dir(root)))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/art/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("cache-control", "private, max-age=86400")
+		files.ServeHTTP(w, r)
+	})
 }
 
 func newToken() (string, error) {

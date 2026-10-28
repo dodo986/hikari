@@ -1,0 +1,82 @@
+import { create } from 'zustand'
+import type {
+  ConnectionState,
+  DaemonStatus,
+  Game,
+  GameStateEvent,
+  InstallProgress,
+  LibraryChangedEvent,
+} from './types'
+
+export interface DaemonState {
+  connection: ConnectionState
+  games: Game[]
+  status: DaemonStatus | null
+  installs: Record<string, InstallProgress>
+  running: Record<string, GameStateEvent>
+  error: string | null
+  setConnection: (state: ConnectionState) => void
+  setGames: (games: Game[]) => void
+  setStatus: (status: DaemonStatus | null) => void
+  setError: (error: string | null) => void
+  applyProgress: (progress: InstallProgress) => void
+  clearProgress: (key: string) => void
+  applyGameState: (event: GameStateEvent) => void
+  applyLibraryChanged: (event: LibraryChangedEvent) => void
+}
+
+export const gameKey = (store: string, id: string): string => `${store}/${id}`
+
+export const useDaemon = create<DaemonState>((set) => ({
+  connection: 'connecting',
+  games: [],
+  status: null,
+  installs: {},
+  running: {},
+  error: null,
+
+  setConnection: (connection) => set({ connection }),
+  setGames: (games) => set({ games }),
+  setStatus: (status) => set({ status }),
+  setError: (error) => set({ error }),
+
+  applyProgress: (progress) =>
+    set((state) => ({
+      installs: { ...state.installs, [gameKey(progress.store, progress.id)]: progress },
+    })),
+
+  clearProgress: (key) =>
+    set((state) => {
+      const installs = { ...state.installs }
+      delete installs[key]
+      return { installs }
+    }),
+
+  applyGameState: (event) =>
+    set((state) => {
+      const key = gameKey(event.store, event.id)
+      const running = { ...state.running }
+      if (event.state === 'stopped' || event.state === 'stopping') {
+        delete running[key]
+      } else {
+        running[key] = event
+      }
+      return { running }
+    }),
+
+  // A store changed: mark what moved instead of guessing. Games that are simply
+  // new appear on the next library.list, which the caller schedules.
+  applyLibraryChanged: (event) =>
+    set((state) => {
+      if (!event.updated?.length && !event.removed?.length) return {}
+      const removed = new Set((event.removed ?? []).map((id) => gameKey(event.store ?? '', id)))
+      const games = state.games
+        .filter((game) => !removed.has(gameKey(game.store, game.id)))
+        .map((game) =>
+          (event.updated ?? []).includes(game.id) && game.store === event.store
+            ? { ...game, update_available: false }
+            : game,
+        )
+      return { games }
+    }),
+}))

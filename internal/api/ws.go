@@ -20,6 +20,9 @@ import (
 type WSConfig struct {
 	Token   string
 	Origins []string
+	// Assets serves non RPC paths on the same loopback listener, behind the
+	// same token check. It lets a browser reach local artwork.
+	Assets http.Handler
 }
 
 const (
@@ -53,6 +56,19 @@ func (s *Server) ServeWS(ctx context.Context, ln net.Listener, cfg WSConfig) err
 
 func (s *Server) wsHandler(cfg WSConfig, addr net.Addr) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		websocketUpgrade := strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+		if r.URL.Path != wsPath && !websocketUpgrade {
+			if cfg.Assets == nil {
+				http.NotFound(w, r)
+				return
+			}
+			if !hostAllowed(r.Host, addr) || !sameToken(r.URL.Query().Get("token"), cfg.Token) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			cfg.Assets.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path != wsPath {
 			http.NotFound(w, r)
 			return
