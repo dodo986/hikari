@@ -7,6 +7,7 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      version = "0.8.4";
     in
     {
       packages = forAllSystems (system:
@@ -44,11 +45,69 @@
 
           buildHikariGoModule =
             pkgs.buildGoModule.override { go = goToolchain; };
+
+          # The React bundle the window embeds. Dependencies come from the
+          # lockfile, so this derivation keeps no hand-written hash.
+          web = pkgs.stdenv.mkDerivation {
+            pname = "hikari-web";
+            inherit version;
+            src = ./frontend/web;
+
+            nativeBuildInputs = [ pkgs.nodejs_22 pkgs.importNpmLock.npmConfigHook ];
+            npmDeps = pkgs.importNpmLock { npmRoot = ./frontend/web; };
+
+            buildPhase = ''
+              runHook preBuild
+              npm run build
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+              mkdir -p "$out"
+              cp -r dist/. "$out"
+              runHook postInstall
+            '';
+          };
+
+          hikari-ui = buildHikariGoModule {
+            pname = "hikari-ui";
+            inherit version;
+            src = ./frontend/host;
+
+            vendorHash = "sha256-f5dN6aIZ0uMGanKqKd4SUeT/jHbwCYjRRllxRlHhtNc=";
+            subPackages = [ "." ];
+            tags = [ "production" "webkit2_41" ];
+
+            buildInputs = [ pkgs.gtk3 pkgs.webkitgtk_4_1 ];
+            nativeBuildInputs = [ pkgs.pkg-config pkgs.wrapGAppsHook3 ];
+
+            preBuild = ''
+              rm -rf dist
+              cp -r ${web} dist
+            '';
+
+            # The module directory is named host, so name the binary after the
+            # window the packaging expects.
+            postInstall = ''
+              mv "$out/bin/host" "$out/bin/hikari-ui"
+            '';
+
+            meta = with lib; {
+              description = "Hikari's React window inside a WebKitGTK host";
+              homepage = "https://github.com/dodo986/hikari";
+              license = licenses.gpl3Plus;
+              mainProgram = "hikari-ui";
+              platforms = platforms.linux;
+            };
+          };
         in
         rec {
+          inherit hikari-ui;
+
           hikari = buildHikariGoModule {
             pname = "hikari";
-            version = "unstable";
+            inherit version;
             src = ./.;
 
             # Hikari commits its Go dependencies to vendor/.
@@ -60,13 +119,15 @@
 
             postInstall = ''
               install -Dm755 scripts/hikari-app "$out/bin/hikari-app"
+              install -Dm755 scripts/hikari-update "$out/bin/hikari-update"
+              install -Dm755 ${hikari-ui}/bin/hikari-ui "$out/bin/hikari-ui"
+
               install -Dm644 packaging/hikari.desktop \
                 "$out/share/applications/hikari.desktop"
+              substituteInPlace "$out/share/applications/hikari.desktop" \
+                --replace-fail 'hikari-ui' "$out/bin/hikari-app"
               install -Dm644 packaging/hikari.svg \
                 "$out/share/icons/hicolor/scalable/apps/hikari.svg"
-
-              install -d "$out/etc/xdg/quickshell/hikari"
-              cp -r quickshell/. "$out/etc/xdg/quickshell/hikari/"
 
               install -Dm644 packaging/hikarid.service \
                 "$out/lib/systemd/user/hikarid.service"
@@ -78,12 +139,11 @@
                 --prefix PATH : ${lib.makeBinPath [ pkgs.python3 ]}
 
               wrapProgram "$out/bin/hikari-app" \
-                --prefix PATH : ${lib.makeBinPath [ pkgs.quickshell pkgs.coreutils pkgs.systemd ]} \
-                --prefix XDG_CONFIG_DIRS : "$out/etc/xdg"
+                --prefix PATH : ${lib.makeBinPath [ pkgs.coreutils pkgs.systemd ]}
             '';
 
             meta = with lib; {
-              description = "Native game launcher with a Go daemon and Quickshell frontend";
+              description = "Native game launcher with a Go daemon and a React window";
               homepage = "https://github.com/dodo986/hikari";
               license = licenses.gpl3Plus;
               mainProgram = "hikari-app";
