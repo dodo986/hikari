@@ -1,0 +1,92 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.subtitle {
+  margin: 0 0 var(--s2);
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+}
+
+.mark {
+  margin: var(--s3) 0 var(--s1);
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-mark);
+  color: var(--ink-faint);
+}
+
+.rule {
+  width: 100%;
+  height: 0;
+  margin: var(--s3) 0 0;
+  border: none;
+  border-top: var(--border) solid var(--line-soft);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.label {
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+  min-width: 84px;
+}
+
+.field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.pills {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+}
+
+.pill {
+  height: var(--ctl-h);
+  padding: 0 var(--s3);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-ui);
+  font-size: var(--f-small);
+  cursor: pointer;
+  transition: background var(--snap) var(--ease), border-color var(--snap) var(--ease);
+}
+
+.pill[data-on='true'] {
+  background: var(--bone);
+  border-color: var(--bone);
+  color: var(--ink-on-bone);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}
+
+.note,
+.helper,
+.layer {
+  margin: 0;
+  font-size: var(--f-small);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.layer {
+  color: var(--ink);
+}
+
+.helper {
+  font-size: var(--f-tiny);
+}

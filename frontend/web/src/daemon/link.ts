@@ -2,6 +2,8 @@ import { RpcClient } from './client'
 import { loadEndpoint } from './endpoint'
 import { gameKey, useDaemon } from './store'
 import type {
+  AuthStatus,
+  AuthStatusResult,
   DaemonStatus,
   Game,
   GameStateEvent,
@@ -13,7 +15,10 @@ import type {
 /** The one client the app talks through. */
 export const rpc = new RpcClient(loadEndpoint, (connection) => {
   useDaemon.getState().setConnection(connection)
-  if (connection === 'live') void refreshLibrary()
+  if (connection === 'live') {
+    void refreshLibrary()
+    void refreshAuth().catch(() => {})
+  }
 })
 
 if (import.meta.env.DEV) {
@@ -21,7 +26,14 @@ if (import.meta.env.DEV) {
   Object.assign(window, { __hikari: { rpc, useDaemon } })
 }
 
-const EVENTS = ['library.changed', 'install.progress', 'game.state', 'auth.changed']
+const EVENTS = [
+  'library.changed',
+  'install.progress',
+  'game.state',
+  'auth.changed',
+  'opti.progress',
+  'wine.progress',
+]
 
 export function startDaemonLink(): void {
   rpc.on('library.changed', (params) => {
@@ -34,6 +46,9 @@ export function startDaemonLink(): void {
   })
   rpc.on('game.state', (params) => {
     useDaemon.getState().applyGameState(params as GameStateEvent)
+  })
+  rpc.on('auth.changed', () => {
+    void refreshAuth().catch(() => {})
   })
   rpc.start()
   rpc.subscribe(EVENTS)
@@ -50,6 +65,13 @@ export async function refreshLibrary(): Promise<Game[]> {
     }
   }
   return games
+}
+
+export async function refreshAuth(): Promise<Record<string, AuthStatus>> {
+  const result = await rpc.call<AuthStatusResult>('auth.status', {})
+  const stores = result.stores ?? {}
+  useDaemon.getState().setAuth(stores)
+  return stores
 }
 
 export async function refreshStatus(): Promise<DaemonStatus> {

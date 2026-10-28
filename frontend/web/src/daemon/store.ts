@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type {
+  AuthStatus,
   ConnectionState,
   DaemonStatus,
   Game,
@@ -14,6 +15,7 @@ export interface DaemonState {
   status: DaemonStatus | null
   installs: Record<string, InstallProgress>
   running: Record<string, GameStateEvent>
+  auth: Record<string, AuthStatus>
   error: string | null
   setConnection: (state: ConnectionState) => void
   setGames: (games: Game[]) => void
@@ -22,6 +24,7 @@ export interface DaemonState {
   applyProgress: (progress: InstallProgress) => void
   clearProgress: (key: string) => void
   applyGameState: (event: GameStateEvent) => void
+  setAuth: (stores: Record<string, AuthStatus>) => void
   applyLibraryChanged: (event: LibraryChangedEvent) => void
 }
 
@@ -33,12 +36,15 @@ export const useDaemon = create<DaemonState>((set) => ({
   status: null,
   installs: {},
   running: {},
+  auth: {},
   error: null,
 
   setConnection: (connection) => set({ connection }),
   setGames: (games) => set({ games }),
   setStatus: (status) => set({ status }),
   setError: (error) => set({ error }),
+
+  setAuth: (auth) => set({ auth }),
 
   applyProgress: (progress) =>
     set((state) => ({

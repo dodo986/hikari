@@ -40,7 +40,7 @@ export function Sheet({ open, title, closeLabel, onClose, children, footer }: Sh
         </Button>
       </div>
       <div className={styles.body}>{children}</div>
-      {footer ? <div className={styles.head}>{footer}</div> : null}
+      {footer ? <div className={styles.footer}>{footer}</div> : null}
     </dialog>
   )
 }

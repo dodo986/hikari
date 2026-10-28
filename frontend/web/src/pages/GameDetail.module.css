@@ -1,0 +1,76 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  height: 64px;
+  padding: 0 var(--s5);
+  border-bottom: var(--border) solid var(--line-soft);
+  background: var(--paper);
+}
+
+.crumb {
+  font-size: var(--f-micro);
+  letter-spacing: var(--track-label);
+  color: var(--ink-faint);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  /* Panels keep their content height; the page scrolls instead of clipping. */
+
+  padding: var(--s5) var(--s5) var(--s7);
+  overflow-y: auto;
+  max-width: var(--content-max);
+  width: 100%;
+}
+
+.body > * {
+  flex: 0 0 auto;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.statusLine {
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+}
+
+.status[data-crashed='true'] .statusLine {
+  color: var(--alert);
+}
+
+.note {
+  font-size: var(--f-small);
+  color: var(--sun);
+}
+
+.error {
+  font-size: var(--f-small);
+  color: var(--sun);
+}

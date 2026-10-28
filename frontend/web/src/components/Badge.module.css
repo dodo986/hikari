@@ -19,6 +19,15 @@
   color: var(--sun);
 }
 
+.muted {
+  color: var(--ink-faint);
+}
+
+.danger {
+  border-color: color-mix(in srgb, var(--alert) 55%, transparent);
+  color: var(--alert);
+}
+
 .solid {
   background: var(--sun);
   border-color: transparent;

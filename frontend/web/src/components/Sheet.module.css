@@ -1,4 +1,10 @@
+.dialog:not([open]) {
+  display: none;
+}
+
 .dialog {
+  display: flex;
+  flex-direction: column;
   width: min(720px, calc(100vw - var(--s7)));
   max-height: min(84vh, 900px);
   padding: 0;
@@ -21,10 +27,8 @@
   gap: var(--s4);
   padding: var(--s4) var(--s5);
   border-bottom: var(--border) solid var(--line-soft);
-  position: sticky;
-  top: 0;
   background: var(--paper-lift);
-  z-index: 1;
+  flex: 0 0 auto;
 }
 
 .title {
@@ -35,10 +39,22 @@
   letter-spacing: -0.01em;
 }
 
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+  padding: var(--s3) var(--s5);
+  border-top: var(--border) solid var(--line-soft);
+  background: var(--paper-lift);
+  flex: 0 0 auto;
+}
+
 .body {
   padding: var(--s5);
   overflow-y: auto;
-  max-height: calc(84vh - 120px);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 @media (prefers-reduced-motion: no-preference) {

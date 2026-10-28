@@ -1,0 +1,7 @@
+.card {
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--paper-lift) 70%, transparent);
+  padding: var(--s3) var(--s4);
+  transition: border-color var(--snap) var(--ease), background var(--snap) var(--ease);
+}

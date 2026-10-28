@@ -1,0 +1,24 @@
+.input {
+  min-height: var(--ctl-h);
+  padding: 0 var(--s3);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--f-small);
+  transition: border-color var(--snap) var(--ease);
+}
+
+.input::placeholder {
+  color: var(--ink-faint);
+}
+
+.input:hover {
+  border-color: var(--line-strong);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 1px;
+}

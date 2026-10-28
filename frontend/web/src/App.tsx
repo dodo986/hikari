@@ -4,6 +4,10 @@ import { refreshStatus, startDaemonLink } from './daemon/link'
 import { useT } from './i18n/t'
 import { Button } from './components/Button'
 import { Rail } from './components/Rail'
+import { About } from './pages/About'
+import { Accounts } from './pages/Accounts'
+import { Downloads } from './pages/Downloads'
+import { GameDetail } from './pages/GameDetail'
 import { Library } from './pages/Library'
 import { parseRoute } from './router'
 import type { Route } from './router'
@@ -60,6 +64,14 @@ export function App() {
           </div>
         ) : route.page === 'library' ? (
           <Library />
+        ) : route.page === 'game' && route.store && route.id ? (
+          <GameDetail store={route.store} id={route.id} />
+        ) : route.page === 'downloads' ? (
+          <Downloads />
+        ) : route.page === 'accounts' ? (
+          <Accounts />
+        ) : route.page === 'about' ? (
+          <About />
         ) : (
           <div className={styles.stub}>{t('Not ported yet')}</div>
         )}

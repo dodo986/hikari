@@ -2,28 +2,44 @@
   border: var(--border) solid var(--line-soft);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--paper-lift) 70%, transparent);
-  padding: var(--s4) var(--s5);
+  overflow: hidden;
 }
 
 .head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--s4);
-  margin-bottom: var(--s3);
+  padding: var(--s4) var(--s5) var(--s3);
+  border-bottom: var(--border) solid var(--line-soft);
+}
+
+.text {
+  min-width: 0;
 }
 
 .title {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: var(--f-micro);
+  font-size: var(--f-row);
   font-weight: 500;
-  letter-spacing: var(--track-mark);
-  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.subtitle {
+  margin: var(--s1) 0 0;
+  font-size: var(--f-micro);
+  line-height: 1.45;
   color: var(--ink-faint);
 }
 
-.note {
-  font-size: var(--f-small);
-  color: var(--ink-faint);
+.action {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
+
+.body {
+  padding: var(--s3) var(--s5) var(--s4);
 }
