@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.4
 
 - The frontend is now React and TypeScript inside a native window, in
   `frontend/`. It speaks to the same daemon over a loopback websocket with a
