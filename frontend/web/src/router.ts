@@ -17,11 +17,20 @@ export interface Route {
 
 const PAGES: PageName[] = ['library', 'store', 'mods', 'downloads', 'accounts', 'settings', 'about']
 
+// A pasted hash can carry a broken escape; it must not blank the window.
+const decode = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export function parseRoute(hash: string): Route {
   const clean = hash.replace(/^#\/?/, '')
   const [head = '', store, id] = clean.split('/')
-  if (head === 'game' && store && id) return { page: 'game', store, id: decodeURIComponent(id) }
-  if (head === 'mods' && store) return { page: 'mods', game: decodeURIComponent(store) }
+  if (head === 'game' && store && id) return { page: 'game', store, id: decode(id) }
+  if (head === 'mods' && store) return { page: 'mods', game: decode(store) }
   const page = PAGES.find((name) => name === head)
   return { page: page ?? 'library' }
 }

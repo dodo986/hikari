@@ -97,11 +97,6 @@ export interface SecretStatusResult {
   encryption: boolean
 }
 
-export interface GameKey {
-  store: string
-  id: string
-}
-
 export type ConnectionState = 'connecting' | 'live' | 'offline' | 'unauthorized'
 
 export interface EndpointConfig {
@@ -242,10 +237,6 @@ export interface WineRelease {
   date: string
   url: string
   size: number
-}
-
-export interface WineVersionsResult {
-  versions: WineVersion[]
 }
 
 export interface OptiStatus {

@@ -8,6 +8,7 @@ import type { Game, InstallInfo, InstallProgress } from '../daemon/types'
 import { useT } from '../i18n/t'
 import styles from './InstallPanel.module.css'
 import { errorMessage } from '../lib/errors'
+import { formatBytes } from '../lib/format'
 
 interface InstallPanelProps {
   game: Game
@@ -15,13 +16,6 @@ interface InstallPanelProps {
   progress: InstallProgress | undefined
   onStarted: (note: string) => void
   onFailed: (message: string) => void
-}
-
-export function size(bytes: number | undefined): string {
-  if (!bytes || bytes <= 0) return ''
-  const gb = bytes / 1024 ** 3
-  if (gb >= 1) return `${gb.toFixed(1)} GiB`
-  return `${Math.round(bytes / 1024 ** 2)} MiB`
 }
 
 export function InstallPanel({ game, info, progress, onStarted, onFailed }: InstallPanelProps) {
@@ -45,8 +39,8 @@ export function InstallPanel({ game, info, progress, onStarted, onFailed }: Inst
     }
   }
 
-  const download = size(info?.download_size)
-  const disk = size(info?.disk_size)
+  const download = formatBytes(info?.download_size)
+  const disk = formatBytes(info?.disk_size)
 
   return (
     <Panel

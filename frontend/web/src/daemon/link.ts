@@ -32,41 +32,37 @@ export const rpc = new RpcClient(async () => {
   }
 })
 
-if (import.meta.env.DEV) {
-  // The e2e tests read state here instead of scraping the DOM.
-  Object.assign(window, { __hikari: { rpc, useDaemon } })
-}
-
 const EVENTS = [
   'library.changed',
   'install.progress',
   'game.state',
   'auth.changed',
-  'opti.progress',
-  'wine.progress',
   'mods.progress',
   'mods.log',
   'mods.auth_url',
   'mods.done',
 ]
 
-export function startDaemonLink(): void {
-  rpc.on('library.changed', (params) => {
-    const event = (params ?? {}) as LibraryChangedEvent
-    useDaemon.getState().applyLibraryChanged(event)
-    void refreshLibrary()
-  })
-  rpc.on('install.progress', (params) => {
-    useDaemon.getState().applyProgress(params as InstallProgress)
-  })
-  rpc.on('game.state', (params) => {
-    useDaemon.getState().applyGameState(params as GameStateEvent)
-  })
-  rpc.on('auth.changed', () => {
-    void refreshAuth().catch(() => {})
-  })
+/** Returns the unsubscribe, so a remount cannot stack a second handler set. */
+export function startDaemonLink(): () => void {
+  const offs = [
+    rpc.on('library.changed', (params) => {
+      useDaemon.getState().applyLibraryChanged((params ?? {}) as LibraryChangedEvent)
+      void refreshLibrary().catch(() => {})
+    }),
+    rpc.on('install.progress', (params) => {
+      if (params) useDaemon.getState().applyProgress(params as InstallProgress)
+    }),
+    rpc.on('game.state', (params) => {
+      if (params) useDaemon.getState().applyGameState(params as GameStateEvent)
+    }),
+    rpc.on('auth.changed', () => {
+      void refreshAuth().catch(() => {})
+    }),
+  ]
   rpc.start()
   rpc.subscribe(EVENTS)
+  return () => offs.forEach((off) => off())
 }
 
 export async function refreshLibrary(): Promise<Game[]> {

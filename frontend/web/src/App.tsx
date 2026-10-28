@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useDaemon } from './daemon/store'
+import { gameKey, useDaemon } from './daemon/store'
 import { refreshStatus, startDaemonLink } from './daemon/link'
+import { startModsLink } from './daemon/modsLink'
 import { useT } from './i18n/t'
 import { Button } from './components/Button'
 import { Rail } from './components/Rail'
@@ -38,19 +39,24 @@ export function App() {
   const connection = useDaemon((state) => state.connection)
   const linkError = useDaemon((state) => state.error)
   const games = useDaemon((state) => state.games)
-  const installs = useDaemon((state) => state.installs)
+  const installs = useDaemon((state) => Object.keys(state.installs).length)
   const running = useDaemon((state) => state.running)
   const playing = useMemo(() => Object.values(running), [running])
   const mods = useDaemon((state) => state.mods.games)
   const installed = useMemo(() => games.filter((game) => game.installed).length, [games])
   const titles = useMemo(
-    () => Object.fromEntries(games.map((game) => [`${game.store}/${game.id}`, game.title])),
+    () => Object.fromEntries(games.map((game) => [gameKey(game.store, game.id), game.title])),
     [games],
   )
 
   useEffect(() => {
-    startDaemonLink()
+    const stopDaemon = startDaemonLink()
+    const stopMods = startModsLink()
     void refreshStatus().catch(() => {})
+    return () => {
+      stopMods()
+      stopDaemon()
+    }
   }, [])
 
   // A browser hands nxm:// links to this window; the install starts once the
@@ -80,17 +86,23 @@ export function App() {
         installed={installed}
         playing={playing}
         mods={mods}
-        installs={Object.keys(installs).length}
+        installs={installs}
         connection={connection}
       />
       <main className={styles.main} key={`${route.page}/${route.store ?? ''}/${route.id ?? ''}/${route.game ?? ''}`}>
-        {connection === 'offline' ? (
+        {connection === 'offline' || connection === 'unauthorized' ? (
           <div className={styles.offline}>
-            <h1 className={styles.offlineTitle}>{t('The Hikari daemon is not running')}</h1>
+            <h1 className={styles.offlineTitle}>
+              {connection === 'unauthorized'
+                ? t('The daemon refused this window')
+                : t('The Hikari daemon is not running')}
+            </h1>
             <p className={styles.offlineText}>
-              {t(
-                'Games, logins and installs all come from hikarid. Start it, or run scripts/dev.sh from the repository.',
-              )}
+              {connection === 'unauthorized'
+                ? t('Its token changed since this window opened. Reopen Hikari to pick up the new one.')
+                : t(
+                    'Games, logins and installs all come from hikarid. Start it, or run scripts/dev.sh from the repository.',
+                  )}
             </p>
             <Button
               variant="primary"

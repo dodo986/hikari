@@ -4,8 +4,3 @@ export function middle(text: string, max: number): string {
   return `${text.slice(0, keep)}…${text.slice(text.length - keep)}`
 }
 
-export function bytes(value: number | undefined): string {
-  if (!value || value <= 0) return ''
-  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GiB`
-  return `${Math.round(value / 1024 ** 2)} MiB`
-}

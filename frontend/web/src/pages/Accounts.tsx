@@ -12,6 +12,7 @@ import { useT } from '../i18n/t'
 import styles from './Accounts.module.css'
 import { errorMessage } from '../lib/errors'
 
+// Only the stores with a login flow; steam and local have nothing to sign into.
 const STORES = ['epic', 'gog', 'amazon'] as const
 type Store = (typeof STORES)[number]
 

@@ -13,7 +13,7 @@ export function parseNxm(link: string): NxmLink | null {
   const rest = link.slice('nxm://'.length)
   const path = rest.split('?')[0] ?? ''
   const parts = path.split('/').filter((part) => part.length > 0)
-  if (parts.length < 4 || parts[1] !== 'mods' || parts[3] !== 'files') return null
+  if (parts.length < 5 || parts[1] !== 'mods' || parts[3] !== 'files') return null
   const domain = parts[0] ?? ''
   const modId = Number(parts[2])
   const fileId = Number(parts[4] ?? 0)

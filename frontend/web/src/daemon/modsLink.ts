@@ -1,10 +1,11 @@
 import { rpc } from './link'
 import { useDaemon } from './store'
+import { openUrl } from '../host/bridge'
 import { modsAccount, modsGames, modsStatus } from './mods'
-import type { ModsAccount, ModsDone, ModsGame, ModsProgress, ModsStatus } from './types'
+import type { ModsAccount, ModsDone, ModsProgress } from './types'
 import { errorMessage } from '../lib/errors'
 
-// mods.status and mods.games travel together and share one error slot.
+// status, games and account share one error slot; the page reads them together.
 export async function refreshMods(): Promise<void> {
   const state = useDaemon.getState()
   try {
@@ -30,55 +31,33 @@ export async function refreshModsAccount(): Promise<ModsAccount | null> {
   }
 }
 
-export async function refreshModsStatus(): Promise<ModsStatus | null> {
-  try {
-    const status = await modsStatus()
-    useDaemon.getState().setMods({ status })
-    return status
-  } catch {
-    return null
-  }
-}
-
-export async function refreshModsGames(): Promise<ModsGame[]> {
-  try {
-    const games = await modsGames()
-    useDaemon.getState().setMods({ games: games.games ?? [] })
-    return games.games ?? []
-  } catch {
-    return []
-  }
-}
-
-export function startModsLink(): void {
+/** Returns the unsubscribe, so a remount cannot stack a second handler set. */
+export function startModsLink(): () => void {
   const state = useDaemon.getState()
 
-  rpc.on('mods.progress', (params) => {
-    const progress = params as ModsProgress
-    state.setMods({ job: progress })
-  })
-
-  rpc.on('mods.log', (params) => {
-    const event = params as { line?: string }
-    if (event.line) state.pushModsLog(event.line)
-  })
-
-  rpc.on('mods.auth_url', (params) => {
-    const event = params as { url?: string }
-    if (!event.url) return
-    state.setMods({ authUrl: event.url })
-    window.open(event.url, '_blank', 'noopener')
-  })
-
-  rpc.on('mods.done', (params) => {
-    const event = params as ModsDone
-    state.setMods({ job: null, authUrl: '', log: [] })
-    if (event.ok) {
-      void refreshMods()
-      return
-    }
-    if (event.error) state.setMods({ error: event.error })
-  })
+  const offs = [
+    rpc.on('mods.progress', (params) => {
+      if (params) state.setMods({ job: params as ModsProgress })
+    }),
+    rpc.on('mods.log', (params) => {
+      const event = (params ?? {}) as { line?: string }
+      if (event.line) state.pushModsLog(event.line)
+    }),
+    rpc.on('mods.auth_url', (params) => {
+      const event = (params ?? {}) as { url?: string }
+      if (!event.url) return
+      state.setMods({ authUrl: event.url })
+      void openUrl(event.url)
+    }),
+    rpc.on('mods.done', (params) => {
+      const event = (params ?? {}) as ModsDone
+      state.setMods({ job: null, authUrl: '', log: [] })
+      if (event.ok) {
+        void refreshMods()
+        return
+      }
+      if (event.error) state.setMods({ error: event.error })
+    }),
+  ]
+  return () => offs.forEach((off) => off())
 }
-
-export const modsBusy = (): boolean => Boolean(useDaemon.getState().mods.job)

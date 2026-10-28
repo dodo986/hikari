@@ -8,12 +8,11 @@ import type { WineRelease, WineVersion } from '../daemon/types'
 import { useT } from '../i18n/t'
 import styles from './WinePanel.module.css'
 import { errorMessage } from '../lib/errors'
+import { formatBytes } from '../lib/format'
 
 interface WinePanelProps {
   onEnginesChanged: () => void
 }
-
-const mebibytes = (bytes: number): string => `${Math.round(bytes / 1024 ** 2)} MiB`
 
 export function WinePanel({ onEnginesChanged }: WinePanelProps) {
   const t = useT()
@@ -132,7 +131,7 @@ export function WinePanel({ onEnginesChanged }: WinePanelProps) {
           {releases.map((release) => (
             <div className={styles.row} key={release.tag}>
               <span className={styles.name}>{`${release.tag}  ·  ${release.variant}`}</span>
-              <span className={styles.size}>{mebibytes(release.size)}</span>
+              <span className={styles.size}>{formatBytes(release.size)}</span>
               <Button size="small" onClick={() => void download(release)}>
                 {t('Install')}
               </Button>

@@ -6,17 +6,13 @@ import { Button } from '../components/Button'
 import { EmptyState } from '../components/EmptyState'
 import { Card } from '../components/Card'
 import { cancelInstall, stopGame } from '../daemon/api'
-import { useDaemon } from '../daemon/store'
-import { t } from '../i18n/t'
+import { gameKey, useDaemon } from '../daemon/store'
+import { useT } from '../i18n/t'
+import { formatPercent, formatSpeed } from '../lib/format'
 import styles from './Downloads.module.css'
 
-const formatPercent = (value: number | null | undefined): string =>
-  typeof value === 'number' ? `${value.toFixed(1)}%` : ''
-
-const speed = (value: number | null | undefined): string =>
-  typeof value === 'number' ? `${value.toFixed(1)} MB/s` : ''
-
 export function Downloads() {
+  const t = useT()
   const installs = useDaemon((state) => state.installs)
   const running = useDaemon((state) => state.running)
   const games = useDaemon((state) => state.games)
@@ -24,12 +20,12 @@ export function Downloads() {
   const rows = useMemo(() => Object.values(installs), [installs])
   const playing = useMemo(() => Object.values(running), [running])
   const byKey = useMemo(
-    () => new Map(games.map((game) => [`${game.store}/${game.id}`, game])),
+    () => new Map(games.map((game) => [gameKey(game.store, game.id), game])),
     [games],
   )
 
   const title = (store: string, id: string): string =>
-    byKey.get(`${store}/${id}`)?.title ?? id
+    byKey.get(gameKey(store, id))?.title ?? id
 
   return (
     <div className={styles.page}>
@@ -48,9 +44,9 @@ export function Downloads() {
 
       {playing.length > 0 ? <p className={styles.mark}>{t('PLAYING NOW')}</p> : null}
       {playing.map((event) => {
-        const game = byKey.get(`${event.store}/${event.id}`)
+        const game = byKey.get(gameKey(event.store, event.id))
         return (
-          <Card key={`run-${event.store}/${event.id}`}>
+          <Card key={`run-${gameKey(event.store, event.id)}`}>
             <div className={styles.row}>
               <GameArt
                 title={game?.title ?? title(event.store, event.id)}
@@ -81,18 +77,18 @@ export function Downloads() {
 
       {rows.length > 0 ? <p className={styles.mark}>{t('DOWNLOADS')}</p> : null}
       {rows.map((progress) => {
-        const game = byKey.get(`${progress.store}/${progress.id}`)
+        const game = byKey.get(gameKey(progress.store, progress.id))
         const percent = typeof progress.percent === 'number' ? progress.percent : null
         const meta = [
           formatPercent(percent),
           progress.bytes ?? '',
           progress.eta ? `${t('eta')} ${progress.eta}` : '',
-          speed(progress.down_speed),
+          formatSpeed(progress.down_speed),
         ]
           .filter(Boolean)
           .join('  ·  ')
         return (
-          <Card key={`job-${progress.store}/${progress.id}`}>
+          <Card key={`job-${gameKey(progress.store, progress.id)}`}>
             <div className={styles.row}>
               <GameArt
                 title={game?.title ?? title(progress.store, progress.id)}

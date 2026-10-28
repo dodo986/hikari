@@ -9,7 +9,7 @@ import { PageHeader } from '../components/PageHeader'
 import { Panel } from '../components/Panel'
 import { RefreshButton } from '../components/RefreshButton'
 import { modsConfigure, modsDownloads, modsInstallArchive, modsInstallFile, modsSetup, nexusFilePage } from '../daemon/mods'
-import { refreshMods, startModsLink } from '../daemon/modsLink'
+import { refreshMods } from '../daemon/modsLink'
 import { useDaemon } from '../daemon/store'
 import type { ModFile, ModsGame } from '../daemon/types'
 import { pickFolder } from '../host/bridge'
@@ -52,10 +52,6 @@ export function Mods() {
   const game = games.find((entry) => entry.id === openId) ?? null
   const busy = Boolean(job)
   const ready = games.filter((entry) => entry.configured).length
-
-  useEffect(() => {
-    startModsLink()
-  }, [])
 
   useEffect(() => {
     if (connection !== 'live') return

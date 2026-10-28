@@ -1,10 +1,8 @@
 import { rpc } from './link'
 import type {
   AuthStatusResult,
-  EngineVersions,
   Game,
   GameSettings,
-  GameStateEvent,
   InstallInfo,
   LaunchOption,
   LoginStart,
@@ -56,7 +54,6 @@ export const autoLogin = (store: string) => rpc.call<LoginStart>('auth.login.aut
 
 export const logout = (store: string) => rpc.call<unknown>('auth.logout', { store })
 
-export const engineVersions = () => rpc.call<EngineVersions>('engine.versions', {})
 
 export const wineVersions = () => rpc.call<{ versions: WineVersion[] }>('wine.versions', {})
 
@@ -72,7 +69,6 @@ export const optiDetect = () => rpc.call<OptiDetect>('opti.detect', {})
 
 export const optiReleases = () => rpc.call<{ releases: OptiRelease[] }>('opti.releases', {})
 
-export const optiVersions = () => rpc.call<{ versions: string[] }>('opti.versions', {})
 
 export const optiInstall = (key: Key, options: Record<string, unknown>) =>
   rpc.call<{ job: string }>('opti.install', { ...key, ...options })
@@ -106,24 +102,18 @@ export const removeLocal = (id: string) => rpc.call<unknown>('game.remove_local'
 export const setFavorite = (key: Key, favorite: boolean) =>
   rpc.call<{ favorite: boolean }>('game.favorite', { ...key, favorite })
 
-export const stopGame = (target: Key) => rpc.call<unknown>('game.stop', { store: target.store, id: target.id })
+export const stopGame = (key: Key) => rpc.call<unknown>('game.stop', { ...key })
 
-export const cancelInstall = (target: Key) => rpc.call<unknown>('game.install.cancel', { store: target.store, id: target.id })
+export const cancelInstall = (key: Key) => rpc.call<unknown>('game.install.cancel', { ...key })
 
-export const getRunning = () => rpc.call<{ games: GameStateEvent[] }>('game.running', {})
 
 export const refreshAll = () => rpc.call<{ ok: boolean }>('library.refresh', {})
 
 export const searchArtwork = (title: string) =>
   rpc.call<{ candidates: { url: string; thumb?: string }[] }>('artwork.search', { title })
 
-export interface SecretStatusReply {
-  secrets: SecretStatusResult['secrets']
-  encryption: boolean
-}
-
 export const secretStatus = (name?: string) =>
-  rpc.call<SecretStatusReply>('settings.secretStatus', name ? { name } : {})
+  rpc.call<SecretStatusResult>('settings.secretStatus', name ? { name } : {})
 
 export const setSecret = (name: string, value: string) =>
   rpc.call<{ secret: SecretStatusResult['secrets'][number]; encryption: boolean }>(

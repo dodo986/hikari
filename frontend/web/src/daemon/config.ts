@@ -11,7 +11,10 @@ declare global {
 export async function resolveEndpoint(): Promise<EndpointConfig> {
   const injected = window.__HIKARI_DAEMON__
   if (injected?.url) return injected
-  const response = await fetch('/__daemon.json', { cache: 'no-store' })
+  const response = await fetch('/__daemon.json', {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(4000),
+  })
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string }
     throw new Error(body.error ?? 'the daemon endpoint is not available')

@@ -7,10 +7,6 @@ export function rememberEndpoint(endpoint: EndpointConfig): void {
   current = endpoint
 }
 
-export function endpoint(): EndpointConfig | null {
-  return current
-}
-
 function bridgeBase(config: EndpointConfig): string {
   const url = new URL(config.url)
   return `${url.protocol === 'wss:' ? 'https' : 'http'}://${url.host}`

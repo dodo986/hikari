@@ -97,11 +97,13 @@ export const useDaemon = create<DaemonState>((set) => ({
   applyLibraryChanged: (event) =>
     set((state) => {
       if (!event.updated?.length && !event.removed?.length) return {}
-      const removed = new Set((event.removed ?? []).map((id) => gameKey(event.store ?? '', id)))
+      const store = event.store ?? ''
+      const updated = new Set(event.updated ?? [])
+      const removed = new Set(event.removed ?? [])
       const games = state.games
-        .filter((game) => !removed.has(gameKey(game.store, game.id)))
+        .filter((game) => !(removed.has(game.id) && (!store || game.store === store)))
         .map((game) =>
-          (event.updated ?? []).includes(game.id) && game.store === event.store
+          updated.has(game.id) && (!store || game.store === store)
             ? { ...game, update_available: false }
             : game,
         )
