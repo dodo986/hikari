@@ -153,3 +153,29 @@ test.describe('right to left', () => {
     expect(marker!.x).toBeGreaterThan(rail!.x + rail!.width / 2)
   })
 })
+
+test.describe('updates', () => {
+  test('the rail offers a daemon update when one exists', async ({ page }) => {
+    await page.addInitScript(() => {
+      const Real = window.WebSocket
+      const fake = { 'app.update.check': { available: true, version: '0.8.9' } }
+      window.WebSocket = class extends Real {
+        override send(payload: string) {
+          const frame = JSON.parse(payload) as { id: number; method: string }
+          const result = fake[frame.method as keyof typeof fake]
+          if (!result) return super.send(payload)
+          queueMicrotask(() => {
+            this.dispatchEvent(
+              new MessageEvent('message', {
+                data: JSON.stringify({ jsonrpc: '2.0', id: frame.id, result }),
+              }),
+            )
+          })
+        }
+      }
+    })
+    await page.goto('/')
+    await expect(page.getByText('Hikari 0.8.9 is available')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Update' })).toBeVisible()
+  })
+})

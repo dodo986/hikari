@@ -13,6 +13,12 @@
   cover.
 - SteamGridDB keys, and every other secret, move out of `settings.toml` into the
   system keyring, with a `0600` fallback file and write-only RPC methods.
+- The window speaks the Nexus protocol: `nxm://` links from a browser open it on
+  the game they belong to and start the download, and the mods game view is a
+  route so a link can be bookmarked.
+- The layout mirrors under a right to left document: margins, insets, borders
+  and the toggle travel are logical properties, and count phrases are isolated
+  so they keep their reading order.
 - Fixes carried by the rewrite: DLC selection before an install, the favourite
   toggle, a repair that kept saying `Repairing...`, the launch command sheet
   showing nothing while it loaded, mods health separated from mods repair,
