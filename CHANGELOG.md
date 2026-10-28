@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- A new frontend, built with React and TypeScript inside a native window, lives
+  in `frontend/` on the `frontend-rewrite` branch. It speaks to the same daemon
+  over a loopback websocket with a per-run token, keeps secrets in the system
+  keyring, and covers every screen the Quickshell UI has: library, store, game
+  detail with settings and launch sheets, downloads, accounts, settings, about
+  and mods.
+- The daemon can serve artwork over the same token-checked listener, with an
+  optional width-bounded copy so a 260 pixel tile does not decode a 600 pixel
+  cover.
+- SteamGridDB keys, and every other secret, move out of `settings.toml` into the
+  system keyring, with a `0600` fallback file and write-only RPC methods.
+- Fixes carried by the rewrite: DLC selection before an install, the favourite
+  toggle, a repair that kept saying `Repairing...`, the launch command sheet
+  showing nothing while it loaded, mods health separated from mods repair,
+  browsing that replaced a page instead of appending, and a mods game with no
+  folder now offering to set one.
+
 ## 0.8.3
 
 - An AppImage now updates itself without squashfs-tools: the new build is
