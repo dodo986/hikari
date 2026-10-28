@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Hikari (Quickshell)
+GenericName=Game Launcher
+Comment=The QML window, kept as a fallback
+Exec=hikari-app
+TryExec=hikari-app
+Icon=hikari
+Terminal=false
+Categories=Game;
+Keywords=game;launcher;steam;epic;gog;amazon;
+StartupNotify=true
