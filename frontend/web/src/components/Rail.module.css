@@ -102,3 +102,9 @@
   color: var(--alert);
   font-weight: 500;
 }
+
+.item:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}

@@ -9,6 +9,7 @@ import { Accounts } from './pages/Accounts'
 import { Downloads } from './pages/Downloads'
 import { GameDetail } from './pages/GameDetail'
 import { Mods } from './pages/Mods'
+import { useHotkeys } from './lib/hotkeys'
 import { Settings } from './pages/Settings'
 import { Library } from './pages/Library'
 import { parseRoute } from './router'
@@ -29,6 +30,7 @@ function useRoute(): Route {
 export function App() {
   const t = useT()
   const route = useRoute()
+  useHotkeys()
   const connection = useDaemon((state) => state.connection)
   const games = useDaemon((state) => state.games)
   const status = useDaemon((state) => state.status)

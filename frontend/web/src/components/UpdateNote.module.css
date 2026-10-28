@@ -1,0 +1,17 @@
+.note {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  margin-bottom: var(--s2);
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--tint-5);
+}
+
+.text {
+  flex: 1;
+  font-size: var(--f-tiny);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}

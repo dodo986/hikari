@@ -2,6 +2,7 @@ import type { Route } from '../router'
 import { href } from '../router'
 import { useT } from '../i18n/t'
 import type { ConnectionState } from '../daemon/types'
+import { UpdateNote } from './UpdateNote'
 import styles from './Rail.module.css'
 
 interface RailProps {
@@ -63,6 +64,8 @@ export function Rail({ route, games, installed, connection, selection }: RailPro
       </div>
 
       <div className={styles.spacer} />
+
+      <UpdateNote />
 
       <div className={styles.status}>
         {connection === 'live' ? (

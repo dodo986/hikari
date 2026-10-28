@@ -75,3 +75,8 @@
 .wide {
   width: 100%;
 }
+
+.button:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}
