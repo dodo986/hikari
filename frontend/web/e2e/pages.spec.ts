@@ -126,3 +126,15 @@ test.describe('offline', () => {
     await expect(page.getByText('starting hikarid needs the desktop window')).toBeVisible()
   })
 })
+
+test.describe('nexus links', () => {
+  test('an nxm link opens the game it belongs to', async ({ page }) => {
+    await page.addInitScript(() => {
+      const host = window as unknown as { __HIKARI_LINK__?: string }
+      host.__HIKARI_LINK__ = 'nxm://skyrimspecialedition/mods/12604/files/1?key=k&expires=2'
+    })
+    await page.goto('/#/mods')
+    await page.waitForTimeout(1500)
+    await expect(page.getByRole('heading', { name: 'Mods', level: 1 })).toBeHidden()
+  })
+})

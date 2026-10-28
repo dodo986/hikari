@@ -43,6 +43,9 @@ export const modsFiles = (game: string, modId: number) => rpc.call<ModsFiles>('m
 export const modsInstallFile = (target: ModsTarget, modId: number, fileId: number) =>
   rpc.call<{ job: string }>('mods.install', { ...target, mod_id: modId, file_id: fileId })
 
+export const modsInstall = (target: { game: string; profile?: string }, url: string) =>
+  rpc.call<{ job: string }>('mods.install', { ...target, url })
+
 export const modsInstallArchive = (target: ModsTarget, archive: string, name?: string) =>
   rpc.call<{ job: string }>('mods.install', name ? { ...target, archive, name } : { ...target, archive })
 

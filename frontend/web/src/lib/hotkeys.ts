@@ -22,9 +22,10 @@ export function useHotkeys(): void {
         search.select()
         return
       }
-      if (event.key === 'Escape' && !typing(event.target) && window.location.hash.includes('/game/')) {
-        navigate({ page: 'library' })
-      }
+      if (event.key !== 'Escape' || typing(event.target)) return
+      // A sheet owns escape while it is open: it closes, the page stays.
+      if (document.querySelector('dialog[open]')) return
+      if (window.location.hash.includes('/game/')) navigate({ page: 'library' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

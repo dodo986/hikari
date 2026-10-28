@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDaemon } from './daemon/store'
 import { refreshStatus, startDaemonLink } from './daemon/link'
 import { useT } from './i18n/t'
@@ -10,6 +10,7 @@ import { Downloads } from './pages/Downloads'
 import { GameDetail } from './pages/GameDetail'
 import { Mods } from './pages/Mods'
 import { useHotkeys } from './lib/hotkeys'
+import { handlePendingLink } from './lib/pendingLink'
 import { Settings } from './pages/Settings'
 import { Library } from './pages/Library'
 import { parseRoute } from './router'
@@ -51,6 +52,24 @@ export function App() {
     void refreshStatus().catch(() => {})
   }, [])
 
+  // A browser hands nxm:// links to this window; the install starts once the
+  // daemon is reachable, and the mods page reports what happened.
+  const linkHandled = useRef(false)
+  useEffect(() => {
+    if (connection !== 'live' || linkHandled.current) return
+    if (!window.__HIKARI_LINK__) return
+    linkHandled.current = true
+    handlePendingLink()
+      .then((note) => {
+        if (note) useDaemon.getState().setMods({ error: note })
+      })
+      .catch((error: unknown) => {
+        useDaemon
+          .getState()
+          .setMods({ error: error instanceof Error ? error.message : String(error) })
+      })
+  }, [connection])
+
   return (
     <div className={styles.app}>
       <Rail
@@ -63,7 +82,7 @@ export function App() {
         installs={Object.keys(installs).length}
         connection={connection}
       />
-      <main className={styles.main} key={`${route.page}/${route.store ?? ''}/${route.id ?? ''}`}>
+      <main className={styles.main} key={`${route.page}/${route.store ?? ''}/${route.id ?? ''}/${route.game ?? ''}`}>
         {connection === 'offline' ? (
           <div className={styles.offline}>
             <h1 className={styles.offlineTitle}>{t('The Hikari daemon is not running')}</h1>

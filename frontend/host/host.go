@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -60,6 +61,16 @@ func (h *Host) StartDaemon() error {
 		return errors.New("hikarid is not installed and the user service could not start it")
 	}
 	return spawn(path)
+}
+
+// pendingLink is the nxm:// link the desktop handed to this window, if any.
+func pendingLink() string {
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "nxm://") {
+			return arg
+		}
+	}
+	return ""
 }
 
 func spawn(path string) error {

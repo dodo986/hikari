@@ -53,7 +53,16 @@ func bootstrap() []byte {
 	if err != nil {
 		return nil
 	}
-	return []byte("<script>window.__HIKARI_DAEMON__=" + string(encoded) + ";</script>")
+	script := "<script>window.__HIKARI_DAEMON__=" + string(encoded) + ";"
+	// The link arrives even when the daemon is down, so it lives beside the
+	// endpoint rather than inside it.
+	if link := pendingLink(); link != "" {
+		quoted, err := json.Marshal(link)
+		if err == nil {
+			script += "window.__HIKARI_LINK__=" + string(quoted) + ";"
+		}
+	}
+	return []byte(script + "</script>")
 }
 
 func inject(page, script []byte) []byte {

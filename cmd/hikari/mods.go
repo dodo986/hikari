@@ -526,9 +526,13 @@ func modsSchemeCmd(args []string) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		// The launcher wrapper opens the window so the download is visible.
+		// A launcher wrapper opens the window so the download is visible. The
+		// web window takes the link itself; the Quickshell launcher takes it
+		// only when it is the one installed.
 		command := binary + " mods nxm %u"
-		if app := filepath.Join(filepath.Dir(binary), "hikari-app"); fileExists(app) {
+		if app := filepath.Join(filepath.Dir(binary), "hikari-ui"); fileExists(app) {
+			command = app + " nxm %u"
+		} else if app := filepath.Join(filepath.Dir(binary), "hikari-app"); fileExists(app) {
 			command = app + " nxm %u"
 		}
 		entry := "[Desktop Entry]\n" +

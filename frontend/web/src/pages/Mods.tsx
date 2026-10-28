@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { navigate, parseRoute } from '../router'
 import { Badge } from '../components/Badge'
 import { Button } from '../components/Button'
 import { JobPanel } from '../components/JobPanel'
@@ -26,7 +27,17 @@ export function Mods() {
   const error = useDaemon((state) => state.mods.error)
   const setMods = useDaemon((state) => state.setMods)
   const connection = useDaemon((state) => state.connection)
-  const [openId, setOpenId] = useState('')
+  const [openId, setOpenId] = useState(() => parseRoute(window.location.hash).game ?? '')
+
+  // The back button and a pasted link both change the route, not this state.
+  useEffect(() => {
+    const sync = () => {
+      const wanted = parseRoute(window.location.hash).game ?? ''
+      setOpenId((current) => (current === wanted ? current : wanted))
+    }
+    window.addEventListener('hashchange', sync)
+    return () => window.removeEventListener('hashchange', sync)
+  }, [])
   const [profiles, setProfiles] = useState<Record<string, string>>({})
   const [note, setNote] = useState('')
   const [files, setFiles] = useState<{ open: boolean; modId: number; name: string }>({
@@ -130,7 +141,10 @@ export function Mods() {
           game={game}
           profile={profileOf(game, profiles)}
           onProfile={(profile) => setProfiles((current) => ({ ...current, [game.id]: profile }))}
-          onBack={() => setOpenId('')}
+          onBack={() => {
+            setOpenId('')
+            navigate({ page: 'mods' })
+          }}
           onNote={say}
           onFailed={fail}
           onOpenMod={(modId, name) => setFiles({ open: true, modId, name })}
@@ -194,7 +208,14 @@ export function Mods() {
 
             {note ? <p className={styles.note}>{note}</p> : null}
 
-            <GameList onOpen={(entry) => setOpenId(entry.id)} onNote={say} onFailed={fail} />
+            <GameList
+              onOpen={(entry) => {
+                setOpenId(entry.id)
+                navigate({ page: 'mods', game: entry.id })
+              }}
+              onNote={say}
+              onFailed={fail}
+            />
           </div>
         </>
       )}
