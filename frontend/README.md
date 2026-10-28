@@ -5,7 +5,7 @@ the Quickshell one. `../frontend/docs/` explains the design; this file is only
 how to work on it.
 
 ```sh
-frontend/scripts/dev.sh          # vite on 127.0.0.1:5173 against the demo daemon
+frontend/scripts/dev-web.sh      # vite on 127.0.0.1:5173 against the demo daemon
 frontend/scripts/build-host.sh   # typecheck, bundle, embed, link build/hikari-ui
 frontend/scripts/dev-native.sh   # build both, run the daemon in demo mode, open the window
 ```

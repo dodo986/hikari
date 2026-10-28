@@ -65,7 +65,11 @@ func (h *Host) StartDaemon() error {
 
 // pendingLink is the nxm:// link the desktop handed to this window, if any.
 func pendingLink() string {
-	for _, arg := range os.Args[1:] {
+	return linkIn(os.Args[1:])
+}
+
+func linkIn(args []string) string {
+	for _, arg := range args {
 		if strings.HasPrefix(arg, "nxm://") {
 			return arg
 		}
