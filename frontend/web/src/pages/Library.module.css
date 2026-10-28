@@ -22,6 +22,8 @@
 }
 
 .sub {
+  direction: ltr;
+  unicode-bidi: isolate;
   margin-top: var(--s1);
   font-size: var(--f-small);
   color: var(--ink-faint);
@@ -62,6 +64,8 @@
 }
 
 .chip {
+  direction: ltr;
+  unicode-bidi: isolate;
   display: inline-flex;
   align-items: center;
   height: var(--ctl-h-sm);
@@ -91,7 +95,7 @@
 }
 
 .chipCount {
-  margin-left: 6px;
+  margin-inline-start: 6px;
   font-family: var(--font-mono);
   font-size: var(--f-tiny);
   color: var(--ink-faint);
@@ -149,5 +153,7 @@
 }
 
 .error {
+  direction: ltr;
+  unicode-bidi: isolate;
   color: var(--alert);
 }

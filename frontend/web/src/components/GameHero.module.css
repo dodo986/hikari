@@ -41,8 +41,8 @@
 
 .content {
   position: absolute;
-  left: var(--s5);
-  right: 204px;
+  inset-inline-start: var(--s5);
+  inset-inline-end: 204px;
   bottom: var(--s5);
   display: flex;
   flex-direction: column;
@@ -82,7 +82,7 @@
 
 .square {
   position: absolute;
-  right: var(--s5);
+  inset-inline-end: var(--s5);
   bottom: var(--s5);
   width: 132px;
   height: 176px;

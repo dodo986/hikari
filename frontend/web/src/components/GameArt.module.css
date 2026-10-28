@@ -61,7 +61,7 @@
 
 .logo {
   position: absolute;
-  left: var(--s3);
+  inset-inline-start: var(--s3);
   bottom: var(--s3);
   max-width: calc(100% - var(--s6));
   max-height: 34%;

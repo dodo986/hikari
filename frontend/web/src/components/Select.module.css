@@ -40,11 +40,11 @@
   content: '';
   position: absolute;
   top: 50%;
-  right: var(--s3);
+  inset-inline-end: var(--s3);
   width: 6px;
   height: 6px;
   margin-top: -4px;
-  border-right: 1.5px solid var(--ink-faint);
+  border-inline-end: 1.5px solid var(--ink-faint);
   border-bottom: 1.5px solid var(--ink-faint);
   transform: rotate(45deg);
   pointer-events: none;

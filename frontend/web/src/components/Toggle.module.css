@@ -28,15 +28,18 @@
 .knob {
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
   background: var(--ink);
-  transition: transform var(--move) var(--ease), background var(--snap) var(--ease);
+  transition:
+    margin-inline-start var(--move) var(--ease),
+    background var(--snap) var(--ease);
 }
 
+/* Travel is logical, so the knob moves toward the end edge in either direction. */
 .track[data-on='true'] .knob {
-  transform: translateX(18px);
+  margin-inline-start: 18px;
   background: var(--ink-on-bone);
 }

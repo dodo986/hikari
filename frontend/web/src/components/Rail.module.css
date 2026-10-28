@@ -7,14 +7,14 @@
   flex: 0 0 var(--rail-w);
   padding: var(--s4);
   background: var(--paper-lift);
-  border-right: var(--border) solid var(--line-soft);
+  border-inline-end: var(--border) solid var(--line-soft);
 }
 
 .brand {
   display: flex;
   flex-direction: column;
   gap: var(--s1);
-  margin-left: var(--s2);
+  margin-inline-start: var(--s2);
   margin-bottom: var(--s4);
 }
 
@@ -128,7 +128,7 @@
 
 .marker {
   position: absolute;
-  left: var(--s1);
+  inset-inline-start: var(--s1);
   width: 5px;
   height: 5px;
   border-radius: 1.5px;
@@ -167,6 +167,9 @@
 }
 
 .cardValue {
+  /* A count and its word stay in reading order inside a mirrored layout. */
+  direction: ltr;
+  unicode-bidi: isolate;
   font-family: var(--font-ui);
   font-size: var(--f-row);
   font-weight: 500;
@@ -174,6 +177,8 @@
 }
 
 .cardNote {
+  direction: ltr;
+  unicode-bidi: isolate;
   font-family: var(--font-ui);
   font-size: var(--f-small);
   color: var(--ink-faint);

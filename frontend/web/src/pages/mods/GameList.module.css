@@ -18,7 +18,7 @@
   background: var(--paper);
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background var(--move) var(--ease), border-color var(--snap) var(--ease);
 }

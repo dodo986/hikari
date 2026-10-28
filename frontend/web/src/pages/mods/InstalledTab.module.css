@@ -77,13 +77,13 @@
   background: none;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
 .index {
   width: 22px;
-  text-align: right;
+  text-align: end;
   font-size: var(--f-tiny);
   color: var(--ink-faint);
 }

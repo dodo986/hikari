@@ -138,3 +138,18 @@ test.describe('nexus links', () => {
     await expect(page.getByRole('heading', { name: 'Mods', level: 1 })).toBeHidden()
   })
 })
+
+test.describe('right to left', () => {
+  test('the rail moves to the right edge and keeps its marker inside', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByRole('searchbox')).toBeVisible()
+    await page.evaluate(() => {
+      document.documentElement.dir = 'rtl'
+    })
+    const rail = await page.getByRole('navigation', { name: 'Main' }).boundingBox()
+    const main = await page.locator('main').boundingBox()
+    expect(rail!.x).toBeGreaterThan(main!.x)
+    const marker = await page.locator('nav [aria-hidden="true"]').last().boundingBox()
+    expect(marker!.x).toBeGreaterThan(rail!.x + rail!.width / 2)
+  })
+})

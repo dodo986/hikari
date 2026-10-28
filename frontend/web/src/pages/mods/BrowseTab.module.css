@@ -71,7 +71,7 @@
   background: var(--paper);
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   overflow: hidden;
   cursor: pointer;
   transition: background var(--snap) var(--ease), border-color var(--snap) var(--ease);
@@ -109,7 +109,7 @@
 .adult {
   position: absolute;
   top: var(--s2);
-  right: var(--s2);
+  inset-inline-end: var(--s2);
 }
 
 .text {

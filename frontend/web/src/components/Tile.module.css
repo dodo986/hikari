@@ -6,7 +6,7 @@
   border: 0;
   background: transparent;
   color: inherit;
-  text-align: left;
+  text-align: start;
   animation: tile-in var(--dur-small) var(--ease-emphasized) both;
 }
 
@@ -59,22 +59,22 @@
 
 .topLeft {
   top: var(--s2);
-  left: var(--s2);
+  inset-inline-start: var(--s2);
 }
 
 .topRight {
   top: var(--s2);
-  right: var(--s2);
+  inset-inline-end: var(--s2);
 }
 
 .bottomLeft {
   bottom: var(--s2);
-  left: var(--s2);
+  inset-inline-start: var(--s2);
 }
 
 .bottomRight {
   bottom: var(--s3);
-  right: var(--s3);
+  inset-inline-end: var(--s3);
 }
 
 .progress {
