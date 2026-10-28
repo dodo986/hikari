@@ -13,7 +13,18 @@ import type {
 } from './types'
 
 /** The one client the app talks through. */
-export const rpc = new RpcClient(loadEndpoint, (connection) => {
+export const rpc = new RpcClient(async () => {
+  try {
+    const config = await loadEndpoint()
+    useDaemon.getState().setError(null)
+    return config
+  } catch (error) {
+    // The offline screen quotes this, so a stale daemon reads as what it is
+    // instead of a bare "not running".
+    useDaemon.getState().setError(error instanceof Error ? error.message : String(error))
+    throw error
+  }
+}, (connection) => {
   useDaemon.getState().setConnection(connection)
   if (connection === 'live') {
     void refreshLibrary().catch(() => {})

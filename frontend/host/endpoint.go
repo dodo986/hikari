@@ -27,6 +27,11 @@ func runtimePath(name string) string {
 func readEndpoint() (map[string]any, error) {
 	b, err := os.ReadFile(runtimePath("ws.json"))
 	if err != nil {
+		// The socket predates the websocket API: a daemon is up but cannot serve
+		// this window, which is a different problem from no daemon at all.
+		if _, sockErr := os.Stat(runtimePath("hikari.sock")); sockErr == nil {
+			return nil, fmt.Errorf("the running hikarid is older than this frontend, rebuild it")
+		}
 		return nil, fmt.Errorf("hikarid is not running")
 	}
 	var endpoint Endpoint

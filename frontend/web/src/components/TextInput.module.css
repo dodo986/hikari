@@ -1,12 +1,12 @@
 .input {
-  min-height: var(--ctl-h);
-  padding: 0 var(--s3);
+  height: var(--field-h-sm);
+  padding: 0 9px;
   border: var(--border) solid var(--line);
   border-radius: var(--radius);
   background: transparent;
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--f-small);
+  font-size: 12px;
   transition: border-color var(--snap) var(--ease);
 }
 
@@ -19,6 +19,6 @@
 }
 
 .input:focus-visible {
-  outline: 2px solid var(--sun);
-  outline-offset: 1px;
+  border: 2px solid var(--ink);
+  outline: none;
 }

@@ -9,7 +9,7 @@ interface FactsPanelProps {
   size: string
 }
 
-const EMPTY = '—'
+const EMPTY = 'n/a'
 
 export function FactsPanel({ game, size }: FactsPanelProps) {
   const t = useT()

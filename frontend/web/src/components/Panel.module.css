@@ -1,17 +1,16 @@
 .panel {
   border: var(--border) solid var(--line-soft);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--paper-lift) 70%, transparent);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--paper-lift);
+  padding: var(--s5);
   overflow: hidden;
 }
 
 .head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s4);
-  padding: var(--s4) var(--s5) var(--s3);
-  border-bottom: var(--border) solid var(--line-soft);
 }
 
 .text {
@@ -28,7 +27,7 @@
 
 .subtitle {
   margin: var(--s1) 0 0;
-  font-size: var(--f-micro);
+  font-size: var(--f-small);
   line-height: 1.45;
   color: var(--ink-faint);
 }
@@ -41,5 +40,5 @@
 }
 
 .body {
-  padding: var(--s3) var(--s5) var(--s4);
+  margin-top: var(--s3);
 }

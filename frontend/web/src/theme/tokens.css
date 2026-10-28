@@ -62,7 +62,10 @@
   /* type */
   --font-display: 'Fraunces', serif;
   --font-ui: 'Space Grotesk', system-ui, sans-serif;
-  --font-mono: 'SpaceMono Nerd Font', ui-monospace, monospace;
+  --font-mono: 'SpaceMono Nerd Font', 'Noto Sans Mono', ui-monospace, monospace;
+  --font-icon: 'Material Symbols Rounded';
+  --font-jp: 'Noto Sans CJK JP', 'Noto Sans JP', sans-serif;
+  --f-icon: 26px;
   --f-title: 32px;
   --f-hero: 34px;
   --f-value: 26px;
@@ -88,9 +91,12 @@
   --border: 1px;
   --row-h: 48px;
   --cell-h: 104px;
-  --rail-w: 268px;
+  --rail-w: 224px;
   --content-max: 1000px;
-  --ctl-h: 26px;
+  --ctl-h: 32px;
+  --ctl-h-sm: 24px;
+  --field-h: 36px;
+  --field-h-sm: 30px;
 
   /* motion */
   --snap: 90ms;

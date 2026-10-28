@@ -28,9 +28,9 @@ test.describe('library', () => {
     expect(stores.every((store) => store === 'gog')).toBe(true)
   })
 
-  test('the store view shows games that are not installed', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Store', exact: true }).click()
+  test('the store page shows games that are not installed', async ({ page }) => {
+    await page.goto('/#/store')
+    await expect(page.getByRole('heading', { name: 'Store', level: 1 })).toBeVisible()
     await expect(page.getByTestId('tile')).toHaveCount(5)
   })
 

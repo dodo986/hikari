@@ -1,7 +1,6 @@
 .tile {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
   width: 220px;
   padding: 0;
   border: 0;
@@ -34,6 +33,7 @@
   position: absolute;
   inset: 0;
   border: var(--border) solid var(--line-soft);
+  border-radius: calc(var(--radius) + 2px);
   transition: border-color var(--snap) var(--ease-snap);
 }
 
@@ -92,7 +92,7 @@
 }
 
 .title {
-  margin-top: var(--s2);
+  margin-top: var(--s3);
   font-size: var(--f-body);
   color: var(--ink-dim);
   overflow: hidden;
@@ -106,6 +106,7 @@
 }
 
 .facts {
+  margin-top: var(--s1);
   font-size: var(--f-micro);
   color: var(--ink-faint);
   overflow: hidden;

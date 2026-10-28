@@ -18,7 +18,6 @@ export function Tile({ game, running, progress, index, onOpen }: TileProps) {
   const facts = [game.store.toUpperCase()]
   if (game.favorite === true) facts.unshift('★')
   facts.push(game.installed ? game.platform || t('Installed') : t('Not installed'))
-  const footer = game.installed ? game.install_size || game.version || '' : ''
 
   return (
     <button
@@ -65,7 +64,6 @@ export function Tile({ game, running, progress, index, onOpen }: TileProps) {
       </div>
       <span className={styles.title}>{game.title}</span>
       <span className={styles.facts}>{facts.join('  ·  ')}</span>
-      {footer ? <span className={styles.facts}>{footer}</span> : null}
     </button>
   )
 }

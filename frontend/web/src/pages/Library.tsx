@@ -31,14 +31,13 @@ function matches(game: Game, query: string, store: string, storeMode: boolean): 
   return true
 }
 
-export function Library() {
+export function Library({ storeMode = false }: { storeMode?: boolean }) {
   const t = useT()
   const games = useDaemon((state) => state.games)
   const running = useDaemon((state) => state.running)
   const installs = useDaemon((state) => state.installs)
   const [query, setQuery] = useState('')
   const [store, setStore] = useState('all')
-  const [storeMode, setStoreMode] = useState(false)
   const [sortBy, setSortBy] = useState<'title' | 'recent'>('title')
   const [refreshing, setRefreshing] = useState(false)
   const [note, setNote] = useState('')
@@ -46,6 +45,7 @@ export function Library() {
   const [adding, setAdding] = useState(false)
 
   const installed = games.filter((game) => game.installed).length
+  const storeCount = games.length - installed
   const counts = useMemo(() => {
     const out: Record<string, number> = {}
     for (const chip of CHIPS) {
@@ -88,76 +88,82 @@ export function Library() {
     <div className={styles.page}>
       <header className={styles.head}>
         <div>
-          <h1 className={styles.title}>{t('Library')}</h1>
-          <p className={styles.sub}>
-            {installed} {t('installed')} · {games.length - installed} {t('available to install')}
-            {note ? (
-              <span className={failed ? styles.error : styles.note}> · {note}</span>
-            ) : null}
+          <h1 className={styles.title}>{storeMode ? t('Store') : t('Library')}</h1>
+          <p className={failed ? styles.error : note ? styles.note : styles.sub}>
+            {note
+              ? note
+              : storeMode
+                ? `${storeCount} ${t('available to install')}  ·  ${installed} ${t('installed')}`
+                : `${installed} ${t('installed')}  ·  ${storeCount} ${t('in the store')}`}
           </p>
         </div>
         <div className={styles.controls}>
           <input
             className={styles.search}
             type="search"
-            placeholder={t('Search')}
+            placeholder={t('Search games')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            aria-label={t('Search')}
+            aria-label={t('Search games')}
           />
-          <Button onClick={() => setAdding(true)}>{t('Add game')}</Button>
-          <Button onClick={() => void refresh()} busy={refreshing}>
+          {storeMode ? null : (
+            <Button size="small" onClick={() => setAdding(true)}>
+              {`+ ${t('Add game')}`}
+            </Button>
+          )}
+          <Button size="small" onClick={() => void refresh()} busy={refreshing}>
             {refreshing ? t('Checking') : t('Refresh')}
           </Button>
         </div>
       </header>
 
       <div className={styles.chips}>
-        {CHIPS.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            className={[styles.chip, store === chip.key ? styles.chipActive : ''].join(' ')}
-            onClick={() => setStore(chip.key)}
-            aria-pressed={store === chip.key}
-            data-testid={`chip-${chip.key}`}
-          >
-            {t(chip.label)}
-            <span className={styles.chipCount}>{counts[chip.key] ?? 0}</span>
-          </button>
-        ))}
-        <span className={styles.divider} />
+        {CHIPS.map((chip) =>
+          chip.key === 'all' || (counts[chip.key] ?? 0) > 0 ? (
+            <button
+              key={chip.key}
+              type="button"
+              className={[styles.chip, store === chip.key ? styles.chipActive : ''].join(' ')}
+              onClick={() => setStore(chip.key)}
+              aria-pressed={store === chip.key}
+              data-testid={`chip-${chip.key}`}
+            >
+              {t(chip.label)}
+              <span className={styles.chipCount}>{counts[chip.key] ?? 0}</span>
+            </button>
+          ) : null,
+        )}
+        <span className={styles.spacer} />
+        <span className={styles.sortLabel}>{t('Sort')}</span>
         <button
           type="button"
-          className={[styles.chip, storeMode ? '' : styles.chipActive].join(' ')}
-          onClick={() => setStoreMode(false)}
-          aria-pressed={!storeMode}
+          className={[styles.chip, sortBy === 'title' ? styles.chipActive : ''].join(' ')}
+          onClick={() => setSortBy('title')}
+          aria-pressed={sortBy === 'title'}
         >
-          {t('Installed')}
+          {t('A-Z')}
         </button>
         <button
           type="button"
-          className={[styles.chip, storeMode ? styles.chipActive : ''].join(' ')}
-          onClick={() => setStoreMode(true)}
-          aria-pressed={storeMode}
+          className={[styles.chip, sortBy === 'recent' ? styles.chipActive : ''].join(' ')}
+          onClick={() => setSortBy('recent')}
+          aria-pressed={sortBy === 'recent'}
         >
-          {t('Store')}
-        </button>
-        <span className={styles.divider} />
-        <button
-          type="button"
-          className={styles.sort}
-          onClick={() => setSortBy(sortBy === 'title' ? 'recent' : 'title')}
-        >
-          {sortBy === 'title' ? t('A–Z') : t('Playing first')}
+          {t('Playing first')}
         </button>
       </div>
+
+      <hr className={styles.rule} />
 
       <div className={styles.gridWrap}>
         {shown.length === 0 ? (
           <div className={styles.empty}>
             <span>{storeMode ? t('Nothing available to install here.') : t('Nothing installed yet.')}</span>
-            <Button size="small" variant="quiet" onClick={() => setStoreMode(!storeMode)}>
+            <Button
+              size="small"
+              variant="quiet"
+              onClick={() => navigate({ page: storeMode ? 'library' : 'store' })}
+            >
               {storeMode ? t('Show installed') : t('Browse the store')}
             </Button>
           </div>

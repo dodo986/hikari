@@ -31,28 +31,39 @@ export function App() {
   const t = useT()
   const route = useRoute()
   useHotkeys()
+  const [starting, setStarting] = useState(false)
+  const [startNote, setStartNote] = useState('')
   const connection = useDaemon((state) => state.connection)
+  const linkError = useDaemon((state) => state.error)
   const games = useDaemon((state) => state.games)
-  const status = useDaemon((state) => state.status)
+  const installs = useDaemon((state) => state.installs)
+  const running = useDaemon((state) => state.running)
+  const playing = useMemo(() => Object.values(running), [running])
+  const mods = useDaemon((state) => state.mods.games)
   const installed = useMemo(() => games.filter((game) => game.installed).length, [games])
+  const titles = useMemo(
+    () => Object.fromEntries(games.map((game) => [`${game.store}/${game.id}`, game.title])),
+    [games],
+  )
 
   useEffect(() => {
     startDaemonLink()
     void refreshStatus().catch(() => {})
   }, [])
 
-  const selection = status ? `hikarid ${status.version}` : ''
-
   return (
     <div className={styles.app}>
       <Rail
         route={route}
         games={games.length}
+        titles={titles}
         installed={installed}
+        playing={playing}
+        mods={mods}
+        installs={Object.keys(installs).length}
         connection={connection}
-        selection={selection}
       />
-      <main className={styles.main}>
+      <main className={styles.main} key={`${route.page}/${route.store ?? ''}/${route.id ?? ''}`}>
         {connection === 'offline' ? (
           <div className={styles.offline}>
             <h1 className={styles.offlineTitle}>{t('The Hikari daemon is not running')}</h1>
@@ -61,13 +72,29 @@ export function App() {
                 'Games, logins and installs all come from hikarid. Start it, or run scripts/dev.sh from the repository.',
               )}
             </p>
-            <code className={styles.code}>systemctl --user start hikarid</code>
-            <Button variant="primary" onClick={() => void startDaemon().catch(() => {})}>
+            <Button
+              variant="primary"
+              busy={starting}
+              onClick={() => {
+                setStarting(true)
+                startDaemon()
+                  .then(() => setStartNote(t('Starting hikarid')))
+                  .catch((error: unknown) =>
+                    setStartNote(error instanceof Error ? error.message : String(error)),
+                  )
+                  .finally(() => setStarting(false))
+              }}
+            >
               {t('Start daemon')}
             </Button>
+            {startNote || linkError ? (
+              <p className={styles.offlineNote}>{startNote || linkError}</p>
+            ) : null}
           </div>
         ) : route.page === 'library' ? (
           <Library />
+        ) : route.page === 'store' ? (
+          <Library storeMode />
         ) : route.page === 'game' && route.store && route.id ? (
           <GameDetail store={route.store} id={route.id} />
         ) : route.page === 'mods' ? (

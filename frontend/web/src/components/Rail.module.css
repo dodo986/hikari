@@ -1,110 +1,183 @@
 .rail {
+  position: relative;
   display: flex;
   flex-direction: column;
+  gap: var(--s2);
   width: var(--rail-w);
-  min-width: var(--rail-w);
-  height: 100%;
-  padding: var(--s5) var(--s4) var(--s4);
+  flex: 0 0 var(--rail-w);
+  padding: var(--s4);
+  background: var(--paper-lift);
   border-right: var(--border) solid var(--line-soft);
-  background: linear-gradient(180deg, var(--paper-lift), var(--paper));
 }
 
 .brand {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 var(--s2) var(--s5);
+  gap: var(--s1);
+  margin-left: var(--s2);
+  margin-bottom: var(--s4);
 }
 
 .brandName {
   font-family: var(--font-display);
-  font-size: var(--f-title);
+  font-size: var(--f-body);
   font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1;
+  letter-spacing: var(--track-label);
+  color: var(--ink);
 }
 
 .brandMark {
+  font-family: var(--font-ui);
   font-size: var(--f-tiny);
   letter-spacing: var(--track-mark);
-  text-transform: uppercase;
   color: var(--ink-faint);
 }
 
-.section {
-  margin-bottom: var(--s4);
+.nav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
 }
 
-.sectionTitle {
-  padding: 0 var(--s2) var(--s2);
-  font-size: var(--f-micro);
-  letter-spacing: var(--track-mark);
-  text-transform: uppercase;
-  color: var(--ink-faint);
+.fold {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: calc(var(--f-tiny) + var(--s3) * 2);
+}
+
+.foldRule {
+  flex: 1;
+  height: var(--border);
+  background: var(--line-soft);
+}
+
+.foldLabel {
+  font-family: var(--font-mono);
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-label);
+  color: var(--ink-muted);
 }
 
 .item {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  width: 100%;
-  min-height: 36px;
-  padding: 0 var(--s2);
-  border: 0;
-  border-radius: var(--radius);
-  background: transparent;
+  height: 36px;
+  padding: 0 var(--s3);
+  border-radius: calc(var(--radius) * 1.5);
   color: var(--ink-dim);
-  font-size: var(--f-row);
-  text-align: left;
-  transition:
-    background var(--snap) var(--ease-snap),
-    color var(--snap) var(--ease-snap);
+  text-decoration: none;
+  transition: background var(--snap) var(--ease), color var(--snap) var(--ease);
 }
 
 .item:hover {
-  background: var(--tint-5);
-  color: var(--ink);
-}
-
-.active {
-  color: var(--ink);
   background: var(--tint-10);
 }
 
-.glyph {
-  width: 18px;
-  text-align: center;
-  opacity: 0.8;
+.item[data-active='true'] {
+  background: var(--tint-16);
+  color: var(--ink);
 }
 
-.count {
-  margin-left: auto;
+.item:focus-visible {
+  outline: var(--border) solid var(--bone);
+  outline-offset: -1px;
+}
+
+.glyph {
+  width: 20px;
+  font-family: var(--font-icon);
+  font-size: var(--f-icon);
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  color: var(--ink-muted);
+  font-feature-settings: 'liga';
+  transition: color var(--snap) var(--ease);
+}
+
+.item[data-active='true'] .glyph {
+  color: var(--ink);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: var(--f-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item[data-active='true'] .label {
+  font-weight: 500;
+}
+
+.badge {
   font-family: var(--font-mono);
-  font-size: var(--f-micro);
+  font-size: var(--f-tiny);
   color: var(--ink-faint);
+}
+
+.item[data-active='true'] .badge {
+  color: var(--ink-dim);
+}
+
+.marker {
+  position: absolute;
+  left: var(--s1);
+  width: 5px;
+  height: 5px;
+  border-radius: 1.5px;
+  background: var(--sun);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    top 260ms cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 120ms linear;
+}
+
+.marker[data-visible='true'] {
+  opacity: 1;
 }
 
 .spacer {
   flex: 1;
 }
 
-.status {
-  margin: 0 var(--s2) var(--s3);
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
   padding: var(--s3);
   border: var(--border) solid var(--line-soft);
   border-radius: var(--radius);
-  font-size: var(--f-micro);
+  background: var(--tint-5);
+  text-decoration: none;
+}
+
+.cardMark {
+  font-family: var(--font-ui);
+  font-size: var(--f-tiny);
+  letter-spacing: var(--track-mark);
   color: var(--ink-faint);
-  line-height: 1.5;
 }
 
-.offline {
-  color: var(--alert);
+.cardValue {
+  font-family: var(--font-ui);
+  font-size: var(--f-row);
   font-weight: 500;
+  color: var(--ink);
 }
 
-.item:focus-visible {
-  outline: 2px solid var(--sun);
-  outline-offset: -2px;
-  border-radius: var(--radius);
+.cardNote {
+  font-family: var(--font-ui);
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -1,21 +1,25 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: var(--s1);
-  padding: 1px var(--s2);
-  border: var(--border) solid var(--line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  height: 24px;
+  padding: 0 var(--s3);
+  border: var(--border) solid var(--line-soft);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--tint-5);
   color: var(--ink-dim);
+  font-family: var(--font-ui);
   font-size: var(--f-tiny);
   font-weight: 500;
   letter-spacing: var(--track-label);
   text-transform: uppercase;
-  backdrop-filter: blur(6px);
+  transition:
+    background var(--snap) linear,
+    border-color var(--snap) linear;
 }
 
 .accent {
-  border-color: color-mix(in srgb, var(--sun) 55%, transparent);
+  background: var(--tint-16);
+  border-color: var(--sun);
   color: var(--sun);
 }
 
@@ -24,12 +28,13 @@
 }
 
 .danger {
-  border-color: color-mix(in srgb, var(--alert) 55%, transparent);
+  background: color-mix(in srgb, var(--alert) 14%, transparent);
+  border-color: var(--alert);
   color: var(--alert);
 }
 
 .solid {
-  background: var(--sun);
-  border-color: transparent;
-  color: #fff;
+  background: var(--bone);
+  border-color: var(--bone);
+  color: var(--ink-on-bone);
 }

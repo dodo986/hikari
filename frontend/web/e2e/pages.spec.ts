@@ -116,3 +116,13 @@ test.describe('keyboard', () => {
     await expect(page.getByTestId('open-settings')).toBeVisible()
   })
 })
+
+test.describe('offline', () => {
+  test('says what is wrong and offers to start the daemon', async ({ page }) => {
+    await page.route('**/__daemon.json', (route) => route.fulfill({ status: 503, json: { error: 'no daemon' } }))
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: 'Start daemon' })).toBeVisible()
+    await page.getByRole('button', { name: 'Start daemon' }).click()
+    await expect(page.getByText('starting hikarid needs the desktop window')).toBeVisible()
+  })
+})

@@ -16,29 +16,65 @@ declare global {
   }
 }
 
-export const hasHost = (): boolean => typeof window.hikari !== 'undefined'
+// Wails exposes Go methods as window.go.<package>.<Struct>.<Method>. The window
+// wraps them in the small surface above so the app has one shape to call.
+interface WailsHostBinding {
+  PickFile(label: string): Promise<string>
+  PickFolder(label: string): Promise<string>
+  OpenUrl(url: string): Promise<void>
+  StartDaemon(): Promise<void>
+}
+
+declare global {
+  interface Window {
+    go?: { main?: { Host?: WailsHostBinding } }
+  }
+}
+
+function bindings(): WailsHostBinding | undefined {
+  return window.go?.main?.Host
+}
+
+function host(): HikariHost | undefined {
+  if (window.hikari) return window.hikari
+  const bound = bindings()
+  if (!bound) return undefined
+  window.hikari = {
+    pickFile: (label) => bound.PickFile(label),
+    pickFolder: (label) => bound.PickFolder(label),
+    openUrl: (url) => bound.OpenUrl(url),
+    startDaemon: () => bound.StartDaemon(),
+  }
+  return window.hikari
+}
+
+export const hasHost = (): boolean => typeof host() !== 'undefined'
 
 export async function pickFile(label: string): Promise<string | null> {
-  if (window.hikari) return window.hikari.pickFile(label)
+  const bound = host()
+  if (bound) return bound.pickFile(label)
   const typed = window.prompt(label)
   return typed && typed.trim() !== '' ? typed.trim() : null
 }
 
 export async function pickFolder(label: string): Promise<string | null> {
-  if (window.hikari) return window.hikari.pickFolder(label)
+  const bound = host()
+  if (bound) return bound.pickFolder(label)
   const typed = window.prompt(label)
   return typed && typed.trim() !== '' ? typed.trim() : null
 }
 
 export async function openUrl(url: string): Promise<void> {
-  if (window.hikari) {
-    await window.hikari.openUrl(url)
+  const bound = host()
+  if (bound) {
+    await bound.openUrl(url)
     return
   }
   window.open(url, '_blank', 'noopener')
 }
 
 export async function startDaemon(): Promise<void> {
-  if (!window.hikari) throw new Error('starting hikarid needs the desktop window')
-  await window.hikari.startDaemon()
+  const bound = host()
+  if (!bound) throw new Error('starting hikarid needs the desktop window')
+  await bound.startDaemon()
 }

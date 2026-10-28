@@ -9,6 +9,25 @@
   height: 100%;
   overflow: hidden;
   background: var(--paper);
+  animation: page-in 210ms var(--ease-emphasized) both;
+}
+
+/* The QML pager fades the new page in and lifts it by one step. Same curve. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--s3));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main {
+    animation: none;
+  }
 }
 
 .offline {
@@ -25,8 +44,15 @@
 .offlineTitle {
   margin: 0;
   font-family: var(--font-display);
-  font-size: var(--f-hero);
+  font-size: var(--f-title);
   font-weight: 500;
+}
+
+.offlineNote {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--ink-faint);
+  font-size: var(--f-small);
 }
 
 .offlineText {

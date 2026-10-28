@@ -19,7 +19,6 @@
   font-family: var(--font-display);
   font-size: var(--f-title);
   font-weight: 500;
-  letter-spacing: -0.02em;
 }
 
 .sub {
@@ -35,13 +34,14 @@
 }
 
 .search {
-  width: 240px;
-  min-height: var(--ctl-h);
-  padding: 0 var(--s3);
+  width: 280px;
+  height: var(--field-h);
+  padding: 0 9px;
   border: var(--border) solid var(--line);
   border-radius: var(--radius);
   background: transparent;
   color: var(--ink);
+  font-family: var(--font-ui);
   font-size: var(--f-small);
 }
 
@@ -50,7 +50,7 @@
 }
 
 .search:focus {
-  border-color: var(--line-strong);
+  border: var(--border) solid var(--ink);
   outline: none;
 }
 
@@ -64,15 +64,15 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--s1);
-  min-height: 24px;
-  padding: 0 var(--s3);
+  height: var(--ctl-h-sm);
+  padding: 0 10px;
   border: var(--border) solid transparent;
   border-radius: 999px;
   background: transparent;
   color: var(--ink-dim);
-  font-size: var(--f-micro);
-  letter-spacing: 0.02em;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--track-label);
   transition:
     background var(--snap) var(--ease),
     color var(--snap) var(--ease),
@@ -85,36 +85,36 @@
 }
 
 .chipActive {
-  border-color: var(--line);
-  background: var(--tint-10);
-  color: var(--ink);
+  border-color: var(--bone);
+  background: var(--bone);
+  color: var(--ink-on-bone);
 }
 
 .chipCount {
+  margin-left: 6px;
   font-family: var(--font-mono);
   font-size: var(--f-tiny);
   color: var(--ink-faint);
 }
 
-.divider {
-  width: 1px;
-  height: 18px;
+.chipActive .chipCount {
+  color: color-mix(in srgb, var(--ink-on-bone) 70%, transparent);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.sortLabel {
+  font-size: var(--f-small);
+  color: var(--ink-faint);
+}
+
+.rule {
+  height: var(--border);
+  margin: 0;
+  border: 0;
   background: var(--line-soft);
-  margin: 0 var(--s2);
-}
-
-.sort {
-  min-height: var(--ctl-h);
-  padding: 0 var(--s2);
-  border: var(--border) solid transparent;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--ink-dim);
-  font-size: var(--f-micro);
-}
-
-.sort:hover {
-  color: var(--ink);
 }
 
 .gridWrap {
@@ -126,8 +126,8 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--s5) var(--s4);
+  grid-template-columns: repeat(auto-fill, 220px);
+  gap: var(--s4);
   align-items: start;
 }
 
