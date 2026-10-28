@@ -78,12 +78,6 @@ start_daemon
 trap 'stop_daemon' EXIT
 
 new_kb=$(measure "new-ui" "Hikari" "$here/frontend/build/hikari-ui" | awk '{ print $2 }')
-old_kb=$(measure "quickshell" "hikari" qs -n -c hikari | awk '{ print $2 }')
+[ -n "${new_kb:-}" ] || { echo "measurement failed" >&2; exit 1; }
 
-[ -n "${new_kb:-}" ] && [ -n "${old_kb:-}" ] || { echo "measurement failed" >&2; exit 1; }
-
-awk -v new="$new_kb" -v old="$old_kb" 'BEGIN {
-  printf "new      %8.1f MiB\n", new / 1024
-  printf "previous %8.1f MiB\n", old / 1024
-  printf "ratio    %8.2fx\n", new / old
-}'
+awk -v new="$new_kb" 'BEGIN { printf "window  %8.1f MiB\n", new / 1024 }'

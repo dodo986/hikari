@@ -1,8 +1,8 @@
 # The window
 
-A React and TypeScript UI in a Wails v2 host, served from the same daemon as
-the Quickshell one. This file is only how to work on it: the scripts, the build
-and the rules the code follows.
+A React and TypeScript UI in a Wails v2 host, fed by the Hikari daemon. This
+file is only how to work on it: the scripts, the build and the rules the code
+follows.
 
 ```sh
 frontend/scripts/dev-web.sh      # vite on 127.0.0.1:5173 against the demo daemon

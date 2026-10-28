@@ -2,12 +2,11 @@
 
 ## Unreleased
 
-- A new frontend, built with React and TypeScript inside a native window, lives
-  in `frontend/` on the `frontend-rewrite` branch. It speaks to the same daemon
-  over a loopback websocket with a per-run token, keeps secrets in the system
-  keyring, and covers every screen the Quickshell UI has: library, store, game
-  detail with settings and launch sheets, downloads, accounts, settings, about
-  and mods.
+- The frontend is now React and TypeScript inside a native window, in
+  `frontend/`. It speaks to the same daemon over a loopback websocket with a
+  per-run token, keeps secrets in the system keyring, and covers every screen
+  the old QML window had: library, store, game detail with settings and launch
+  sheets, downloads, accounts, settings, about and mods.
 - The daemon can serve artwork over the same token-checked listener, with an
   optional width-bounded copy so a 260 pixel tile does not decode a 600 pixel
   cover.
@@ -23,6 +22,9 @@
 - The layout mirrors under a right to left document: margins, insets, borders
   and the toggle travel are logical properties, and count phrases are isolated
   so they keep their reading order.
+- The Quickshell window is gone. One UI ships now, the React one: the tarball,
+  the AppImage and the package all carry `hikari-ui`, `hikari-app` starts it,
+  and the QML tree, its dev scripts and its QML tests left the repository.
 - Steam games show their artwork again: art that lives in Steam's own
   `librarycache` is copied into Hikari's cache, so the window can serve it.
 - The window stops opening a second event handler, notices a token that no

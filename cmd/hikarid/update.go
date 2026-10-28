@@ -242,19 +242,6 @@ func (d *daemon) installAppPayload(ctx context.Context, info update.Info, goTool
 		fail(fmt.Errorf("%s holds %s and this build is already %s; nothing to install", info.Latest, version, d.version))
 		return
 	}
-	shell := filepath.Join(payload, "usr", "share", "hikari", "quickshell")
-	if err := os.RemoveAll(shell); err != nil {
-		fail(err)
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(shell), 0o755); err != nil {
-		fail(err)
-		return
-	}
-	if out, err := runQuiet(ctx, "cp", "-a", filepath.Join(src, "quickshell"), shell); err != nil {
-		fail(fmt.Errorf("copying the shell files failed: %s", out))
-		return
-	}
 	from := filepath.Join(appDirPath(), "usr", "share", "hikari", "amethyst_filegraph.abi3.so")
 	if fileExists(from) {
 		to := filepath.Join(payload, "usr", "share", "hikari", "amethyst_filegraph.abi3.so")
@@ -371,9 +358,6 @@ func (d *daemon) buildFromSource(ctx context.Context, goTool, src, root string, 
 			return "", err
 		}
 	}
-	if err := copyTree(filepath.Join(src, "quickshell"), filepath.Join(root, "quickshell")); err != nil {
-		return "", err
-	}
 	version, err := sourceVersion(filepath.Join(src, "cmd", "hikarid", "main.go"))
 	if err != nil {
 		return "", err
@@ -419,14 +403,15 @@ func (d *daemon) sweepUpdateStages() {
 }
 
 func (d *daemon) restartAppImage(appImage string) {
+	// The window follows the daemon: it shows the offline screen while the
+	// socket is gone and reconnects to the restarted one.
 	script := `sleep 0.5
-if [ -x "$1" ]; then "$1" -c hikari ipc call hikari close >/dev/null 2>&1 || true; fi
 i=0
-while [ -S "$2" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i+1)); done
+while [ -S "$1" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i+1)); done
 systemctl --user stop hikarid-appimage >/dev/null 2>&1 || true
-rm -f "$2"
-exec "$3"`
-	argv := []string{"/bin/sh", "-c", script, "sh", qsBin(), config.SocketPath(), appImage}
+rm -f "$1"
+exec "$2"`
+	argv := []string{"/bin/sh", "-c", script, "sh", config.SocketPath(), appImage}
 	var cmd *exec.Cmd
 	if _, err := exec.LookPath("systemd-run"); err == nil {
 		args := []string{"--user", "--unit=hikari-update", "--collect"}
@@ -457,13 +442,6 @@ exec "$3"`
 		_ = os.Remove(config.SocketPath())
 		os.Exit(0)
 	}()
-}
-
-func qsBin() string {
-	if p, err := exec.LookPath("qs"); err == nil {
-		return p
-	}
-	return "/usr/sbin/qs"
 }
 
 func installExecutable(src, dst string) error {
@@ -518,34 +496,6 @@ func singleDir(dir string) (string, error) {
 		return "", fmt.Errorf("the source archive is empty")
 	}
 	return found, nil
-}
-
-func copyTree(from, to string) error {
-	return filepath.WalkDir(from, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, relErr := filepath.Rel(from, path)
-		if relErr != nil {
-			return relErr
-		}
-		dst := filepath.Join(to, rel)
-		if entry.IsDir() {
-			return os.MkdirAll(dst, 0o755)
-		}
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			return infoErr
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		body, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		return os.WriteFile(dst, body, info.Mode().Perm())
-	})
 }
 
 func fileExists(p string) bool {

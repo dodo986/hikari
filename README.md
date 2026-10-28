@@ -3,8 +3,8 @@
 A native game launcher built with [Ryoku](https://ryoku.dev) in mind, but not
 limited to it. One Go daemon owns the library, the store engines and the launch
 pipeline; its face is a React window that talks to the daemon over a loopback
-websocket, and the older Quickshell UI is still shipped as a fallback. No
-Electron, no bundled browser runtime: the window is a system WebKitGTK page.
+websocket. No Electron, no bundled browser runtime: the window is a system
+WebKitGTK page.
 
 Be aware that hikari is being developed as a hobby project for my own fun and usage right now, any issues report on github. PRs much appreciated. i will put more effort in it once my exams are over.
  
@@ -48,8 +48,7 @@ Be aware that hikari is being developed as a hobby project for my own fun and us
 ## Requirements
 
 - Linux; the window needs GTK3 and WebKitGTK 4.1 (`gtk3`, `webkit2gtk-4.1` on
-  Arch). The Quickshell fallback needs [Quickshell](https://quickshell.org) and
-  the Ryoku.Ui QML module instead (a Ryoku desktop provides both).
+  Arch).
 - Go 1.27 to build from source; Go 1.27 plus Node 20 and npm to build the
   window (`frontend/scripts/build-host.sh`).
 - Store engines on `PATH`: `legendary`, `gogdl`, `nile` (optional: `comet`
@@ -71,10 +70,9 @@ chmod +x hikari-vX.Y.Z-x86_64.AppImage
 ./hikari-vX.Y.Z-x86_64.AppImage
 ```
 
-The AppImage carries the daemon, the CLI and the Quickshell UI; Quickshell and
-the Ryoku.Ui module still come from the system (Ryoku ships both), and it must
-stay in a writable folder so it can update itself. A package built from
-`packaging/PKGBUILD` installs the React window as the default launcher instead.
+The AppImage carries the daemon, the CLI and the window, and it must stay in a
+writable folder so it can update itself. A package built from
+`packaging/PKGBUILD` installs the same three from source.
 
 Or install the tarball into your home:
 

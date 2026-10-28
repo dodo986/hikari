@@ -9,8 +9,6 @@ if [ -x "$payload/usr/bin/hikarid" ]; then
 	root="$payload"
 fi
 bin="$root/usr/bin"
-qs_bin="$(command -v qs 2>/dev/null || true)"
-if [ -z "$qs_bin" ]; then qs_bin=/usr/sbin/qs; fi
 
 case "${1:-}" in
 	--hikari-version)
@@ -18,8 +16,8 @@ case "${1:-}" in
 		;;
 esac
 
-if [ ! -x "$qs_bin" ]; then
-	echo "hikari: Quickshell (qs) is required; install it and run Hikari again" >&2
+if [ ! -x "$bin/hikari-ui" ]; then
+	echo "hikari: the window is missing from this AppImage" >&2
 	exit 1
 fi
 
@@ -29,25 +27,6 @@ if [ -n "${APPIMAGE:-}" ]; then
 fi
 HIKARI_APPIMAGE_DIR="$here"
 export HIKARI_APPIMAGE_DIR
-
-config="${XDG_CONFIG_HOME:-$HOME/.config}"
-cfg="$config/quickshell/hikari"
-src="$root/usr/share/hikari/quickshell"
-if [ -d "$src" ]; then
-	mkdir -p "$config/quickshell"
-	if ! diff -qr "$src" "$cfg" >/dev/null 2>&1; then
-		rm -rf "$cfg.new"
-		cp -a "$src" "$cfg.new"
-		rm -rf "$cfg.old"
-		if [ -d "$cfg" ]; then mv "$cfg" "$cfg.old"; fi
-		mv "$cfg.new" "$cfg"
-		rm -rf "$cfg.old"
-	fi
-fi
-
-if "$qs_bin" -c hikari ipc call nav page >/dev/null 2>&1; then
-	exit 0
-fi
 
 daemon_up() { "$bin/hikari" status >/dev/null 2>&1; }
 
@@ -79,4 +58,4 @@ for _ in $(seq 1 40); do
 	sleep 0.1
 done
 
-exec "$qs_bin" -n -c hikari
+exec "$bin/hikari-ui" "$@"
