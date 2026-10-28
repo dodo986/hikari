@@ -24,7 +24,6 @@
   opacity: 1;
 }
 
-/* A wide banner reads as a letterbox inside a poster slot. */
 .wide {
   object-fit: contain;
   object-position: center;

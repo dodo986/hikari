@@ -7,11 +7,7 @@ export interface NxmLink {
   url: string
 }
 
-/**
- * nxm://<domain>/mods/<id>/files/<id>?key=... is what a browser hands over.
- * The query carries a short lived download key, so the url is passed through
- * untouched rather than rebuilt from the parts.
- */
+// The query carries a short lived download key, so the url is never rebuilt from parts.
 export function parseNxm(link: string): NxmLink | null {
   if (!link.startsWith('nxm://')) return null
   const rest = link.slice('nxm://'.length)
@@ -25,7 +21,6 @@ export function parseNxm(link: string): NxmLink | null {
   return { domain, modId, fileId: Number.isFinite(fileId) ? fileId : 0, url: link }
 }
 
-/** The backend names games by key, a link names them by Nexus domain. */
 export function gameForNxm(link: NxmLink, games: ModsGame[]): string | null {
   const match = games.find((game) => game.nexus_domain === link.domain)
   return match ? match.id : null

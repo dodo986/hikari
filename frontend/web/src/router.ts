@@ -12,7 +12,6 @@ export interface Route {
   page: PageName
   store?: string
   id?: string
-  /** A mods game view is a destination of its own, so a link can open it. */
   game?: string
 }
 

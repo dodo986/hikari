@@ -17,7 +17,6 @@ import type {
   WineVersion,
 } from './types'
 
-/** Every game call is addressed by its store and the store's own id. */
 export interface Key {
   store: string
   id: string

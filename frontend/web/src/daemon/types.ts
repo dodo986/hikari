@@ -111,7 +111,6 @@ export interface EndpointConfig {
   palette?: PaletteRoles | null
 }
 
-/** The Material roles Ryoku's Tokens.qml resolves, as colours. */
 export interface PaletteRoles {
   surface?: string
   surfaceContainerLow?: string

@@ -1,8 +1,4 @@
-/**
- * What the Wails window adds on top of a browser: native dialogs and the
- * ability to start the daemon. Everything else the page does itself over the
- * websocket, so the same bundle runs in a plain browser.
- */
+// What the window adds over a browser: native dialogs and starting the daemon.
 export interface HikariHost {
   pickFile(label: string): Promise<string | null>
   pickFolder(label: string): Promise<string | null>
@@ -16,8 +12,7 @@ declare global {
   }
 }
 
-// Wails exposes Go methods as window.go.<package>.<Struct>.<Method>. The window
-// wraps them in the small surface above so the app has one shape to call.
+// Wails exposes Go methods as window.go.main.Host.<Method>, wrapped here.
 interface WailsHostBinding {
   PickFile(label: string): Promise<string>
   PickFolder(label: string): Promise<string>

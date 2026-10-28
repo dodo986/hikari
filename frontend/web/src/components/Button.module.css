@@ -74,7 +74,6 @@
   font-size: 10px;
 }
 
-/* The compact button's type sits at 10px, so an icon keeps a smaller box. */
 .small svg {
   width: 12px;
   height: 12px;

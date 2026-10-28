@@ -3,7 +3,6 @@
   width: 100%;
 }
 
-/* Movement is a transform so a reorder never touches layout. */
 .slot {
   position: absolute;
   top: 0;

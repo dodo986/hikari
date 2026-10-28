@@ -12,7 +12,7 @@ interface SheetProps {
   footer?: ReactNode
 }
 
-/** A modal sheet: the browser's own dialog gives focus trapping and escape. */
+// The native dialog gives focus trapping and escape for free.
 export function Sheet({ open, title, closeLabel, onClose, children, footer }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null)
 

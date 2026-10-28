@@ -15,11 +15,7 @@ const LUMINANCE = (hex: string): number => {
   return 0.299 * r + 0.587 * g + 0.114 * b
 }
 
-/**
- * Paints the resolved Material roles onto the document, the way Tokens.qml
- * resolves them: a named palette wins, otherwise the wallpaper's roles apply,
- * otherwise the compiled defaults stay.
- */
+// A named palette wins, then the wallpaper's roles, then the compiled defaults.
 export function applyPalette(palette: PaletteRoles | null | undefined): void {
   if (!palette) return
   const root = document.documentElement.style
@@ -38,8 +34,7 @@ export function applyPalette(palette: PaletteRoles | null | undefined): void {
   }
   if (palette.inverseSurface) root.setProperty('--bone', palette.inverseSurface)
   if (palette.inverseOnSurface) root.setProperty('--ink-on-bone', palette.inverseOnSurface)
-  // `alert` stays the fixed attention red that Tokens.qml keeps, so a failure
-  // reads as a failure whatever the wallpaper does to the rose role.
+  // `alert` stays the fixed red, so a failure reads as one whatever the palette.
   root.setProperty('--light', paper && LUMINANCE(paper) > 0.5 ? '1' : '0')
   document.documentElement.dataset.light = paper && LUMINANCE(paper) > 0.5 ? 'true' : 'false'
 }

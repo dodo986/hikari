@@ -18,9 +18,8 @@ interface Leaving {
 
 const LEAVE_MS = 200
 
-// A CSS grid snaps on reflow; the QML grid animates each delegate's x and y, so
-// tiles live on absolute slots here and a filtered out tile holds its cell while
-// it fades.
+// A CSS grid snaps on reflow, so tiles sit on absolute slots and animate their
+// transform; a filtered out tile holds its cell while it fades.
 export function GameGrid({
   keys,
   render,
@@ -32,7 +31,7 @@ export function GameGrid({
   const [width, setWidth] = useState(0)
   const [cellHeight, setCellHeight] = useState(fallbackHeight)
   const [leaving, setLeaving] = useState<Leaving[]>([])
-  // The first placement is not a move: no slide from the pre-measure position.
+  // The first placement is not a move.
   const [settled, setSettled] = useState(false)
   const slots = useRef(new Map<string, number>())
   const timers = useRef<number[]>([])

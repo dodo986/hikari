@@ -1,4 +1,3 @@
-/** Middle elision, the way paths are shown in a narrow slot. */
 export function middle(text: string, max: number): string {
   if (!text || text.length <= max) return text
   const keep = Math.max(2, Math.floor((max - 1) / 2))

@@ -7,10 +7,7 @@ const typing = (target: EventTarget | null): boolean => {
   return node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.isContentEditable
 }
 
-/**
- * Keyboard that is not a browser default: slash jumps to the library search,
- * escape leaves a game page. Dialogs handle their own escape.
- */
+// Slash jumps to the library search, escape leaves a game page; a sheet keeps its escape.
 export function useHotkeys(): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -23,7 +20,6 @@ export function useHotkeys(): void {
         return
       }
       if (event.key !== 'Escape' || typing(event.target)) return
-      // A sheet owns escape while it is open: it closes, the page stays.
       if (document.querySelector('dialog[open]')) return
       if (window.location.hash.includes('/game/')) navigate({ page: 'library' })
     }

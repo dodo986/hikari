@@ -11,12 +11,11 @@ interface TileProps {
   running: boolean
   progress?: number | null
   index: number
-  /** A filtered out tile is still on screen while it fades. */
   leaving?: boolean
   onOpen: () => void
 }
 
-// Install progress repaints one tile per tick, so the props stay comparable.
+// Install progress repaints one tile per tick; keep the props comparable.
 export const Tile = memo(function Tile({
   game,
   running,

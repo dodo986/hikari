@@ -1,5 +1,4 @@
-/* Tokens ported from Ryoku.Ui Tokens.qml. Colours come from the daemon palette
-   at runtime; these are the compiled defaults it falls back to. */
+/* Ported from Ryoku.Ui Tokens.qml; the daemon palette overrides these at runtime. */
 
 @font-face {
   font-family: 'Fraunces';

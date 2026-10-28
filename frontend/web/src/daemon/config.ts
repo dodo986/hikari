@@ -6,8 +6,8 @@ declare global {
   }
 }
 
-// In the Wails window the host injects the endpoint, so a reload always picks
-// up a fresh token. In a plain browser (dev) it comes from the Vite bridge.
+// The host injects the endpoint in the window, so a reload always gets a fresh token;
+// the Vite dev server answers the same file in a plain browser.
 export async function resolveEndpoint(): Promise<EndpointConfig> {
   const injected = window.__HIKARI_DAEMON__
   if (injected?.url) return injected

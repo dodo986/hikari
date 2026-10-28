@@ -20,7 +20,6 @@ export interface GameDetailData {
   setSettings: (settings: GameSettings) => void
 }
 
-/** Everything the detail screen reads, so the page itself stays layout only. */
 export function useGameDetail(key: Key): GameDetailData {
   const [game, setGame] = useState<Game | null>(null)
   const [settings, setSettings] = useState<GameSettings | null>(null)

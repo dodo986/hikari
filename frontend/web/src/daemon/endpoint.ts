@@ -11,16 +11,13 @@ export function endpoint(): EndpointConfig | null {
   return current
 }
 
-/** ws://host:port/rpc becomes http://host:port, the bridge art is served on. */
 function bridgeBase(config: EndpointConfig): string {
   const url = new URL(config.url)
   return `${url.protocol === 'wss:' ? 'https' : 'http'}://${url.host}`
 }
 
-/**
- * A cached cover is a path on disk; a browser cannot read it, so it goes
- * through the daemon's own loopback route. Remote URLs pass straight through.
- */
+// A cached cover is a path on disk, so it goes through the daemon's own route;
+// remote URLs pass straight through.
 export function artUrl(value: string | undefined, width = 0): string {
   if (!value) return ''
   if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) return value

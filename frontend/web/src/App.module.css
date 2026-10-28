@@ -12,7 +12,6 @@
   animation: page-in 210ms var(--ease-emphasized) both;
 }
 
-/* The QML pager fades the new page in and lifts it by one step. Same curve. */
 @keyframes page-in {
   from {
     opacity: 0;

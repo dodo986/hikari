@@ -3,7 +3,7 @@ import { useDaemon } from './store'
 import { modsAccount, modsGames, modsStatus } from './mods'
 import type { ModsAccount, ModsDone, ModsGame, ModsProgress, ModsStatus } from './types'
 
-/** mods.status and mods.games always travel together and share one error slot. */
+// mods.status and mods.games travel together and share one error slot.
 export async function refreshMods(): Promise<void> {
   const state = useDaemon.getState()
   try {
@@ -49,7 +49,6 @@ export async function refreshModsGames(): Promise<ModsGame[]> {
   }
 }
 
-/** Wire events onto the store; the rail badge and the page read the same slice. */
 export function startModsLink(): void {
   const state = useDaemon.getState()
 

@@ -29,7 +29,7 @@ export function Mods() {
   const connection = useDaemon((state) => state.connection)
   const [openId, setOpenId] = useState(() => parseRoute(window.location.hash).game ?? '')
 
-  // The back button and a pasted link both change the route, not this state.
+  // The route owns the open game; the back button and a pasted link both change it.
   useEffect(() => {
     const sync = () => {
       const wanted = parseRoute(window.location.hash).game ?? ''

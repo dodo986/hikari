@@ -11,9 +11,7 @@ interface GameArtProps {
   className?: string
   style?: CSSProperties
   showTitle?: boolean
-  /** Cover art is portrait; a square slot crops it less from the top. */
   role?: 'cover' | 'square'
-  /** Painted width in CSS pixels; the bridge serves a cached copy at this size. */
   width?: number
 }
 
@@ -40,7 +38,6 @@ export function GameArt({
 }: GameArtProps) {
   const [loaded, setLoaded] = useState(false)
   const [wide, setWide] = useState(false)
-  // Ask for roughly what the slot paints, doubled for a high density screen.
   const requested =
     typeof window === 'undefined' ? 0 : Math.round(width * Math.min(2, window.devicePixelRatio || 1))
   const source = artUrl(pick(artwork, artworkLocal, role), requested)

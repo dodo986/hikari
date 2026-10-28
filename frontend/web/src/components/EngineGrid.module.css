@@ -12,7 +12,6 @@
   margin-top: var(--s2);
 }
 
-/* SettingsPage.qml gives each card half the body once it is wider than 700. */
 @media (min-width: 940px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

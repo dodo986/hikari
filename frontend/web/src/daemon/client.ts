@@ -17,10 +17,7 @@ const REQUEST_TIMEOUT_MS = 30_000
 const BACKOFF_START_MS = 250
 const BACKOFF_MAX_MS = 5_000
 
-/**
- * JSON-RPC 2.0 over a websocket, one request per id, events pushed by the
- * daemon on the same connection. Reconnects on its own and re-subscribes.
- */
+// One request per id, events on the same connection, reconnect with backoff.
 export class RpcClient {
   private socket: WebSocket | null = null
   private nextId = 1
@@ -30,7 +27,6 @@ export class RpcClient {
   private state: ConnectionState = 'connecting'
   private backoff = BACKOFF_START_MS
   private reconnectTimer = 0
-  private closed = false
   private started = false
   private attempts = 0
 
@@ -44,17 +40,9 @@ export class RpcClient {
   }
 
   start(): void {
-    if (this.started || this.closed) return
+    if (this.started) return
     this.started = true
     void this.connect()
-  }
-
-  stop(): void {
-    this.closed = true
-    window.clearTimeout(this.reconnectTimer)
-    this.socket?.close()
-    this.socket = null
-    this.failAll(new Error('the connection was closed'))
   }
 
   on(event: string, handler: EventHandler): () => void {
@@ -86,7 +74,6 @@ export class RpcClient {
   }
 
   private async connect(): Promise<void> {
-    if (this.closed) return
     this.started = true
     this.setState(this.attempts === 0 ? 'connecting' : this.state)
     let endpoint: EndpointConfig
@@ -100,18 +87,15 @@ export class RpcClient {
     }
     const socket = new WebSocket(`${endpoint.url}?token=${encodeURIComponent(endpoint.token)}`)
     this.socket = socket
-    // A socket replaced by a newer attempt must not report state or serve calls.
+    // A superseded socket must not report state or serve calls.
     socket.onmessage = (message: MessageEvent<string>) => {
       if (this.socket === socket) this.receive(message.data)
     }
-    socket.onerror = () => {
-      // A handshake refusal surfaces as an error before close; the close
-      // handler decides what to do next.
-    }
+    // A refused handshake reports here first; onclose decides what happens next.
+    socket.onerror = () => {}
     socket.onclose = () => {
       if (this.socket !== socket) return
       this.failAll(new Error('hikarid closed the connection'))
-      if (this.closed) return
       this.attempts++
       this.setState(this.attempts >= 2 ? 'offline' : 'connecting')
       this.scheduleReconnect()
@@ -135,7 +119,6 @@ export class RpcClient {
     const delay = this.backoff
     this.backoff = Math.min(BACKOFF_MAX_MS, Math.round(this.backoff * 1.7))
     this.reconnectTimer = window.setTimeout(() => {
-      if (this.closed) return
       this.socket = null
       void this.connect()
     }, delay)
@@ -186,7 +169,6 @@ export class RpcClient {
     this.pending.clear()
   }
 
-  /** Subscribe once; the topics survive reconnects. */
   subscribe(topics: string[]): void {
     let added = false
     for (const topic of topics) {

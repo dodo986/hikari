@@ -93,8 +93,7 @@ export const useDaemon = create<DaemonState>((set) => ({
       return { running }
     }),
 
-  // A store changed: mark what moved instead of guessing. Games that are simply
-  // new appear on the next library.list, which the caller schedules.
+  // Mark what moved; games that are new arrive on the next library.list.
   applyLibraryChanged: (event) =>
     set((state) => {
       if (!event.updated?.length && !event.removed?.length) return {}

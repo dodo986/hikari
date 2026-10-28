@@ -5,7 +5,6 @@ import { useDaemon } from '../daemon/store'
 import { useT } from '../i18n/t'
 import styles from './UpdateNote.module.css'
 
-/** Hikari updates itself through the daemon; the rail is where that shows. */
 export function UpdateNote() {
   const t = useT()
   const connection = useDaemon((state) => state.connection)

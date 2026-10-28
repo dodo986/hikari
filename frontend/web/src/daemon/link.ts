@@ -18,8 +18,7 @@ export const rpc = new RpcClient(async () => {
     useDaemon.getState().setError(null)
     return config
   } catch (error) {
-    // The offline screen quotes this, so a stale daemon reads as what it is
-    // instead of a bare "not running".
+    // The offline screen quotes this, so a stale daemon reads as what it is.
     useDaemon.getState().setError(error instanceof Error ? error.message : String(error))
     throw error
   }
@@ -33,7 +32,7 @@ export const rpc = new RpcClient(async () => {
 })
 
 if (import.meta.env.DEV) {
-  // The e2e tests read state from here instead of scraping the DOM.
+  // The e2e tests read state here instead of scraping the DOM.
   Object.assign(window, { __hikari: { rpc, useDaemon } })
 }
 

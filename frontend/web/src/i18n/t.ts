@@ -1,9 +1,6 @@
 import { useCallback } from 'react'
 
-/**
- * Strings are keyed by their English text, exactly like I18n.tr in the QML
- * app, so a translation file only has to list the strings it changes.
- */
+// Keyed by the English text, like I18n.tr, so a catalogue only lists what it changes.
 type Replacements = Record<string, string | number>
 
 const overrides: Record<string, string> = {}

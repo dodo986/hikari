@@ -9,7 +9,6 @@ import styles from './SecretPanel.module.css'
 
 const NAME = 'steamgriddb'
 
-/** The key is write-only: the daemon reports whether one is stored, never its value. */
 export function SecretPanel() {
   const t = useT()
   const [set, setSet] = useState(false)

@@ -1,7 +1,6 @@
 .tile {
   display: flex;
-  /* Each tile is its own paint box, so a hover or a progress tick never
-     invalidates the whole grid. */
+  /* A hover or a progress tick must not invalidate the whole grid. */
   contain: layout style;
   flex-direction: column;
   width: 220px;
