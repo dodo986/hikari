@@ -16,8 +16,9 @@ import type {
 export const rpc = new RpcClient(loadEndpoint, (connection) => {
   useDaemon.getState().setConnection(connection)
   if (connection === 'live') {
-    void refreshLibrary()
+    void refreshLibrary().catch(() => {})
     void refreshAuth().catch(() => {})
+    void refreshStatus().catch(() => {})
   }
 })
 

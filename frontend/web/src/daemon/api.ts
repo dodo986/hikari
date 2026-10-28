@@ -51,4 +51,7 @@ export const setSecret = (name: string, value: string) =>
     { name, value },
   )
 
+export const deleteSecret = (name: string) =>
+  rpc.call<{ deleted: boolean }>('settings.deleteSecret', { name })
+
 export type { LibraryListResult }

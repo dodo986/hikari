@@ -1,0 +1,41 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--f-tiny);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  margin: 0 0 var(--s2);
+  font-size: var(--f-small);
+  color: var(--ink-dim);
+}
+
+.log {
+  margin: 0;
+  height: 220px;
+  overflow: auto;
+  padding: var(--s3);
+  border: var(--border) solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--f-micro);
+  line-height: 1.55;
+  color: var(--ink-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  overscroll-behavior: contain;
+}
