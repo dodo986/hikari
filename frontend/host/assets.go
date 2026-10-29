@@ -46,7 +46,9 @@ func assetHandler() http.Handler {
 func bootstrap() []byte {
 	payload := map[string]any{}
 	if endpoint, err := readEndpoint(); err == nil {
-		payload = endpoint
+		payload["url"] = endpoint.URL
+		payload["token"] = endpoint.Token
+		payload["pid"] = endpoint.PID
 	}
 	payload["palette"] = readPalette()
 	encoded, err := json.Marshal(payload)

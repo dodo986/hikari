@@ -7,7 +7,7 @@ class FakeSocket {
   readyState = 0
   sent: string[] = []
   onopen: (() => void) | null = null
-  onclose: (() => void) | null = null
+  onclose: ((event: { code: number }) => void) | null = null
   onerror: (() => void) | null = null
   onmessage: ((event: { data: string }) => void) | null = null
 
@@ -19,9 +19,9 @@ class FakeSocket {
     this.sent.push(frame)
   }
 
-  close(): void {
+  close(code = 1000): void {
     this.readyState = 3
-    this.onclose?.()
+    this.onclose?.({ code })
   }
 
   accept(): void {
@@ -95,6 +95,34 @@ describe('rpc client', () => {
     client.start()
     await settle()
     await expect(client.call('library.list')).rejects.toThrow('not connected')
+  })
+
+  it('tells a refused token apart from a stopped daemon', async () => {
+    const states: string[] = []
+    const client = new RpcClient(async () => endpoint, (state) => states.push(state))
+    client.start()
+    await settle()
+    latest().close(4401)
+    expect(client.connection).toBe('unauthorized')
+    expect(states).toContain('unauthorized')
+  })
+
+  it('picks up the token a restarted daemon wrote', async () => {
+    vi.useFakeTimers()
+    const tokens = ['old', 'new']
+    let opened = 0
+    const client = new RpcClient(async () => ({
+      url: endpoint.url,
+      token: tokens[Math.min(opened++, 1)]!,
+    }))
+    client.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(latest().url).toContain('token=old')
+
+    latest().close(4401)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(latest().url).toContain('token=new')
+    vi.useRealTimers()
   })
 
   it('reports offline when the endpoint cannot be resolved twice', async () => {

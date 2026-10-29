@@ -16,6 +16,7 @@ type StateHandler = (state: ConnectionState) => void
 const REQUEST_TIMEOUT_MS = 30_000
 const BACKOFF_START_MS = 250
 const BACKOFF_MAX_MS = 5_000
+const CLOSE_UNAUTHORIZED = 4401
 
 // One request per id, events on the same connection, reconnect with backoff.
 export class RpcClient {
@@ -29,7 +30,6 @@ export class RpcClient {
   private reconnectTimer = 0
   private started = false
   private attempts = 0
-  private refused = 0
 
   constructor(
     private readonly open: () => Promise<EndpointConfig>,
@@ -96,22 +96,18 @@ export class RpcClient {
       return
     }
     this.socket = socket
-    let opened = false
     // A superseded socket must not report state or serve calls.
     socket.onmessage = (message: MessageEvent<string>) => {
       if (this.socket === socket) this.receive(message.data)
     }
     // A refused handshake reports here first; onclose decides what happens next.
     socket.onerror = () => {}
-    socket.onclose = () => {
+    socket.onclose = (event: CloseEvent) => {
       if (this.socket !== socket) return
       this.failAll(new Error('hikarid closed the connection'))
       this.attempts++
-      // A socket that never opened means the upgrade was refused, which is a
-      // stale token rather than a stopped daemon.
-      if (!opened) this.refused++
-      if (this.refused >= 2) this.setState('unauthorized')
-      else this.setState(this.attempts >= 2 ? 'offline' : 'connecting')
+      const refused = event?.code === CLOSE_UNAUTHORIZED
+      this.setState(refused ? 'unauthorized' : this.attempts >= 2 ? 'offline' : 'connecting')
       this.scheduleReconnect()
     }
     socket.onopen = () => {
@@ -119,9 +115,7 @@ export class RpcClient {
         socket.close()
         return
       }
-      opened = true
       this.attempts = 0
-      this.refused = 0
       this.backoff = BACKOFF_START_MS
       this.setState('live')
       if (this.topics.size > 0) {

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -57,6 +58,18 @@ func startWS(t *testing.T, opts ...func(*WSConfig)) *wsHarness {
 	}
 	t.Cleanup(h.stop)
 	return h
+}
+
+func readClose(t *testing.T, conn *websocket.Conn) (websocket.StatusCode, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _, err := conn.Read(ctx)
+	conn.CloseNow()
+	if err == nil {
+		return websocket.StatusAbnormalClosure, errors.New("the socket stayed open")
+	}
+	return websocket.CloseStatus(err), nil
 }
 
 func dialWS(t *testing.T, url string, header http.Header) (*websocket.Conn, error) {
@@ -148,14 +161,18 @@ func TestWSDeliversEventsOverTheSameConnection(t *testing.T) {
 
 func TestWSRejectsABadToken(t *testing.T) {
 	h := startWS(t)
-	conn, err := dialWS(t, h.url+"?token=wrong", nil)
-	if err == nil {
-		conn.CloseNow()
-		t.Fatal("a wrong token was accepted")
-	}
-	if conn, err := dialWS(t, h.url, nil); err == nil {
-		conn.CloseNow()
-		t.Fatal("a connection without a token was accepted")
+	for _, url := range []string{h.url + "?token=wrong", h.url} {
+		conn, err := dialWS(t, url, nil)
+		if err != nil {
+			t.Fatalf("%s never reached the socket: %v", url, err)
+		}
+		code, err := readClose(t, conn)
+		if err != nil {
+			t.Fatalf("%s: %v", url, err)
+		}
+		if code != CloseUnauthorized {
+			t.Fatalf("%s closed with %d, want %d", url, code, CloseUnauthorized)
+		}
 	}
 }
 

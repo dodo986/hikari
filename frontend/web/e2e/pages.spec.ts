@@ -31,7 +31,7 @@ test.describe('settings page', () => {
     await page.goto('/#/settings')
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
     await expect(page.getByText('legendary', { exact: true })).toBeVisible()
-    await expect(page.getByText('hikari 0.8.3')).toBeVisible()
+    await expect(page.getByText(/^hikari \d+\.\d+\.\d+/)).toBeVisible()
   })
 
   test('the artwork key is write only', async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe('downloads, accounts and about', () => {
 
   test('about shows the daemon version and the project link', async ({ page }) => {
     await page.goto('/#/about')
-    await expect(page.getByText(/Hikari 0\.8\.3/)).toBeVisible()
+    await expect(page.getByText(/Hikari \d+\.\d+\.\d+/)).toBeVisible()
     await expect(page.getByRole('button', { name: /dodo986/ })).toBeVisible()
   })
 })

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { hasHost, onPalette, startDaemon } from '../src/host/bridge'
+import { hasEndpointSource, hasHost, liveEndpoint, onPalette, startDaemon } from '../src/host/bridge'
 
 describe('the host bridge', () => {
   beforeEach(() => {
@@ -28,6 +28,22 @@ describe('the host bridge', () => {
 
   it('refuses to start a daemon it cannot reach', async () => {
     await expect(startDaemon()).rejects.toThrow('desktop window')
+  })
+
+  it('asks the host for the endpoint that is live now', async () => {
+    window.go = { main: { Host: {
+      PickFile: async () => '',
+      PickFolder: async () => '',
+      OpenUrl: async () => {},
+      StartDaemon: async () => {},
+      Daemon: async () => ({ url: 'ws://127.0.0.1:1/rpc', token: 'fresh', pid: 7 }),
+    } } }
+    expect(hasEndpointSource()).toBe(true)
+    await expect(liveEndpoint()).resolves.toMatchObject({ token: 'fresh' })
+  })
+
+  it('has no endpoint source in a plain browser', () => {
+    expect(hasEndpointSource()).toBe(false)
   })
 
   it('hands wallpaper palettes from the runtime to the theme', () => {
