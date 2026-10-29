@@ -1,3 +1,4 @@
+import { hasEndpointSource, liveEndpoint } from '../host/bridge'
 import type { EndpointConfig } from './types'
 
 declare global {
@@ -6,9 +7,12 @@ declare global {
   }
 }
 
-// The host injects the endpoint in the window, so a reload always gets a fresh token;
-// the Vite dev server answers the same file in a plain browser.
 export async function resolveEndpoint(): Promise<EndpointConfig> {
+  if (hasEndpointSource()) {
+    const endpoint = await liveEndpoint()
+    if (!endpoint.url || !endpoint.token) throw new Error('the daemon endpoint is incomplete')
+    return endpoint
+  }
   const injected = window.__HIKARI_DAEMON__
   if (injected?.url) return injected
   const response = await fetch('/__daemon.json', {

@@ -99,26 +99,24 @@ export function App() {
             </h1>
             <p className={styles.offlineText}>
               {connection === 'unauthorized'
-                ? t('Its token changed since this window opened. Reopen Hikari to pick up the new one.')
-                : t(
-                    'Games, logins and installs all come from hikarid. Start it, or run scripts/dev.sh from the repository.',
-                  )}
+                ? t('The daemon issued a new token. Hikari reconnects on its own.')
+                : t('Games, logins and installs all come from hikarid. Start it to continue.')}
             </p>
-            <Button
-              variant="primary"
-              busy={starting}
-              onClick={() => {
-                setStarting(true)
-                startDaemon()
-                  .then(() => setStartNote(t('Starting hikarid')))
-                  .catch((error: unknown) =>
-                    setStartNote(errorMessage(error)),
-                  )
-                  .finally(() => setStarting(false))
-              }}
-            >
-              {t('Start daemon')}
-            </Button>
+            {connection === 'offline' ? (
+              <Button
+                variant="primary"
+                busy={starting}
+                onClick={() => {
+                  setStarting(true)
+                  startDaemon()
+                    .then(() => setStartNote(t('Starting hikarid')))
+                    .catch((error: unknown) => setStartNote(errorMessage(error)))
+                    .finally(() => setStarting(false))
+                }}
+              >
+                {t('Start daemon')}
+              </Button>
+            ) : null}
             {startNote || linkError ? (
               <p className={styles.offlineNote}>{startNote || linkError}</p>
             ) : null}

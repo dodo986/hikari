@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -27,6 +28,8 @@ func (h *Host) startup(ctx context.Context) {
 // Palette answers with the current roles, for a page that subscribed after the
 // window had already repainted.
 func (h *Host) Palette() any { return readPalette() }
+
+func (h *Host) Daemon() (Endpoint, error) { return readEndpoint() }
 
 func (h *Host) PickFile(label string) (string, error) {
 	if label == "" {
@@ -88,6 +91,7 @@ func spawn(path string) error {
 	cmd := exec.Command(path)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}

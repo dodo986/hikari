@@ -29,6 +29,8 @@ const (
 	wsPath        = "/rpc"
 	wsPingEvery   = 30 * time.Second
 	wsWriteWindow = 10 * time.Second
+
+	CloseUnauthorized = 4401
 )
 
 // ServeWS answers JSON-RPC over websocket on an already bound listener, so the
@@ -77,15 +79,16 @@ func (s *Server) wsHandler(cfg WSConfig, addr net.Addr) http.Handler {
 			http.Error(w, "forbidden host", http.StatusForbidden)
 			return
 		}
-		if !sameToken(r.URL.Query().Get("token"), cfg.Token) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
+		authorised := sameToken(r.URL.Query().Get("token"), cfg.Token)
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			OriginPatterns:  cfg.Origins,
 			CompressionMode: websocket.CompressionDisabled,
 		})
 		if err != nil {
+			return
+		}
+		if !authorised {
+			_ = conn.Close(websocket.StatusCode(CloseUnauthorized), "token rejected")
 			return
 		}
 		conn.SetReadLimit(maxRequestLine)

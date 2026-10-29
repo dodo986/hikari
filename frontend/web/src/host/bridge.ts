@@ -1,4 +1,4 @@
-import type { PaletteRoles } from '../daemon/types'
+import type { EndpointConfig, PaletteRoles } from '../daemon/types'
 
 // What the window adds over a browser: native dialogs, the palette and starting
 // the daemon.
@@ -21,6 +21,7 @@ interface WailsHostBinding {
   PickFolder(label: string): Promise<string>
   OpenUrl(url: string): Promise<void>
   StartDaemon(): Promise<void>
+  Daemon?(): Promise<EndpointConfig>
 }
 
 // The Wails runtime carries the event bus; EventsOn returns its unsubscribe.
@@ -83,6 +84,16 @@ export async function startDaemon(): Promise<void> {
   const bound = host()
   if (!bound) throw new Error('starting hikarid needs the desktop window')
   await bound.startDaemon()
+}
+
+export function hasEndpointSource(): boolean {
+  return typeof bindings()?.Daemon === 'function'
+}
+
+export async function liveEndpoint(): Promise<EndpointConfig> {
+  const bound = bindings()
+  if (!bound?.Daemon) throw new Error('the endpoint is not available in a browser')
+  return bound.Daemon()
 }
 
 // Ryoku regenerates the palette when the wallpaper changes; the host watches

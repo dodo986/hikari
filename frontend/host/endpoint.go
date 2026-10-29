@@ -24,19 +24,19 @@ func runtimePath(name string) string {
 	return filepath.Join(base, "hikari", name)
 }
 
-func readEndpoint() (map[string]any, error) {
+func readEndpoint() (Endpoint, error) {
 	b, err := os.ReadFile(runtimePath("ws.json"))
 	if err != nil {
 		// The socket predates the websocket API: a daemon is up but cannot serve
 		// this window, which is a different problem from no daemon at all.
 		if _, sockErr := os.Stat(runtimePath("hikari.sock")); sockErr == nil {
-			return nil, fmt.Errorf("the running hikarid is older than this frontend, rebuild it")
+			return Endpoint{}, fmt.Errorf("the running hikarid is older than this frontend, rebuild it")
 		}
-		return nil, fmt.Errorf("hikarid is not running")
+		return Endpoint{}, fmt.Errorf("hikarid is not running")
 	}
 	var endpoint Endpoint
 	if err := json.Unmarshal(b, &endpoint); err != nil || endpoint.URL == "" {
-		return nil, fmt.Errorf("the daemon endpoint file is unreadable")
+		return Endpoint{}, fmt.Errorf("the daemon endpoint file is unreadable")
 	}
-	return map[string]any{"url": endpoint.URL, "token": endpoint.Token, "pid": endpoint.PID}, nil
+	return endpoint, nil
 }
