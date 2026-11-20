@@ -79,7 +79,7 @@ func (f *Fake) Updates(_ context.Context, game, _ string) ([]Update, error) {
 func (f *Fake) Update(_ context.Context, game, _, name string, _ Sink) (Updated, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, mod := range f.list(game) {
+	for _, mod := range f.listLocked(game) {
 		if mod.Name == name {
 			return Updated{Mod: name, From: "1.32.0", To: "1.33.0", Deployed: true}, nil
 		}
@@ -112,7 +112,7 @@ func (f *Fake) Deploy(ctx context.Context, game, profile string, sink Sink) erro
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.find(game) == nil {
+	if f.findLocked(game) == nil {
 		return &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
 	}
 	f.deployed[game] = profile
@@ -167,6 +167,8 @@ func (f *Fake) Install(ctx context.Context, req InstallRequest, sink Sink) (stri
 func (f *Fake) Nexus(context.Context, string, string) (bool, error) { return true, nil }
 
 func (f *Fake) Account(context.Context) (Account, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if !f.signedIn {
 		return Account{}, nil
 	}
@@ -209,7 +211,7 @@ var demoMods = map[string][]Mod{
 
 func (f *Fake) Browse(_ context.Context, game, query, sort string, page int) (Browse, error) {
 	f.mu.Lock()
-	known, signedIn := f.find(game), f.signedIn
+	known, signedIn := f.findLocked(game), f.signedIn
 	f.mu.Unlock()
 	if !signedIn {
 		return Browse{}, &Error{Kind: KindConfig, Message: "not signed in to Nexus; run `hikari mods login`"}
@@ -245,14 +247,16 @@ func (f *Fake) Files(_ context.Context, game string, modID int) (Mod, []ModFile,
 }
 
 func (f *Fake) Toggle(_ context.Context, game, profile, name string) (bool, error) {
-	if f.find(game) == nil {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.findLocked(game) == nil {
 		return false, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
 	}
-	list := f.list(game)
+	list := f.listLocked(game)
 	for i := range list {
 		if list[i].Name == name {
 			list[i].Enabled = !list[i].Enabled
-			f.save(game, list)
+			f.saveLocked(game, list)
 			return list[i].Enabled, nil
 		}
 	}
@@ -260,13 +264,15 @@ func (f *Fake) Toggle(_ context.Context, game, profile, name string) (bool, erro
 }
 
 func (f *Fake) Remove(_ context.Context, game, profile, name string, sink Sink) error {
-	if f.find(game) == nil {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.findLocked(game) == nil {
 		return &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
 	}
-	list := f.list(game)
+	list := f.listLocked(game)
 	for i := range list {
 		if list[i].Name == name {
-			f.save(game, append(list[:i], list[i+1:]...))
+			f.saveLocked(game, append(list[:i], list[i+1:]...))
 			sink.log(fmt.Sprintf("removed %s; deploy the profile to update the game", name))
 			return nil
 		}
@@ -274,14 +280,13 @@ func (f *Fake) Remove(_ context.Context, game, profile, name string, sink Sink) 
 	return &Error{Kind: KindNotFound, Message: fmt.Sprintf("the profile has no mod called '%s'", name)}
 }
 
-// list returns the demo modlist for a game, starting from the demo catalogue.
-func (f *Fake) list(game string) []InstalledMod {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+// listLocked returns a copy of the demo modlist for a game, starting from the
+// demo catalogue. The caller must hold f.mu.
+func (f *Fake) listLocked(game string) []InstalledMod {
 	if list, ok := f.modlist[game]; ok {
-		return list
+		return append([]InstalledMod(nil), list...)
 	}
-	known := f.find(game)
+	known := f.findLocked(game)
 	if known == nil {
 		return nil
 	}
@@ -292,9 +297,8 @@ func (f *Fake) list(game string) []InstalledMod {
 	return out
 }
 
-func (f *Fake) save(game string, list []InstalledMod) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+// saveLocked stores the modlist. The caller must hold f.mu.
+func (f *Fake) saveLocked(game string, list []InstalledMod) {
 	if f.modlist == nil {
 		f.modlist = map[string][]InstalledMod{}
 	}
@@ -340,7 +344,9 @@ func (f *Fake) Downloads(_ context.Context, game string, modID, fileID int) (str
 }
 
 func (f *Fake) Installed(_ context.Context, game, profile string) (Installed, error) {
-	known := f.find(game)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	known := f.findLocked(game)
 	if known == nil {
 		return Installed{}, &Error{Kind: KindNotFound, Message: fmt.Sprintf("Amethyst has no handler for '%s'", game)}
 	}
@@ -348,23 +354,31 @@ func (f *Fake) Installed(_ context.Context, game, profile string) (Installed, er
 		profile = "default"
 	}
 	out := Installed{Game: known.Name, Profile: profile}
-	f.mu.Lock()
 	if list, ok := f.modlist[game]; ok {
 		out.Mods = append(out.Mods, list...)
-		f.mu.Unlock()
 		return out, nil
 	}
-	f.mu.Unlock()
 	for _, mod := range demoMods[known.NexusDomain] {
 		out.Mods = append(out.Mods, InstalledMod{Name: mod.Name, Enabled: true})
 	}
 	return out, nil
 }
 
+// find returns a copy of the game with the given id, or nil. The copy keeps a
+// caller from reading the stored game once the lock is released.
 func (f *Fake) find(id string) *Game {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.findLocked(id)
+}
+
+// findLocked is find under a held lock; the returned copy does not alias the
+// stored slice.
+func (f *Fake) findLocked(id string) *Game {
 	for index := range f.games {
 		if f.games[index].ID == id {
-			return &f.games[index]
+			game := f.games[index]
+			return &game
 		}
 	}
 	return nil

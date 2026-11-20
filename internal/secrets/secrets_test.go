@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,6 +51,31 @@ func TestDeleteClearsEverything(t *testing.T) {
 	}
 	if err := s.Delete(SteamGridDB); err != nil {
 		t.Fatalf("deleting twice failed: %v", err)
+	}
+}
+
+func TestDeleteSucceedsWhenNoKeyringIsRunning(t *testing.T) {
+	keyring.MockInitWithError(errors.New("no keyring here"))
+	t.Cleanup(keyring.MockInit)
+	t.Setenv("HIKARI_SGDB_KEY", "")
+	s := New(filepath.Join(t.TempDir(), "secrets.json"))
+	if err := s.Set(SteamGridDB, "abc123"); err != nil {
+		t.Fatalf("Set without a keyring failed: %v", err)
+	}
+	if v, ok := s.readFile()[SteamGridDB]; !ok || v != "abc123" {
+		t.Fatalf("the key was not stored in the fallback file: %q %v", v, ok)
+	}
+	if err := s.Delete(SteamGridDB); err != nil {
+		t.Fatalf("Delete without a keyring failed: %v", err)
+	}
+	if _, ok := s.readFile()[SteamGridDB]; ok {
+		t.Fatal("the fallback file still holds the key")
+	}
+	if _, ok := s.Get(SteamGridDB); ok {
+		t.Fatal("the secret survived a delete")
+	}
+	if err := s.Delete(SteamGridDB); err != nil {
+		t.Fatalf("a second delete without a keyring failed: %v", err)
 	}
 }
 

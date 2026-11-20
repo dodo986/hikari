@@ -1,6 +1,9 @@
 package opti
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,6 +32,10 @@ const ManifestFile = "hikari-optiscaler.json"
 type Manifest struct {
 	Version      string `json:"version"`
 	InjectionDLL string `json:"injection_dll"`
+	// HookSHA256 is the hash of the hook Hikari wrote. It tells a game that
+	// replaced the hook apart from our own payload, including across a Hikari
+	// upgrade where the payload we shipped last time is not the one on disk now.
+	HookSHA256 string `json:"hook_sha256,omitempty"`
 }
 
 func HookName(name string) string {
@@ -70,6 +77,12 @@ func CopyVersionTree(versionDir, gameDir, injectionDLL string) error {
 			if err := os.Rename(hook, bakTarget); err != nil {
 				return fmt.Errorf("cannot back up existing %s: %w", injectionDLL, err)
 			}
+		} else if hookReplacedByGame(gameDir, hook, filepath.Join(versionDir, "OptiScaler.dll")) {
+			// The game updated its own hook DLL after our first install: keep
+			// the newest game copy as the backup so uninstall restores it.
+			if err := os.Rename(hook, bakTarget); err != nil {
+				return fmt.Errorf("cannot back up existing %s: %w", injectionDLL, err)
+			}
 		}
 	}
 
@@ -108,8 +121,50 @@ func CopyVersionTree(versionDir, gameDir, injectionDLL string) error {
 	if err != nil {
 		return err
 	}
-	m, _ := json.MarshalIndent(Manifest{Version: filepath.Base(versionDir), InjectionDLL: injectionDLL}, "", "  ")
+	manifest := Manifest{Version: filepath.Base(versionDir), InjectionDLL: injectionDLL}
+	if sum, err := fileSHA256(hook); err == nil {
+		manifest.HookSHA256 = sum
+	}
+	m, _ := json.MarshalIndent(manifest, "", "  ")
 	return atomicWrite(filepath.Join(gameDir, ManifestFile), m)
+}
+
+// hookReplacedByGame reports whether the hook DLL in the game directory is no
+// longer the payload Hikari installed. The manifest records the hash of that
+// payload; a difference means the game (or its updater) wrote its own DLL and
+// the newest game copy must replace the stale backup. Manifests written before
+// the hash existed fall back to comparing against the release payload about to
+// be copied. If nothing can be read the backup is kept.
+func hookReplacedByGame(gameDir, hook, payload string) bool {
+	if m, ok := ReadManifest(gameDir); ok && m.HookSHA256 != "" {
+		got, err := fileSHA256(hook)
+		if err != nil {
+			return false
+		}
+		return got != m.HookSHA256
+	}
+	cur, err := os.ReadFile(hook)
+	if err != nil {
+		return false
+	}
+	rel, err := os.ReadFile(payload)
+	if err != nil {
+		return false
+	}
+	return !bytes.Equal(cur, rel)
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func ReadManifest(gameDir string) (Manifest, bool) {
@@ -129,6 +184,12 @@ func RemoveFromGameDir(gameDir string) error {
 		return fmt.Errorf("no Hikari OptiScaler install found in %s", gameDir)
 	}
 	m, _ := ReadManifest(gameDir)
+	// The manifest lives in the game folder, so it can be edited or damaged.
+	// Never join an unchecked name onto the game directory: an empty or
+	// traversing value would rename or remove something outside the install.
+	if !ValidInjection(m.InjectionDLL) {
+		return fmt.Errorf("%s names %q, which is not an OptiScaler hook", ManifestFile, m.InjectionDLL)
+	}
 
 	hook := filepath.Join(gameDir, m.InjectionDLL)
 	backup := filepath.Join(gameDir, BackupDir, m.InjectionDLL)

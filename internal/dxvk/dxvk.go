@@ -111,7 +111,7 @@ func (i *Installer) Ensure(ctx context.Context, tool Tool) (string, string, erro
 	if _, _, ok := Locate(tool, dir); ok {
 		return version, dir, nil
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return "", "", err
 	}
 	archive := dir + ".part"
@@ -119,12 +119,29 @@ func (i *Installer) Ensure(ctx context.Context, tool Tool) (string, string, erro
 		return "", "", err
 	}
 	defer os.Remove(archive)
+	// Extract into a sibling temp dir and publish it only once a complete tree
+	// is there. A partial tree at the final path would be found by Locate and
+	// cached forever.
+	tmp := dir + ".extract"
+	if err := os.RemoveAll(tmp); err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		return "", "", err
+	}
+	defer os.RemoveAll(tmp)
 	i.Log.Info("extracting tool", "tool", tool, "version", version)
-	if err := i.Extract(ctx, archive, dir); err != nil {
+	if err := i.Extract(ctx, archive, tmp); err != nil {
 		return "", "", fmt.Errorf("extract %s %s: %w", tool, version, err)
 	}
-	if _, _, ok := Locate(tool, dir); !ok {
+	if _, _, ok := Locate(tool, tmp); !ok {
 		return "", "", fmt.Errorf("%s %s extracted but no x64 directory found", tool, version)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return "", "", err
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		return "", "", err
 	}
 	return version, dir, nil
 }

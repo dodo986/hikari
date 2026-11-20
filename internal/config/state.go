@@ -52,10 +52,41 @@ func LoadState(paths Paths) (*StateStore, error) {
 
 func GameKey(store, id string) string { return store + "/" + id }
 
+// Entry returns a detached copy of the stored entry, or nil when the game has
+// none. Readers may hold the copy for as long as they like: it shares no memory
+// with the store, and mutating it does not touch stored state. Persist changes
+// through UpdateEntry.
 func (s *StateStore) Entry(store, id string) *GameEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.state.Games[GameKey(store, id)]
+	return s.state.Games[GameKey(store, id)].clone()
+}
+
+// clone returns a deep copy: the Settings slices and the Gamescope pointer are
+// duplicated so the copy shares nothing with the stored entry.
+func (e *GameEntry) clone() *GameEntry {
+	if e == nil {
+		return nil
+	}
+	out := *e
+	out.Settings = e.Settings.clone()
+	return &out
+}
+
+// clone copies the settings, including the slices and pointer they hold.
+func (s GameSettings) clone() GameSettings {
+	out := s
+	if s.Environment != nil {
+		out.Environment = append([]EnvVar(nil), s.Environment...)
+	}
+	if s.Wrappers != nil {
+		out.Wrappers = append([]Wrapper(nil), s.Wrappers...)
+	}
+	if s.Gamescope != nil {
+		gamescope := *s.Gamescope
+		out.Gamescope = &gamescope
+	}
+	return out
 }
 
 func (s *StateStore) PutEntry(store, id string, e *GameEntry) error {

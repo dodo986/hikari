@@ -519,7 +519,24 @@ func (m *Manager) downloadVerified(ctx context.Context, rel Release, want string
 	return tmpPath, nil
 }
 
+// validName reports whether name is a single path element that may be joined
+// onto one of the tools directories. It rejects the empty name, the relative
+// elements "." and "..", anything carrying a separator, and anything that
+// filepath.Base would rewrite.
+func validName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	return filepath.IsLocal(name) && filepath.Base(name) == name
+}
+
 func (m *Manager) Remove(ctx context.Context, name string) error {
+	if !validName(name) {
+		return fmt.Errorf("%q is not a valid version name", name)
+	}
 	for _, dir := range []string{m.wineDir, m.protonDir} {
 		target := filepath.Join(dir, name)
 		if st, err := os.Stat(target); err == nil && st.IsDir() {
@@ -530,6 +547,9 @@ func (m *Manager) Remove(ctx context.Context, name string) error {
 }
 
 func (m *Manager) Installed(name string) bool {
+	if !validName(name) {
+		return false
+	}
 	for _, dir := range []string{m.wineDir, m.protonDir} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return true

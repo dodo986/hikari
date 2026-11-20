@@ -151,7 +151,13 @@ func copyTree(src, dst string) (bool, error) {
 		}
 		return copyFile(path, target)
 	})
-	return err == nil, err
+	if err != nil {
+		// dst did not exist before this call, so the half-copied tree can go:
+		// leaving it behind would make the next start skip the migration.
+		_ = os.RemoveAll(dst)
+		return false, err
+	}
+	return true, nil
 }
 
 func copyFile(src, dst string) error {

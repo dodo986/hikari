@@ -118,7 +118,7 @@ func (c *GitHubClient) DownloadAsset(ctx context.Context, tag, destDir string, p
 		got := hex.EncodeToString(hash.Sum(nil))
 		if !strings.EqualFold(got, want) {
 			os.Remove(tmp)
-			return "", fmt.Errorf("checksum mismatch for %s: got %s, want %s", asset.Name, got[:12]+"…", want[:12]+"…")
+			return "", fmt.Errorf("checksum mismatch for %s: got %s, want %s", asset.Name, abbrevDigest(got), abbrevDigest(want))
 		}
 	}
 	if err := os.Rename(tmp, dest); err != nil {
@@ -176,6 +176,16 @@ func digestOf(d string) string {
 		return d[i+len("sha256:"):]
 	}
 	return ""
+}
+
+// abbrevDigest shortens a digest for an error message. The digest comes from
+// an external release asset, so it may be shorter than the abbreviation (or
+// empty); never slice it blindly.
+func abbrevDigest(d string) string {
+	if len(d) > 12 {
+		return d[:12] + "…"
+	}
+	return d
 }
 
 func Extract7z(ctx context.Context, archive, dest string) error {

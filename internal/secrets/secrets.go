@@ -83,15 +83,20 @@ func (s *Store) Delete(name string) error {
 	if !Known(name) {
 		return fmt.Errorf("hikari: %q is not a secret this daemon stores", name)
 	}
+	errFile := s.deleteFileKey(name)
 	errKeyring := keyring.Delete(service(), name)
 	if errors.Is(errKeyring, keyring.ErrNotFound) {
 		errKeyring = nil
 	}
-	errFile := s.deleteFileKey(name)
-	if errKeyring != nil {
+	if errFile != nil {
+		return errFile
+	}
+	// Without a running keyring the value only ever lived in the fallback
+	// file, so a keyring failure must not make the delete look unsuccessful.
+	if errKeyring != nil && keyringAvailable() {
 		return errKeyring
 	}
-	return errFile
+	return nil
 }
 
 func (s *Store) Status(name string) Status {

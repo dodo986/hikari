@@ -286,4 +286,60 @@ func TestRemoveOnlyOwn(t *testing.T) {
 	}
 }
 
+// TestRemoveRejectsTraversal builds a victim directory outside the tools tree
+// and makes sure a traversal name cannot delete it.
+func TestRemoveRejectsTraversal(t *testing.T) {
+	base := t.TempDir()
+	data := filepath.Join(base, "data")
+	m := NewForTest(t.TempDir(), data, nil)
+
+	victim := filepath.Join(base, "victim")
+	mkFile(t, filepath.Join(victim, "keep.txt"))
+
+	if err := m.Remove(context.Background(), "../../../victim"); err == nil {
+		t.Fatal("Remove must reject a traversal name")
+	}
+	st, err := os.Stat(victim)
+	if err != nil || !st.IsDir() {
+		t.Fatalf("victim directory was deleted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(victim, "keep.txt")); err != nil {
+		t.Fatalf("victim file was deleted: %v", err)
+	}
+}
+
+// TestInstalledRejectsTraversal makes sure a traversal name is never reported
+// as an installed build, even when the directory it points at exists.
+func TestInstalledRejectsTraversal(t *testing.T) {
+	base := t.TempDir()
+	data := filepath.Join(base, "data")
+	m := NewForTest(t.TempDir(), data, nil)
+
+	victim := filepath.Join(base, "victim")
+	mkFile(t, filepath.Join(victim, "keep.txt"))
+
+	if m.Installed("../../../victim") {
+		t.Fatal("Installed must reject a traversal name")
+	}
+}
+
+// TestRejectsInvalidVersionNames pins the rest of the name guard.
+func TestRejectsInvalidVersionNames(t *testing.T) {
+	data := t.TempDir()
+	m := NewForTest(t.TempDir(), data, nil)
+	mkFile(t, filepath.Join(data, "tools", "proton", "Mine", "proton"))
+
+	for _, name := range []string{"", ".", "..", "a/b", `a\b`, "../Mine"} {
+		if err := m.Remove(context.Background(), name); err == nil {
+			t.Errorf("Remove(%q) must fail", name)
+		}
+		if m.Installed(name) {
+			t.Errorf("Installed(%q) must be false", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(data, "tools", "proton", "Mine", "proton")); err != nil {
+		t.Fatalf("guard must not delete anything: %v", err)
+	}
+}
+
 func srvURL(r *http.Request) string { return "http://" + r.Host }

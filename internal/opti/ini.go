@@ -12,15 +12,13 @@ func IniSet(path, section, key, value string) error {
 	if err != nil {
 		return err
 	}
-	lines := strings.Split(string(b), "\n")
+	nl := iniNewline(b)
+	lines := strings.Split(iniBody(b), "\n")
 	secAt := -1
 	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
-			if strings.EqualFold(strings.Trim(t, "[]"), section) {
-				secAt = i
-				break
-			}
+		if name, ok := iniSectionName(l); ok && strings.EqualFold(name, section) {
+			secAt = i
+			break
 		}
 	}
 	if secAt < 0 {
@@ -29,8 +27,7 @@ func IniSet(path, section, key, value string) error {
 
 	end := len(lines)
 	for i := secAt + 1; i < len(lines); i++ {
-		t := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
+		if _, ok := iniSectionName(lines[i]); ok {
 			end = i
 			break
 		}
@@ -42,7 +39,7 @@ func IniSet(path, section, key, value string) error {
 		}
 		if k, _, ok := splitIniLine(l); ok && strings.EqualFold(k, key) {
 			lines[i] = key + "=" + value
-			return atomicWrite(path, []byte(strings.Join(lines, "\n")))
+			return iniWrite(path, lines, nl)
 		}
 	}
 	insert := end
@@ -52,7 +49,47 @@ func IniSet(path, section, key, value string) error {
 	out := append([]string{}, lines[:insert]...)
 	out = append(out, key+"="+value)
 	out = append(out, lines[insert:]...)
-	return atomicWrite(path, []byte(strings.Join(out, "\n")))
+	return iniWrite(path, out, nl)
+}
+
+// iniSectionName reports the name of a section header line. A trailing comment
+// or whitespace after the closing bracket ("[Upscalers] ; pick one") is
+// accepted, so the rest of the line does not hide the section.
+func iniSectionName(line string) (string, bool) {
+	t := strings.TrimSpace(line)
+	if !strings.HasPrefix(t, "[") {
+		return "", false
+	}
+	i := strings.IndexByte(t, ']')
+	if i < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(t[1:i]), true
+}
+
+// iniBody strips a leading UTF-8 BOM and normalises CRLF line endings so the
+// parser only has to deal with plain lines.
+func iniBody(b []byte) string {
+	s := strings.TrimPrefix(string(b), "\ufeff")
+	return strings.ReplaceAll(s, "\r\n", "\n")
+}
+
+// iniNewline returns the line ending the file predominantly uses, so rewriting
+// it does not mix CRLF and LF.
+func iniNewline(b []byte) string {
+	crlf := bytes.Count(b, []byte("\r\n"))
+	if lf := bytes.Count(b, []byte("\n")) - crlf; crlf > lf {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+func iniWrite(path string, lines []string, nl string) error {
+	data := []byte(strings.Join(lines, nl))
+	if !bytes.HasSuffix(data, []byte("\n")) {
+		data = append(data, nl...)
+	}
+	return atomicWrite(path, data)
 }
 
 func splitIniLine(l string) (key, value string, ok bool) {
@@ -70,10 +107,9 @@ func IniGet(path, section, key string) string {
 		return ""
 	}
 	inSection := false
-	for _, l := range strings.Split(string(b), "\n") {
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
-			inSection = strings.EqualFold(strings.Trim(t, "[]"), section)
+	for _, l := range strings.Split(iniBody(b), "\n") {
+		if name, ok := iniSectionName(l); ok {
+			inSection = strings.EqualFold(name, section)
 			continue
 		}
 		if !inSection {
