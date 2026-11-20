@@ -15,10 +15,13 @@ start_daemon() {
 	systemctl --user stop hikarid >/dev/null 2>&1 || true
 	sleep 0.3
 	if ! systemctl --user start hikarid >/dev/null 2>&1; then
-		if command -v systemd-run >/dev/null 2>&1; then
-			systemd-run --user --unit=hikarid "$bin/hikarid" >/dev/null 2>&1 || true
-		else
+		if command -v systemd-run >/dev/null 2>&1 &&
+			systemd-run --user --unit=hikarid "$bin/hikarid" >/dev/null 2>&1; then
+			:
+		elif command -v setsid >/dev/null 2>&1; then
 			setsid -f "$bin/hikarid" >/dev/null 2>&1 || true
+		else
+			"$bin/hikarid" >/dev/null 2>&1 &
 		fi
 	fi
 	for _ in $(seq 1 60); do
@@ -32,16 +35,40 @@ daemon_version() {
 	"$bin/hikarid" --version 2>/dev/null | awk '{print $2}'
 }
 
-window_up() { pgrep -f -x "$bin/hikari-ui" >/dev/null 2>&1; }
+# Match the process name (comm), not the full command line: the packaged
+# wrapper execs the real window from /usr/lib/hikari, and the path in $bin
+# therefore never matches with pgrep -f -x.
+window_up() { pgrep -x hikari-ui >/dev/null 2>&1; }
 
 start_ui() {
 	if command -v systemd-run >/dev/null 2>&1; then
 		systemctl --user stop hikari-ui >/dev/null 2>&1 || true
-		systemd-run --user --unit=hikari-ui --collect "${ui_env[@]}" "$bin/hikari-app" >>"$log" 2>&1 || true
+		if systemd-run --user --unit=hikari-ui --collect "${ui_env[@]}" "$bin/hikari-app" >>"$log" 2>&1; then
+			for _ in $(seq 1 30); do
+				if window_up; then return 0; fi
+				sleep 0.1
+			done
+		fi
 	fi
 	if ! window_up; then
-		setsid -f "$bin/hikari-app" >>"$log" 2>&1 || true
+		if command -v setsid >/dev/null 2>&1; then
+			setsid -f "$bin/hikari-app" >>"$log" 2>&1 || true
+		else
+			"$bin/hikari-app" >>"$log" 2>&1 &
+		fi
 	fi
+}
+
+# Stop the window only when it is actually up; pkill -f -x never matched, so the
+# old window kept running and the restarted copy died on the instance lock.
+stop_ui() {
+	if ! window_up; then return 0; fi
+	pkill -x hikari-ui >/dev/null 2>&1 || true
+	for _ in $(seq 1 30); do
+		if ! window_up; then return 0; fi
+		sleep 0.1
+	done
+	return 0
 }
 
 want="${tag#v}"
@@ -95,6 +122,17 @@ install_file() {
 	mv -f "$2.tmp" "$2"
 }
 
+# Escape sed replacement metacharacters: an unescaped & in the install path
+# would splice in the whole matched line and a | would break the s|||
+# delimiters (which aborts under set -e right after the binaries were copied).
+desktop_key() {
+	local key="$1" value="$2" file="$3" esc
+	esc="${value//\\/\\\\}"
+	esc="${esc//&/\\&}"
+	esc="${esc//|/\\|}"
+	sed -i "s|^$key=.*|$key=$esc|" "$file"
+}
+
 changed=0
 for f in hikarid hikari hikari-ui hikari-app hikari-update; do
 	if [ ! -f "$stage/$f" ]; then continue; fi
@@ -105,12 +143,14 @@ done
 if [ -f "$stage/hikari.desktop" ]; then install -Dm644 "$stage/hikari.desktop" "$apps/hikari.desktop"; fi
 if [ -f "$stage/hikari.svg" ]; then install -Dm644 "$stage/hikari.svg" "$icons/hikari.svg"; fi
 if [ -f "$apps/hikari.desktop" ]; then
-	sed -i "s|^Exec=.*|Exec=$bin/hikari-app|" "$apps/hikari.desktop"
+	desktop_key Exec "$bin/hikari-app" "$apps/hikari.desktop"
 fi
 
-got="$(daemon_version)"
+if ! got="$(daemon_version)"; then
+	rollback "the freshly installed hikarid could not run (--version failed)"
+fi
 if [ "$got" != "$want" ]; then
-	rollback "installed binary reports $got, expected $want"
+	rollback "installed binary reports ${got:-nothing}, expected $want"
 fi
 if [ "$changed" -eq 0 ]; then
 	echo "[update] files already up to date; restarting the daemon only"
@@ -119,13 +159,17 @@ if [ "$changed" -eq 0 ]; then
 fi
 
 if ! start_daemon; then rollback "the new daemon did not start"; fi
-running="$("$bin/hikari" status 2>/dev/null | head -1 | awk '{print $2}' | tr -d ,)"
+# Capture status first: "$bin/hikari" writes several lines, and piping it into
+# head would make pipefail turn a SIGPIPE into a bogus rollback.
+if ! status_out="$("$bin/hikari" status 2>/dev/null)"; then
+	rollback "hikari status failed with the new build"
+fi
+running="$(printf '%s\n' "$status_out" | awk 'NR == 1 {print $2}' | tr -d ,)"
 if [ "$running" != "$want" ]; then
 	rollback "running daemon reports ${running:-nothing}, expected $want"
 fi
 if [ "$ui_was_running" = 1 ]; then
-	pkill -f -x "$bin/hikari-ui" >/dev/null 2>&1 || true
-	sleep 0.5
+	stop_ui
 	start_ui
 fi
 echo "[update] done: $current -> $want (${HIKARI_UPDATE_COMMIT:-release})"

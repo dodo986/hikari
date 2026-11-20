@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -291,16 +292,25 @@ func dispatch(cmd string, args []string) error {
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
 		dryRun := fs.Bool("dry-run", false, "print the exact command instead of running it")
-		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		if err := fs.Parse(reorderGameArgs(fs, args)); err != nil {
 			return err
 		}
 		pos := fs.Args()
 		if len(pos) < 2 {
 			return fmt.Errorf("usage: hikari launch <store> <id> [game args...]")
 		}
+		gameArgs := pos[2:]
+		// "--" ends Hikari's own flags; drop the separator itself so the game
+		// receives exactly the arguments the user wrote after it.
+		for i, a := range gameArgs {
+			if a == "--" {
+				gameArgs = append(append([]string{}, gameArgs[:i]...), gameArgs[i+1:]...)
+				break
+			}
+		}
 		params := map[string]any{"store": pos[0], "id": pos[1], "dry_run": *dryRun}
-		if len(pos) > 2 {
-			params["args"] = pos[2:]
+		if len(gameArgs) > 0 {
+			params["args"] = gameArgs
 		}
 		var res struct {
 			Plan  *planView `json:"plan,omitempty"`
@@ -502,7 +512,7 @@ func dispatch(cmd string, args []string) error {
 	case "stop":
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
-		if err := fs.Parse(args); err != nil {
+		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 			return err
 		}
 		pos := fs.Args()
@@ -553,7 +563,7 @@ func dispatch(cmd string, args []string) error {
 		}
 		fmt.Println("install started:", res["job"])
 		if *follow {
-			waitProgressDone(client)
+			return waitProgressDone(client)
 		}
 		return nil
 
@@ -586,7 +596,7 @@ func dispatch(cmd string, args []string) error {
 		}
 		fmt.Println("update started:", res["job"])
 		if *follow {
-			waitProgressDone(client)
+			return waitProgressDone(client)
 		}
 		return nil
 
@@ -594,7 +604,7 @@ func dispatch(cmd string, args []string) error {
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
 		keep := fs.Bool("keep-files", false, "remove the record but keep game files")
-		if err := fs.Parse(args); err != nil {
+		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 			return err
 		}
 		pos := fs.Args()
@@ -713,7 +723,7 @@ func dispatch(cmd string, args []string) error {
 	case "favorite":
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
-		if err := fs.Parse(args); err != nil {
+		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 			return err
 		}
 		pos := fs.Args()
@@ -738,7 +748,7 @@ func dispatch(cmd string, args []string) error {
 	case "options":
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
-		if err := fs.Parse(args); err != nil {
+		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 			return err
 		}
 		pos := fs.Args()
@@ -793,7 +803,7 @@ func dispatch(cmd string, args []string) error {
 		}
 		fmt.Println("repair started:", res["job"])
 		if *follow {
-			waitProgressDone(client)
+			return waitProgressDone(client)
 		}
 		return nil
 
@@ -824,7 +834,7 @@ func dispatch(cmd string, args []string) error {
 	case "wines":
 		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 		c := addCommon(fs)
-		if err := fs.Parse(args); err != nil {
+		if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 			return err
 		}
 		var res struct {
@@ -981,12 +991,22 @@ func wineCmd(args []string) error {
 			for {
 				params, err := client.AwaitEvent("wine.progress", 24*time.Hour)
 				if err != nil {
-					return nil
+					return err
 				}
 				var p struct {
-					Done bool `json:"done"`
+					Phase string `json:"phase"`
+					Done  bool   `json:"done"`
+					Error string `json:"error"`
 				}
-				if json.Unmarshal(params, &p) == nil && p.Done {
+				if json.Unmarshal(params, &p) != nil {
+					continue
+				}
+				switch {
+				case p.Error != "":
+					return fmt.Errorf("wine install failed: %s", p.Error)
+				case p.Phase == "error" || p.Phase == "canceled":
+					return fmt.Errorf("wine install failed: %s", p.Phase)
+				case p.Done:
 					return nil
 				}
 			}
@@ -995,7 +1015,7 @@ func wineCmd(args []string) error {
 	case "remove":
 		fs := flag.NewFlagSet("wine remove", flag.ExitOnError)
 		c := addCommon(fs)
-		if err := fs.Parse(rest); err != nil {
+		if err := fs.Parse(reorderFlags(fs, rest)); err != nil {
 			return err
 		}
 		pos := fs.Args()
@@ -1015,7 +1035,7 @@ func wineCmd(args []string) error {
 func authCmd(args []string) error {
 	fs := flag.NewFlagSet("auth", flag.ExitOnError)
 	c := addCommon(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	pos := fs.Args()
@@ -1279,20 +1299,23 @@ func progressPrinter() func(string, json.RawMessage) {
 	}
 }
 
-func waitProgressDone(client *api.Client) {
+func waitProgressDone(client *api.Client) error {
 	for {
 		params, err := client.AwaitEvent("install.progress", 24*time.Hour)
 		if err != nil {
-			return
+			return err
 		}
 		var p struct {
 			State string `json:"state"`
 		}
-		if json.Unmarshal(params, &p) == nil {
-			switch p.State {
-			case "done", "error", "canceled":
-				return
-			}
+		if json.Unmarshal(params, &p) != nil {
+			continue
+		}
+		switch p.State {
+		case "done":
+			return nil
+		case "error", "canceled":
+			return fmt.Errorf("the job ended with state %q", p.State)
 		}
 	}
 }
@@ -1327,21 +1350,21 @@ func mergeSettingJSON(base map[string]any, patch []byte) ([]byte, error) {
 	return json.Marshal(merged)
 }
 
+// shellSafe matches arguments a shell reads back verbatim. Anything else is
+// quoted, so a copy-pasted --dry-run line cannot run a second command.
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
 func shellQuote(s string) string {
-	if strings.ContainsAny(s, " \t\"'") {
-		return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	if s != "" && shellSafe.MatchString(s) {
+		return s
 	}
-	return s
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func shellLine(argv []string) string {
 	parts := make([]string, len(argv))
 	for i, a := range argv {
-		if strings.ContainsAny(a, " \t\"'") {
-			parts[i] = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
-		} else {
-			parts[i] = a
-		}
+		parts[i] = shellQuote(a)
 	}
 	return strings.Join(parts, " ")
 }
@@ -1354,21 +1377,48 @@ func orDefault(s, def string) string {
 }
 
 // reorderFlags puts flags before positionals, reading arity from the FlagSet.
+// A token the FlagSet does not define stays in the flag list, so flag.Parse
+// reports the typo instead of the command quietly ignoring it (a mistyped
+// --keep-files must not silently delete a game). The first "--" ends Hikari's
+// own flags: it and everything after it stay positional, in order.
 func reorderFlags(fs *flag.FlagSet, args []string) []string {
+	return reorder(fs, args, false)
+}
+
+// reorderGameArgs is reorderFlags for `hikari launch`: there a dash token
+// Hikari does not define belongs to the game, so it stays positional.
+func reorderGameArgs(fs *flag.FlagSet, args []string) []string {
+	return reorder(fs, args, true)
+}
+
+func reorder(fs *flag.FlagSet, args []string, keepUnknownPositional bool) []string {
 	var flags, pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if !strings.HasPrefix(a, "-") || a == "-" || a == "--" {
+		if a == "--" {
+			pos = append(pos, args[i:]...)
+			break
+		}
+		if !strings.HasPrefix(a, "-") || a == "-" {
 			pos = append(pos, a)
 			continue
 		}
-		flags = append(flags, a)
 		name := strings.TrimLeft(a, "-")
-		if strings.Contains(name, "=") {
-			continue
+		inline := false
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name, inline = name[:eq], true
 		}
 		f := fs.Lookup(name)
 		if f == nil {
+			if keepUnknownPositional {
+				pos = append(pos, a)
+			} else {
+				flags = append(flags, a)
+			}
+			continue
+		}
+		flags = append(flags, a)
+		if inline {
 			continue
 		}
 		if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && bf.IsBoolFlag() {

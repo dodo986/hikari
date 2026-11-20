@@ -30,7 +30,11 @@ export HIKARI_APPIMAGE_DIR
 
 daemon_up() { "$bin/hikari" status >/dev/null 2>&1; }
 
-if ! daemon_up; then
+# The systemd-run options are built with `set --` inside this function: the
+# function has its own positional parameters, so the caller's "$@" (the window
+# argv, including any nxm:// link) survives. Try systemd-run, then setsid, then
+# a plain background start, mirroring scripts/hikari-app.
+start_daemon() {
 	if command -v systemd-run >/dev/null 2>&1; then
 		set -- --user --unit=hikarid-appimage --collect
 		if [ -n "${HIKARI_APPIMAGE:-}" ]; then
@@ -46,12 +50,19 @@ if ! daemon_up; then
 		if [ -n "${XDG_CACHE_HOME:-}" ]; then
 			set -- "$@" --setenv=XDG_CACHE_HOME="$XDG_CACHE_HOME"
 		fi
-		systemd-run "$@" "$bin/hikarid" >/dev/null 2>&1 || true
-	elif command -v setsid >/dev/null 2>&1; then
-		setsid -f "$bin/hikarid" >/dev/null 2>&1 || true
-	else
-		"$bin/hikarid" >/dev/null 2>&1 &
+		if systemd-run "$@" "$bin/hikarid" >/dev/null 2>&1; then
+			return 0
+		fi
 	fi
+	if command -v setsid >/dev/null 2>&1 &&
+		setsid -f "$bin/hikarid" >/dev/null 2>&1; then
+		return 0
+	fi
+	"$bin/hikarid" >/dev/null 2>&1 &
+}
+
+if ! daemon_up; then
+	start_daemon
 fi
 for _ in $(seq 1 40); do
 	if daemon_up; then break; fi

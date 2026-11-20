@@ -49,6 +49,36 @@ func TestInstallParamsTakeOneLinkOrOneArchive(t *testing.T) {
 	}
 }
 
+// updateFlags mirrors how modsJobCmd hands `mods update` its parsed flags.
+func updateFlags(t *testing.T, args ...string) (map[string]any, error) {
+	t.Helper()
+	fs := flag.NewFlagSet("mods update", flag.ContinueOnError)
+	for _, name := range []string{"profile", "name"} {
+		fs.String(name, "", name)
+	}
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
+		t.Fatalf("parse %v: %v", args, err)
+	}
+	return updateParams(fs, fs.Args())
+}
+
+// copyFlags only stores non-empty flags, so an omitted --name left the key
+// absent and the guard's `params["name"] == ""` was false: the invalid request
+// travelled to the daemon instead of failing locally with its usage error.
+func TestUpdateParamsRequireName(t *testing.T) {
+	if _, err := updateFlags(t, "cyberpunk_2077"); err == nil {
+		t.Fatal("mods update without --name was accepted")
+	}
+
+	params, err := updateFlags(t, "cyberpunk_2077", "--name", "Better Sorted Inventory", "--profile", "default")
+	if err != nil {
+		t.Fatalf("updateParams: %v", err)
+	}
+	if params["game"] != "cyberpunk_2077" || params["name"] != "Better Sorted Inventory" || params["profile"] != "default" {
+		t.Fatalf("update params = %+v", params)
+	}
+}
+
 func TestNxmDomain(t *testing.T) {
 	cases := map[string]string{
 		"nxm://cyberpunk2077/mods/7054/files/91915?key=a&expires=1": "cyberpunk2077",

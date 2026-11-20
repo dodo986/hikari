@@ -24,12 +24,22 @@ func runtimePath(name string) string {
 	return filepath.Join(base, "hikari", name)
 }
 
+// socketPath mirrors internal/config.SocketPath: the unix socket sits directly
+// in $XDG_RUNTIME_DIR, only ws.json lives in the hikari/ subdirectory.
+func socketPath() string {
+	base := os.Getenv("XDG_RUNTIME_DIR")
+	if base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "hikari.sock")
+}
+
 func readEndpoint() (Endpoint, error) {
 	b, err := os.ReadFile(runtimePath("ws.json"))
 	if err != nil {
 		// The socket predates the websocket API: a daemon is up but cannot serve
 		// this window, which is a different problem from no daemon at all.
-		if _, sockErr := os.Stat(runtimePath("hikari.sock")); sockErr == nil {
+		if _, sockErr := os.Stat(socketPath()); sockErr == nil {
 			return Endpoint{}, fmt.Errorf("the running hikarid is older than this frontend, rebuild it")
 		}
 		return Endpoint{}, fmt.Errorf("hikarid is not running")

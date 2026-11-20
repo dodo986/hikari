@@ -35,9 +35,14 @@ for _ in $(seq 1 40); do
 	sleep 0.1
 done
 
-# nxm://<game>/mods/<id>/files/<id>?key=... lands in the window, which asks the
-# daemon to start the download once it is connected.
-if pgrep -f -x "$ui" >/dev/null 2>&1; then
+# pgrep -x compares the process name (comm), not the command line: a packaged
+# /usr/bin/hikari-ui wrapper execs /usr/lib/hikari/hikari-ui, and the window may
+# be started with an argument, so matching the full path never matched.
+window_up() { pgrep -x hikari-ui >/dev/null 2>&1; }
+
+# nxm://<game>/mods/<id>/files/<id>?key=... must go to the daemon, not to a
+# second window: that one loses the single-instance lock and the link with it.
+if window_up; then
 	for arg in "$@"; do
 		case "$arg" in
 			nxm://*)

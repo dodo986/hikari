@@ -51,7 +51,7 @@ func modsCmd(args []string) error {
 	case "cancel":
 		fs := flag.NewFlagSet("mods cancel", flag.ExitOnError)
 		c := addCommon(fs)
-		if err := fs.Parse(args[1:]); err != nil {
+		if err := fs.Parse(reorderFlags(fs, args[1:])); err != nil {
 			return err
 		}
 		if err := dial(c).Call("mods.cancel", nil, nil); err != nil {
@@ -86,17 +86,7 @@ func modsCmd(args []string) error {
 	case "updates":
 		return modsUpdatesCmd(args[1:])
 	case "update":
-		return modsJobCmd("mods.update", "update", []string{"profile", "name"}, args[1:], func(fs *flag.FlagSet, pos []string) (map[string]any, error) {
-			if len(pos) < 1 {
-				return nil, errors.New("usage: hikari mods update <game> --name <mod> [--profile NAME]")
-			}
-			params := map[string]any{"game": pos[0]}
-			copyFlags(fs, params, "profile", "name")
-			if params["name"] == "" {
-				return nil, errors.New("usage: hikari mods update <game> --name <mod>")
-			}
-			return params, nil
-		})
+		return modsJobCmd("mods.update", "update", []string{"profile", "name"}, args[1:], updateParams)
 	case "health":
 		return modsHealthCmd(args[1:])
 	case "repair":
@@ -526,13 +516,18 @@ func modsSchemeCmd(args []string) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		// The window takes the link itself; the wrapper is for installs that
-		// start the daemon around it.
-		command := binary + " mods nxm %u"
-		if app := filepath.Join(filepath.Dir(binary), "hikari-ui"); fileExists(app) {
-			command = app + " nxm %u"
-		} else if app := filepath.Join(filepath.Dir(binary), "hikari-app"); fileExists(app) {
-			command = app + " nxm %u"
+		// The window is single-instance (frontend/host/main.go): a second
+		// `hikari-ui nxm://...` exits on its lock without reading the link, so
+		// an entry that runs the window directly loses every click while a
+		// window is open. scripts/hikari-app is the launcher that forwards the
+		// link to the running window (or starts one with it), so prefer it when
+		// installed; otherwise `hikari mods nxm` hands the link to the daemon,
+		// which is what the wrapper itself falls back to.
+		command := desktopExecArg(binary) + " mods nxm %u"
+		if app := filepath.Join(filepath.Dir(binary), "hikari-app"); fileExists(app) {
+			command = desktopExecArg(app) + " %u"
+		} else if app, err := exec.LookPath("hikari-app"); err == nil {
+			command = desktopExecArg(app) + " %u"
 		}
 		entry := "[Desktop Entry]\n" +
 			"Type=Application\n" +
@@ -562,6 +557,16 @@ func modsSchemeCmd(args []string) error {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+// desktopExecArg quotes one Exec argument for desktop-entry syntax. The spec
+// splits Exec on whitespace, so a path with spaces must be double quoted and a
+// literal `"`, backtick, `$` or `\` escaped; otherwise the handler is
+// registered as a run of broken arguments. Field codes such as %u must stay
+// outside the quotes.
+func desktopExecArg(value string) string {
+	value = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", "$", `\$`).Replace(value)
+	return `"` + value + `"`
 }
 
 func currentNxmHandler() string {
@@ -742,7 +747,7 @@ func modsNexusCmd(args []string) error {
 	fs := flag.NewFlagSet("mods nexus", flag.ExitOnError)
 	c := addCommon(fs)
 	key := fs.String("key", "", "")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	params := map[string]any{"action": action}
@@ -797,7 +802,7 @@ func readSecretLine() (string, error) {
 func modsStatusCmd(args []string) error {
 	fs := flag.NewFlagSet("mods status", flag.ExitOnError)
 	c := addCommon(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	var status struct {
@@ -831,7 +836,7 @@ func modsStatusCmd(args []string) error {
 func modsGamesCmd(args []string) error {
 	fs := flag.NewFlagSet("mods games", flag.ExitOnError)
 	c := addCommon(fs)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderFlags(fs, args)); err != nil {
 		return err
 	}
 	var res struct {
@@ -970,6 +975,23 @@ func runModsJob(c *commonFlags, method, label string, params map[string]any) err
 	}
 	fmt.Println(label + ": ok")
 	return nil
+}
+
+// updateParams validates the local requirements of `mods update` before any
+// request reaches the daemon.
+func updateParams(fs *flag.FlagSet, pos []string) (map[string]any, error) {
+	if len(pos) < 1 {
+		return nil, errors.New("usage: hikari mods update <game> --name <mod> [--profile NAME]")
+	}
+	params := map[string]any{"game": pos[0]}
+	copyFlags(fs, params, "profile", "name")
+	// copyFlags only stores non-empty flags, so an omitted --name leaves the key
+	// absent (a nil interface): a plain == "" comparison misses it and the
+	// invalid request goes to the daemon. Check the type and the value.
+	if name, ok := params["name"].(string); !ok || name == "" {
+		return nil, errors.New("usage: hikari mods update <game> --name <mod>")
+	}
+	return params, nil
 }
 
 // installParams turns the flags into the daemon's params: the wire speaks
