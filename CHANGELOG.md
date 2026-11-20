@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.5
 
 Bug fixes from an audit of the daemon, the CLI and the packaging scripts.
 
@@ -52,6 +52,10 @@ Bug fixes from an audit of the daemon, the CLI and the packaging scripts.
   to be clobbered) and falls back to `setsid`, the update script reaches its
   rollback path when the new binary cannot run, and window detection works on
   packaged installs (`pgrep -f -x` never matched the real process).
+- Builds: the daemon no longer embeds the filegraph crate's cargo `target`
+  directory (21 MB -> 211 MB whenever the extension had been built, and the
+  same artifacts were copied into the user's data dir), and the AppImage ships
+  a PNG icon, which is what appimagetool wants for `.DirIcon`.
 
 ## 0.8.4
 
