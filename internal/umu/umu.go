@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"hikari/internal/atomicfile"
 )
 
 const APIBase = "https://umu.openwinecomponents.org/umu_api.php"
@@ -100,6 +102,14 @@ func (r *Resolver) load() cache {
 	if b, err := os.ReadFile(r.path); err == nil {
 		_ = json.Unmarshal(b, &c)
 	}
+	// A cache file holding an explicit null ("ids": null) unmarshals into a nil
+	// map, and the next assignment would panic the daemon.
+	if c.IDs == nil {
+		c.IDs = map[string]string{}
+	}
+	if c.Misses == nil {
+		c.Misses = map[string]bool{}
+	}
 	return c
 }
 
@@ -108,5 +118,5 @@ func (r *Resolver) save(c cache) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(r.path, append(b, '\n'), 0o600)
+	_ = atomicfile.WriteMode(r.path, append(b, '\n'), 0o600)
 }

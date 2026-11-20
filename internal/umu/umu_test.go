@@ -86,3 +86,26 @@ func TestUnsupportedStoreAndEmptyApp(t *testing.T) {
 		t.Fatalf("empty app should be a no-op: %q %v", id, err)
 	}
 }
+
+// A cache file an older build or a hand edit left with an explicit null map
+// used to panic on the next assignment ("assignment to entry in nil map"),
+// which takes the whole daemon down.
+func TestNullCacheMapsDoNotPanic(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	path := filepath.Join(t.TempDir(), "umu_ids.json")
+	for _, body := range []string{`{"ids":null,"misses":null}`, `{"ids":null}`, `{"misses":null}`, `{}`} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		r := NewResolver(path)
+		r.base = srv.URL // answers with an empty list, so the miss is recorded
+		id, err := r.Resolve(context.Background(), "epic", "nullgame-"+body)
+		if err != nil || id != "" {
+			t.Fatalf("%s: resolve = %q, %v", body, id, err)
+		}
+	}
+}

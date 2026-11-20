@@ -191,16 +191,56 @@ func (r *Runner) Run(ctx context.Context, bin string, args []string, opts RunOpt
 
 const drainGrace = 300 * time.Millisecond
 
+// maxLineBytes bounds one captured output line. A longer line is truncated for
+// the buffers and the callback, but the pipe keeps draining: abandoning the
+// read (what a bufio.Scanner does once a token exceeds its limit) closes our
+// end of the pipe and SIGPIPEs the child, killing a game that printed one long
+// log line.
+const maxLineBytes = 1 << 20
+
 func stream(pipe io.ReadCloser, buf *syncBuffer, onLine func(string), sanitize func(string) string) {
-	sc := bufio.NewScanner(pipe)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		buf.WriteString(line)
+	r := bufio.NewReaderSize(pipe, 64*1024)
+	var line []byte
+	truncated := false
+	emit := func() {
+		if len(line) == 0 && !truncated {
+			return
+		}
+		text := strings.TrimSuffix(strings.TrimSuffix(string(line), "\n"), "\r")
+		if truncated {
+			text += "... [line truncated]"
+		}
+		buf.WriteString(text)
 		buf.WriteByte('\n')
 		if onLine != nil {
-			onLine(sanitize(line))
+			onLine(sanitize(text))
 		}
+		line = line[:0]
+		truncated = false
+	}
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if len(chunk) > 0 {
+			room := maxLineBytes - len(line)
+			if room < 0 {
+				room = 0
+			}
+			if len(chunk) <= room {
+				line = append(line, chunk...)
+			} else {
+				line = append(line, chunk[:room]...)
+				truncated = true
+			}
+		}
+		if err == nil {
+			emit()
+			continue
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		emit()
+		return
 	}
 }
 

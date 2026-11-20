@@ -109,6 +109,16 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 				return
 			}
 		}
+		// A stop can land while the prefix is being prepared. Starting the game
+		// after that would make the UI report it as playing, only for the
+		// watchdog to kill it a moment later.
+		if runCtx.Err() != nil {
+			m.finish(key, StateStopped, 0, true, nil)
+			if onState != nil {
+				onState(StateStopped, 0)
+			}
+			return
+		}
 		for _, sc := range plan.Sidecars {
 			if len(sc.Argv) == 0 {
 				continue
@@ -170,8 +180,13 @@ func (m *Manager) Launch(ctx context.Context, store, id string, plan *Plan, onSt
 		err := res.Err
 		if res.Canceled {
 			err = nil
-		} else if msg := common.FirstLines(res.Stderr, 1); msg != "" {
-			err = errors.New(msg)
+		} else if err != nil {
+			// Prefer the engine's own message over the bare exit status. A clean
+			// exit stays clean: wine and proton chatter on stderr on every run, so
+			// any stderr output is not by itself a crash.
+			if msg := common.FirstLines(res.Stderr, 1); msg != "" {
+				err = errors.New(msg)
+			}
 		}
 		state := StateStopped
 		if err != nil {
@@ -254,7 +269,13 @@ func (m *Manager) adoptPrefix(ctx context.Context, prefix, exe string, since tim
 // earlier session: the game's own executable when it is still there, otherwise
 // anything that appeared in the prefix after the launch began.
 func launchPID(prefix, exe string, since time.Time) (int, bool) {
-	game := strings.ToLower(filepath.Base(exe))
+	// filepath.Base("") is ".", which would match every process whose command
+	// line has a dot in it (wineserver, services.exe, ...). With no executable
+	// to look for, fall through to the newest process in the prefix.
+	game := ""
+	if strings.TrimSpace(exe) != "" {
+		game = strings.ToLower(filepath.Base(exe))
+	}
 	best, bestStart, found := 0, time.Time{}, false
 	for _, pid := range PrefixProcesses(prefix) {
 		start := PrefixStart(pid)

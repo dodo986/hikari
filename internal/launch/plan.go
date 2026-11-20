@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -123,7 +124,7 @@ func Build(game library.Game, settings config.GameSettings, paths config.Paths, 
 
 	extra := append([]string{}, opts.Args...)
 	if settings.LauncherArgs != "" {
-		extra = append(extra, strings.Fields(settings.LauncherArgs)...)
+		extra = append(extra, splitArgs(settings.LauncherArgs)...)
 	}
 	overrideExe := settings.TargetExe
 	plan.Exe = overrideExe
@@ -231,11 +232,17 @@ func buildLocal(game library.Game, settings config.GameSettings, wrappers []stri
 }
 
 func localArgs(game library.Game) ([]string, bool) {
-	raw := game.Metadata["args"]
-	if strings.TrimSpace(raw) == "" {
+	raw := strings.TrimSpace(game.Metadata["args"])
+	if raw == "" {
 		return nil, false
 	}
-	return strings.Fields(raw), true
+	// Current registries store the list as JSON; older ones joined it with
+	// spaces, which cannot represent an argument that contains one.
+	var args []string
+	if json.Unmarshal([]byte(raw), &args) == nil && len(args) > 0 {
+		return args, true
+	}
+	return splitArgs(raw), true
 }
 
 func selectWine(settings config.GameSettings, eng *engine.Manager) (string, error) {
