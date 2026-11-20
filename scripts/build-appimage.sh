@@ -15,7 +15,8 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 appdir="$work/Hikari.AppDir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share/hikari" "$appdir/usr/share/applications" \
-	"$appdir/usr/share/icons/hicolor/scalable/apps" "$appdir/usr/share/licenses/hikari"
+	"$appdir/usr/share/icons/hicolor/scalable/apps" "$appdir/usr/share/icons/hicolor/256x256/apps" \
+	"$appdir/usr/share/licenses/hikari"
 
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$appdir/usr/bin/hikarid" ./cmd/hikarid)
 (cd "$here" && go build -trimpath -ldflags "-s -w -X main.version=$version -X main.commit=$commit" -o "$appdir/usr/bin/hikari" ./cmd/hikari)
@@ -31,9 +32,12 @@ install -m644 "$here/packaging/hikari-appimage.desktop" "$appdir/hikari.desktop"
 install -m644 "$here/packaging/hikari-appimage.desktop" "$appdir/usr/share/applications/hikari.desktop"
 install -m644 "$here/packaging/hikari.svg" "$appdir/hikari.svg"
 install -m644 "$here/packaging/hikari.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/hikari.svg"
-# appimagetool wants the icon at the AppDir root as .DirIcon; without it the
-# build warns today and will refuse in a future release.
-install -m644 "$here/packaging/hikari.svg" "$appdir/.DirIcon"
+# appimagetool rejects an SVG .DirIcon (it must be a PNG) and otherwise warns
+# that it will refuse to build in a future release. The PNG beside the desktop
+# entry is what it turns into .DirIcon; keep the two in step with
+# rsvg-convert -w 256 -h 256 packaging/hikari.svg -o packaging/hikari.png.
+install -m644 "$here/packaging/hikari.png" "$appdir/hikari.png"
+install -m644 "$here/packaging/hikari.png" "$appdir/usr/share/icons/hicolor/256x256/apps/hikari.png"
 install -m644 "$here/LICENSE" "$here/NOTICE" "$appdir/usr/share/licenses/hikari/"
 
 mkdir -p "$dist"
