@@ -160,8 +160,9 @@ The daemon is the only writer; the CLI and UI are clients.
 go build ./...
 GOPROXY=off go test ./...     # offline; the module is vendored
 go vet ./...
-scripts/test-ui.sh            # offscreen QML hit-tests for the popout
-scripts/dev.sh                # demo daemon + UI, nothing real touched
+frontend/scripts/build-host.sh    # typecheck, bundle and link the window
+frontend/scripts/dev-web.sh       # vite against the demo daemon
+frontend/scripts/dev-native.sh    # demo daemon + the window
 ```
 
 ## License

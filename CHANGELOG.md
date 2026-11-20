@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased
+
+Bug fixes from an audit of the daemon, the CLI and the packaging scripts.
+
+- The daemon takes an exclusive lock on its socket before it touches a stale
+  socket file, so two starts can no longer both come up as `hikarid` and
+  clobber each other's library state. The websocket endpoint is only published
+  by the process that owns the socket, and a shutdown never unlinks a socket a
+  newer daemon owns.
+- A launch is no longer tied to the client connection that requested it:
+  closing (or reloading) the window does not kill the running game. `game.stop`
+  is the only way to end a session.
+- A game that exits cleanly is no longer reported as crashed just because the
+  engine wrote to stderr — wine and proton do that on every run.
+- `game.install.cancel` no longer panics the daemon when the operation cannot
+  be canceled, and a panicking handler drops one connection instead of the
+  whole daemon.
+- Engine output: a line longer than 1 MiB no longer SIGPIPEs the child and
+  loses every line after it. A stop that lands while the prefix is being
+  prepared no longer starts the game and then reports it as playing.
+- `hikari uninstall <store> <id> --keep-files` honours the flag again,
+  `--follow` exits non-zero when the job failed, a progress event that arrives
+  before its RPC reply is no longer dropped (the follow loop used to hang),
+  `hikari launch` passes arguments that start with `-`, `--dry-run` prints a
+  shell-safe command, and `hikari mods update` without `--name` fails locally
+  with its usage message.
+- Wine/Proton: `hikari wine remove` refuses a name that is not a single path
+  element (it could recursively delete any directory the user owns), and a
+  64-bit-only prefix gets the 64-bit DXVK/VKD3D DLLs instead of the 32-bit
+  ones.
+- Heroic import reads the real store-cache format (a CacheStore object, not a
+  bare array) and legendary's integer `install_size`, so a populated Heroic
+  library is imported again instead of silently dropped.
+- GOG: `gogdl info` is parsed in the flat shape it really prints (download and
+  disk size, version, DLCs), an install no longer wipes cached artwork and
+  developer, the platform is normalised to what gogdl accepts (`Mac` ->
+  `osx`), and the library cache is synchronised against a refresh in flight.
+- OptiScaler: reinstalling keeps the game's own hook DLL, including across a
+  Hikari upgrade (the manifest now records the payload hash), a short digest
+  from the release API no longer panics the daemon, the INI writer accepts a
+  BOM or a commented section header and preserves CRLF, and a failed
+  download/extract no longer leaves a truncated DLL or a poisoned cache.
+- Mods: a half-finished Amethyst state migration is rolled back and retried
+  instead of leaving a half-migrated tree forever.
+- Artwork: fetches honour cancellation, scaled copies are written atomically
+  and a partial file is never served, local game arguments survive spaces,
+  and the file watcher notices an in-place rewrite inside a watched directory.
+- Packaging: the `nxm://` handler goes through the launcher that forwards links
+  to a running window, `AppRun` forwards its arguments (an `nxm://` link used
+  to be clobbered) and falls back to `setsid`, the update script reaches its
+  rollback path when the new binary cannot run, and window detection works on
+  packaged installs (`pgrep -f -x` never matched the real process).
+
 ## 0.8.4
 
 - The frontend is now React and TypeScript inside a native window, in
