@@ -1,0 +1,16 @@
+{
+  "e5f6a7b8c9d0e1f2a3b4": {
+    "install_path": "/home/tester/Games/Heroic/MochiMaster",
+    "executable": "MochiMaster/mochi.exe",
+    "version": "3.0",
+    "platform": "Windows",
+    "install_size": 12884901888
+  },
+  "a1b2c3d4e5f6a7b8c9d0": {
+    "install_path": "/home/tester/Games/Heroic/UmeRunner",
+    "executable": "UmeRunner/ume.exe",
+    "version": "1.0",
+    "platform": "Windows",
+    "install_size": 5368709120
+  }
+}

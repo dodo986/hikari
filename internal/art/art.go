@@ -15,7 +15,7 @@ import (
 )
 
 type Getter interface {
-	Get(url string) (resp *http.Response, err error)
+	Do(req *http.Request) (resp *http.Response, err error)
 }
 
 type Cache struct {
@@ -64,13 +64,36 @@ func (c *Cache) Seed(url string, r io.Reader) error {
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		return err
 	}
-	f, err := os.Create(p)
+	return writeFileAtomic(p, func(w io.Writer) error {
+		_, err := io.Copy(w, r)
+		return err
+	})
+}
+
+// writeFileAtomic writes through a temp file in the target's directory and
+// renames it into place, so a reader sees either the old file or the complete
+// new one and a failed write leaves no target behind. The temp name shares the
+// ".fetch-" prefix that evictIfNeeded skips.
+func writeFileAtomic(path string, write func(io.Writer) error) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".fetch-*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = io.Copy(f, r)
-	return err
+	tmp := f.Name()
+	if err := write(f); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // Dir is the cache root, safe to serve over the local HTTP bridge.
@@ -90,12 +113,10 @@ func (c *Cache) SeedFile(source string, r io.Reader) (string, error) {
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		return "", err
 	}
-	f, err := os.Create(p)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	if _, err := io.Copy(f, r); err != nil {
+	if err := writeFileAtomic(p, func(w io.Writer) error {
+		_, err := io.Copy(w, r)
+		return err
+	}); err != nil {
 		return "", err
 	}
 	return p, nil
@@ -125,7 +146,7 @@ func (c *Cache) Fetch(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resp, err := c.client.Get(req.URL.String())
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}

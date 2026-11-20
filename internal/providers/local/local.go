@@ -63,7 +63,7 @@ func (p *Provider) List(ctx context.Context) ([]library.Game, error) {
 			Executable:    e.Spec.Executable,
 			InstallPath:   filepath.Dir(e.Spec.Executable),
 			CanRunOffline: true,
-			Metadata:      map[string]string{"args": strings.Join(e.Spec.Args, " ")},
+			Metadata:      argsMetadata(e.Spec.Args),
 		}
 		if e.Spec.Artwork != "" {
 			g.Artwork = library.Artwork{Cover: e.Spec.Artwork, Square: e.Spec.Artwork}
@@ -119,13 +119,27 @@ func (p *Provider) Add(spec Spec) (library.Game, error) {
 		Executable: spec.Executable, InstallPath: filepath.Dir(spec.Executable),
 		CanRunOffline: true,
 	}
-	if len(spec.Args) > 0 {
-		g.Metadata = map[string]string{"args": strings.Join(spec.Args, " ")}
+	if meta := argsMetadata(spec.Args); meta != nil {
+		g.Metadata = meta
 	}
 	if spec.Artwork != "" {
 		g.Artwork = library.Artwork{Cover: spec.Artwork, Square: spec.Artwork}
 	}
 	return g, nil
+}
+
+// argsMetadata stores the argument list as JSON. Joining on spaces cannot
+// survive an argument that contains one, and the launch plan reads the list
+// back out of the same key.
+func argsMetadata(args []string) map[string]string {
+	if len(args) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(args)
+	if err != nil {
+		return nil
+	}
+	return map[string]string{"args": string(b)}
 }
 
 func (p *Provider) Remove(id string) error {

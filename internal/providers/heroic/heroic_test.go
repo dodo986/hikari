@@ -9,7 +9,11 @@ import (
 	"hikari/internal/library"
 )
 
-const fixture = "testdata/heroic"
+const (
+	fixture           = "testdata/heroic"
+	cacheStoreFixture = "testdata/heroic-cachestore"
+	intSizeFixture    = "testdata/heroic-intsize"
+)
 
 func game(t *testing.T, games []library.Game, store, id string) library.Game {
 	t.Helper()
@@ -70,6 +74,9 @@ func TestInstalledRecordsAugmentCaches(t *testing.T) {
 	if !g.Installed || g.InstallPath != "/home/tester/Games/Heroic/Onigiri" {
 		t.Fatalf("legendary installed augmentation failed: %+v", g)
 	}
+	if g.InstallSize != "5 GiB" {
+		t.Fatalf("string install size lost: %q", g.InstallSize)
+	}
 
 	wasabi := game(t, games, library.StoreGOG, "1207658919")
 	if !wasabi.Installed || wasabi.InstallPath != "/home/tester/Games/Heroic/WasabiWars" {
@@ -79,6 +86,83 @@ func TestInstalledRecordsAugmentCaches(t *testing.T) {
 	tamago := game(t, games, library.StoreAmazon, "amzn-tamago")
 	if !tamago.Installed || tamago.InstallPath != "/home/tester/Games/Heroic/TamagoQuest" {
 		t.Fatalf("nile installed augmentation failed: %+v", tamago)
+	}
+}
+
+func TestListFromCacheStoreObject(t *testing.T) {
+	imp := New(cacheStoreFixture)
+	games, err := imp.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := game(t, games, library.StoreEpic, "e1f2a3b4c5d6e7f8a9b0")
+	if g.Title != "Mochi Master" || g.Developer != "Cache Store Studio" {
+		t.Fatalf("CacheStore library entry lost: %+v", g)
+	}
+	if g.Metadata["namespace"] != "ns-mochi" || g.Metadata["store_url"] != "https://store.example.test/mochimaster" {
+		t.Fatalf("CacheStore metadata lost: %+v", g.Metadata)
+	}
+	if g.Artwork.Cover != "https://cdn.example.test/mochi-cover.jpg" {
+		t.Fatalf("CacheStore artwork lost: %+v", g.Artwork)
+	}
+	if g.InstallSize != "12.00 GiB" {
+		t.Fatalf("numeric install size lost: %q", g.InstallSize)
+	}
+}
+
+func TestListFromCacheStoreGOGGamesKey(t *testing.T) {
+	imp := New(cacheStoreFixture)
+	games, err := imp.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := game(t, games, library.StoreGOG, "1553565912")
+	if g.Title != "Miso Tactics" || g.Artwork.Cover != "https://cdn.example.test/miso-cover.jpg" {
+		t.Fatalf("gog games cache not read: %+v", g)
+	}
+	for _, other := range games {
+		if other.Store == library.StoreAmazon {
+			t.Fatalf("empty nile cache should yield no game: %+v", other)
+		}
+	}
+}
+
+func TestEmptyCacheStoreIsEmpty(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "store_cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "store_cache", "legendary_library.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	games, err := New(root).List(context.Background())
+	if err != nil {
+		t.Fatalf("empty cache should not be fatal: %v", err)
+	}
+	if len(games) != 0 {
+		t.Fatalf("want no games, got %+v", games)
+	}
+}
+
+func TestLegendaryInstalledIntegerSize(t *testing.T) {
+	imp := New(intSizeFixture)
+	games, err := imp.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A cached game is marked installed with its install path.
+	merged := game(t, games, library.StoreEpic, "e5f6a7b8c9d0e1f2a3b4")
+	if !merged.Installed || merged.InstallPath != "/home/tester/Games/Heroic/MochiMaster" {
+		t.Fatalf("integer install_size broke the installed merge: %+v", merged)
+	}
+	// An installed game with no cache entry is still imported, with its size
+	// rendered the way the epic provider renders legendary's byte count.
+	stub := game(t, games, library.StoreEpic, "a1b2c3d4e5f6a7b8c9d0")
+	if !stub.Installed || stub.InstallPath != "/home/tester/Games/Heroic/UmeRunner" {
+		t.Fatalf("installed game without a cache entry lost: %+v", stub)
+	}
+	if stub.Executable != "UmeRunner/ume.exe" || stub.InstallSize != "5.00 GiB" {
+		t.Fatalf("numeric install size lost: %+v", stub)
 	}
 }
 

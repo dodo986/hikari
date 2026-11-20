@@ -2,10 +2,13 @@ package artwork
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestSGDBFlow(t *testing.T) {
@@ -90,4 +93,51 @@ func TestEmptyTitle(t *testing.T) {
 	if _, err := New("").Search(context.Background(), "   "); err == nil {
 		t.Fatal("empty title must error")
 	}
+}
+
+// TestSetKeyConcurrentWithSearch drives SetKey from repeated Searches, the way
+// the daemon stores a key while other RPCs search. Run with -race it fails on
+// the old unsynchronised APIKey field.
+func TestSetKeyConcurrentWithSearch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/search/autocomplete/") {
+			w.Write([]byte(`{"success":true,"data":[]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	s := New("key0")
+	s.sgdbBase = srv.URL
+	s.steamBase = srv.URL
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					s.SetKey(fmt.Sprintf("key-%d", n))
+				}
+			}
+		}(i)
+	}
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 25; j++ {
+				_, _ = s.Search(context.Background(), "Portal")
+			}
+		}()
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }

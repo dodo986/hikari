@@ -1,11 +1,13 @@
 package art
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -83,5 +85,91 @@ func TestScaledRejectsSillyWidths(t *testing.T) {
 	}
 	if _, err := cache.Scaled("x.jpg", 5000); err == nil {
 		t.Fatal("width 5000 should be rejected")
+	}
+}
+
+func TestScaledReplacesCorruptCache(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "cover.jpg")
+	writeJPEG(t, source, 600, 900)
+	target := filepath.Join(dir, "cover-w200.jpg")
+	if err := os.WriteFile(target, []byte("not a jpeg at all"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := New(dir)
+	got, err := cache.Scaled(source, 200)
+	if err != nil {
+		t.Fatalf("scale: %v", err)
+	}
+	if got != target {
+		t.Fatalf("path = %q, want %q", got, target)
+	}
+	f, err := os.Open(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("a corrupt cached file was returned as a successful scale: %v", err)
+	}
+	if img.Bounds().Dx() != 200 {
+		t.Fatalf("width = %d, want 200", img.Bounds().Dx())
+	}
+}
+
+// TestScaledWritesAtomically keeps reading the target while Scaled works on a
+// large source. The final path must be absent until it is whole, so every read
+// that succeeds must decode: on the old in-place write a reader catches a
+// truncated JPEG.
+func TestScaledWritesAtomically(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "big.jpg")
+	writeJPEG(t, source, 3000, 3000)
+	cache := New(dir)
+	target := scaledPath(source, 300)
+
+	stop := make(chan struct{})
+	failed := make(chan error, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			f, err := os.Open(target)
+			if err != nil {
+				continue // not renamed into place yet
+			}
+			_, _, err = image.Decode(f)
+			f.Close()
+			if err != nil {
+				select {
+				case failed <- fmt.Errorf("reader saw a partial image: %w", err):
+				default:
+				}
+				return
+			}
+		}
+	}()
+
+	got, err := cache.Scaled(source, 300)
+	close(stop)
+	wg.Wait()
+	if err != nil {
+		t.Fatalf("scale: %v", err)
+	}
+	if got != target {
+		t.Fatalf("path = %q, want %q", got, target)
+	}
+	select {
+	case err := <-failed:
+		t.Fatal(err)
+	default:
 	}
 }

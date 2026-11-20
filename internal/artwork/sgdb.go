@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,7 @@ type Cover struct {
 }
 
 type Searcher struct {
+	mu     sync.RWMutex
 	APIKey string
 	client *http.Client
 
@@ -43,7 +45,19 @@ func New(apiKey string) *Searcher {
 }
 
 // SetKey swaps the SteamGridDB key at runtime, after the UI stores one.
-func (s *Searcher) SetKey(key string) { s.APIKey = key }
+func (s *Searcher) SetKey(key string) {
+	s.mu.Lock()
+	s.APIKey = key
+	s.mu.Unlock()
+}
+
+// key reads APIKey for the search path, which runs on RPC goroutines that race
+// SetKey.
+func (s *Searcher) key() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.APIKey
+}
 
 // Check asks SteamGridDB whether it accepts a key before we store it, so a
 // mistyped key fails here instead of silently producing no covers.
@@ -63,8 +77,8 @@ func (s *Searcher) Search(ctx context.Context, title string) ([]Candidate, error
 	if title == "" {
 		return nil, fmt.Errorf("a title is required")
 	}
-	if s.APIKey != "" {
-		if cands, err := s.searchSGDB(ctx, title); err == nil && len(cands) > 0 {
+	if key := s.key(); key != "" {
+		if cands, err := s.searchSGDB(ctx, title, key); err == nil && len(cands) > 0 {
 			return cands, nil
 		}
 	}
@@ -83,9 +97,9 @@ type sgdbGrid struct {
 	Height int    `json:"height"`
 }
 
-func (s *Searcher) searchSGDB(ctx context.Context, title string) ([]Candidate, error) {
+func (s *Searcher) searchSGDB(ctx context.Context, title, key string) ([]Candidate, error) {
 	var games []sgdbGame
-	if err := s.getJSON(ctx, s.sgdbBase+"/search/autocomplete/"+url.PathEscape(title), s.APIKey, &games); err != nil {
+	if err := s.getJSON(ctx, s.sgdbBase+"/search/autocomplete/"+url.PathEscape(title), key, &games); err != nil {
 		return nil, err
 	}
 	if len(games) == 0 {
@@ -98,7 +112,7 @@ func (s *Searcher) searchSGDB(ctx context.Context, title string) ([]Candidate, e
 	for _, g := range games {
 		var grids []sgdbGrid
 		q := fmt.Sprintf("%s/grids/game/%d?dimensions=600x900", s.sgdbBase, g.ID)
-		if err := s.getJSON(ctx, q, s.APIKey, &grids); err != nil || len(grids) == 0 {
+		if err := s.getJSON(ctx, q, key, &grids); err != nil || len(grids) == 0 {
 			continue
 		}
 		if len(grids) > 6 {

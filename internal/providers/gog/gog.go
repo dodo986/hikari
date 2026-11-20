@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"hikari/internal/atomicfile"
@@ -26,6 +27,10 @@ type Provider struct {
 	paths config.Paths
 
 	galaxy *GalaxyClient
+
+	// mu serialises the read-modify-write of the on-disk cache so a Refresh in
+	// flight cannot overwrite a completed Install/Uninstall (lost update).
+	mu sync.Mutex
 
 	RunInPrefix func(ctx context.Context, settings config.GameSettings, argv []string, installDir string) error
 }
@@ -191,30 +196,97 @@ func (p *Provider) runGogdl(ctx context.Context, args []string, onLine func(stri
 	return p.run.Run(ctx, bin, full, opts)
 }
 
+// gogdlSize is one download/disk size pair gogdl reports per language.
+type gogdlSize struct {
+	DownloadSize float64 `json:"download_size"`
+	DiskSize     float64 `json:"disk_size"`
+}
+
+// gogdlDLC is one entry of the `dlcs` array `gogdl info` prints.
+type gogdlDLC struct {
+	ID    string               `json:"id"`
+	Title string               `json:"title"`
+	Size  map[string]gogdlSize `json:"size"`
+}
+
+// gogdlInfo is the flat download-manager dict `gogdl info` prints: the v1/v2
+// managers report a `size` map keyed by language, the linux manager reports a
+// flat download_size/disk_size. Heroic reads the same keys. It carries no
+// title; that comes from the library/cache.
 type gogdlInfo struct {
-	Game struct {
-		AppName string `json:"app_name"`
-		Title   string `json:"title"`
-		Version string `json:"version"`
-		BuildID string `json:"buildId"`
-	} `json:"game"`
-	Download struct {
-		Languages   []string `json:"languages"`
-		FolderName  string   `json:"folder_name"`
-		BuildID     string   `json:"buildId"`
-		VersionName string   `json:"versionName"`
-		Size        map[string]struct {
-			DownloadSize float64 `json:"download_size"`
-			DiskSize     float64 `json:"disk_size"`
-		} `json:"size"`
-		DLCs []struct {
-			Title string `json:"title"`
-			ID    string `json:"id"`
-			Size  map[string]struct {
-				DownloadSize float64 `json:"download_size"`
-			} `json:"size"`
-		} `json:"dlcs"`
-	} `json:"download"`
+	Size         map[string]gogdlSize `json:"size"`
+	DownloadSize float64              `json:"download_size"`
+	DiskSize     float64              `json:"disk_size"`
+	BuildID      string               `json:"buildId"`
+	VersionName  string               `json:"versionName"`
+	Version      string               `json:"version"`
+	Languages    []string             `json:"languages"`
+	FolderName   string               `json:"folder_name"`
+	DLCs         []gogdlDLC           `json:"dlcs"`
+}
+
+func (i gogdlInfo) empty() bool {
+	return len(i.Size) == 0 && i.DownloadSize == 0 && i.DiskSize == 0 &&
+		i.BuildID == "" && i.VersionName == "" && i.Version == "" && len(i.DLCs) == 0
+}
+
+// parseGogdlInfo decodes the output of `gogdl info`. gogdl prints the flat
+// download-manager dict; the older {game,download} wrapper (which gogdl does
+// not emit) is still accepted as a compatibility fallback when no flat key is
+// present. The returned title is only ever the wrapper's.
+func parseGogdlInfo(raw []byte) (gogdlInfo, string, error) {
+	var info gogdlInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return gogdlInfo{}, "", err
+	}
+	if !info.empty() {
+		return info, "", nil
+	}
+	var legacy struct {
+		Game struct {
+			Title   string `json:"title"`
+			Version string `json:"version"`
+			BuildID string `json:"buildId"`
+		} `json:"game"`
+		Download *gogdlInfo `json:"download"`
+	}
+	if json.Unmarshal(raw, &legacy) == nil && legacy.Download != nil {
+		d := *legacy.Download
+		d.VersionName = orDefault(d.VersionName, legacy.Game.Version)
+		d.BuildID = orDefault(d.BuildID, legacy.Game.BuildID)
+		return d, legacy.Game.Title, nil
+	}
+	return info, "", nil
+}
+
+// infoSizes combines the base "*" size with the target language's entry (the
+// way Heroic does) and the flat top-level download_size/disk_size the linux
+// manager prints.
+func infoSizes(info gogdlInfo, language string) (download, disk int64) {
+	base := info.Size["*"]
+	download = int64(base.DownloadSize)
+	disk = int64(base.DiskSize)
+	if language != "" && language != "*" {
+		if lang, ok := info.Size[language]; ok {
+			download += int64(lang.DownloadSize)
+			disk += int64(lang.DiskSize)
+		}
+	}
+	download += int64(info.DownloadSize)
+	disk += int64(info.DiskSize)
+	return download, disk
+}
+
+// normalizePlatform maps the library's platform labels onto the values gogdl
+// accepts (windows, osx, linux).
+func normalizePlatform(platform string) string {
+	switch platform {
+	case "":
+		return "windows"
+	case "Mac", "mac":
+		return "osx"
+	}
+	return strings.ToLower(platform)
 }
 
 type gogInfoFile struct {
@@ -283,7 +355,7 @@ func (p *Provider) Repair(ctx context.Context, id string, opts library.InstallOp
 		progress(library.InstallProgress{State: "repairing"})
 	}
 	parser := &engine.Parser{}
-	platform := orDefault(target.Platform, "windows")
+	platform := normalizePlatform(target.Platform)
 	res := p.runGogdl(ctx, engine.GogdlRepairArgs(id, platform, target.InstallPath, p.supportDir(id), target.Language, target.BuildID, opts.MaxWorkers), func(line string) {
 		if progress == nil {
 			return
@@ -308,28 +380,24 @@ func (p *Provider) Repair(ctx context.Context, id string, opts library.InstallOp
 }
 
 func (p *Provider) InstallInfo(ctx context.Context, id, platform string) (library.InstallInfo, error) {
-	if platform == "" {
-		platform = "windows"
-	} else {
-		platform = strings.ToLower(platform)
-	}
+	platform = normalizePlatform(platform)
 	res := p.runGogdl(ctx, []string{"info", id, "--os", platform}, nil, nil)
 	if res.Err != nil {
 		return library.InstallInfo{}, fmt.Errorf("gogdl info failed (exit %d): %s", res.ExitCode, common.FirstLines(res.Stderr, 3))
 	}
-	var info gogdlInfo
-	if err := json.Unmarshal([]byte(res.Stdout), &info); err != nil {
+	info, wrapperTitle, err := parseGogdlInfo([]byte(res.Stdout))
+	if err != nil {
 		return library.InstallInfo{}, fmt.Errorf("gogdl info output not JSON: %w", err)
 	}
+	// gogdl info has no title and no language, so take both from the cache.
+	cached, _ := p.cachedEntry(id)
+	title := orDefault(cached.Title, wrapperTitle)
 	out := library.InstallInfo{
-		Title:   info.Game.Title,
-		Version: orDefault(info.Download.VersionName, info.Game.Version),
+		Title:   title,
+		Version: orDefault(info.VersionName, info.Version),
 	}
-	if star, ok := info.Download.Size["*"]; ok {
-		out.DownloadSize = int64(star.DownloadSize)
-		out.DiskSize = int64(star.DiskSize)
-	}
-	for _, d := range info.Download.DLCs {
+	out.DownloadSize, out.DiskSize = infoSizes(info, cached.Language)
+	for _, d := range info.DLCs {
 		dlc := library.DLC{ID: d.ID, Title: d.Title}
 		if star, ok := d.Size["*"]; ok {
 			dlc.DownloadSize = int64(star.DownloadSize)
@@ -337,6 +405,16 @@ func (p *Provider) InstallInfo(ctx context.Context, id, platform string) (librar
 		out.DLCs = append(out.DLCs, dlc)
 	}
 	return out, nil
+}
+
+// cachedEntry returns the stored cache entry for id, if any.
+func (p *Provider) cachedEntry(id string) (entry, bool) {
+	for _, e := range p.readCache() {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return entry{}, false
 }
 
 func orDefault(s, def string) string {
@@ -350,19 +428,7 @@ func (p *Provider) Install(ctx context.Context, id string, opts library.InstallO
 	if opts.Path == "" {
 		return errors.New("install path is required for GOG games")
 	}
-	platform := opts.Platform
-	switch platform {
-	case "":
-		platform = "windows"
-	case "Mac":
-		platform = "osx"
-	case "Windows", "windows", "Linux", "linux", "osx":
-		if platform[0] >= 'A' && platform[0] <= 'Z' {
-			platform = strings.ToLower(platform)
-		}
-	default:
-		return fmt.Errorf("unsupported platform %q", opts.Platform)
-	}
+	platform := normalizePlatform(opts.Platform)
 	if progress != nil {
 		progress(library.InstallProgress{State: "downloading"})
 	}
@@ -372,8 +438,9 @@ func (p *Provider) Install(ctx context.Context, id string, opts library.InstallO
 	}
 
 	var info gogdlInfo
+	var wrapperTitle string
 	if res := p.runGogdl(ctx, []string{"info", id, "--os", platform}, nil, nil); res.Err == nil {
-		_ = json.Unmarshal([]byte(res.Stdout), &info)
+		info, wrapperTitle, _ = parseGogdlInfo([]byte(res.Stdout))
 	}
 
 	parser := &engine.Parser{}
@@ -396,13 +463,12 @@ func (p *Provider) Install(ctx context.Context, id string, opts library.InstallO
 		return fmt.Errorf("gogdl download failed (exit %d): %s", res.ExitCode, common.FirstLines(res.Stderr, 5))
 	}
 
-	title := info.Game.Title
-	if title == "" {
-		title = id
-	}
+	// upsertCache merges this install state into the entry Refresh stored, so
+	// the artwork/developer it collected survive; a missing title falls back to
+	// the id there.
 	p.upsertCache(entry{
-		ID: id, Title: title, InstallPath: opts.Path, Platform: platform,
-		Version: info.Download.VersionName, BuildID: info.Download.BuildID,
+		ID: id, Title: wrapperTitle, InstallPath: opts.Path, Platform: platform,
+		Version: orDefault(info.VersionName, info.Version), BuildID: info.BuildID,
 		Language: opts.Language, Installed: true,
 	})
 	if progress != nil {
@@ -412,15 +478,40 @@ func (p *Provider) Install(ctx context.Context, id string, opts library.InstallO
 }
 
 func (p *Provider) upsertCache(e entry) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	entries := p.readCache()
 	for i := range entries {
 		if entries[i].ID == e.ID {
-			entries[i] = e
+			entries[i] = mergeCacheEntry(entries[i], e)
 			_ = p.writeCache(entries)
 			return
 		}
 	}
+	if e.Title == "" {
+		e.Title = e.ID
+	}
 	_ = p.writeCache(append(entries, e))
+}
+
+// mergeCacheEntry folds e into the stored entry. An install owns only the
+// install state it writes, so the library metadata Refresh collected
+// (developer, artwork, library platform) must survive. An entry that clears
+// the install (Uninstall) is already a copy of the stored one: take it as-is.
+func mergeCacheEntry(stored, e entry) entry {
+	if !e.Installed {
+		return e
+	}
+	if e.Title != "" {
+		stored.Title = e.Title
+	}
+	stored.InstallPath = e.InstallPath
+	stored.Platform = e.Platform
+	stored.Version = e.Version
+	stored.Language = e.Language
+	stored.BuildID = e.BuildID
+	stored.Installed = e.Installed
+	return stored
 }
 
 func (p *Provider) Update(ctx context.Context, id string, opts library.InstallOptions, progress func(library.InstallProgress)) error {
@@ -435,7 +526,7 @@ func (p *Provider) Update(ctx context.Context, id string, opts library.InstallOp
 	if target == nil {
 		return fmt.Errorf("GOG game %q is not installed through Hikari", id)
 	}
-	platform := orDefault(target.Platform, "windows")
+	platform := normalizePlatform(target.Platform)
 	if progress != nil {
 		progress(library.InstallProgress{State: "updating"})
 	}
@@ -550,20 +641,17 @@ func (p *Provider) Refresh(ctx context.Context) (int, error) {
 	if galaxy == nil {
 		galaxy = NewGalaxyClient()
 	}
-	entries, err := galaxy.Library(ctx, creds)
+	rels, err := galaxy.Library(ctx, creds)
 	if err != nil {
 		return 0, fmt.Errorf("GOG library fetch failed: %w", err)
 	}
 
-	installed := map[string]entry{}
-	for _, e := range p.readCache() {
-		if e.Installed {
-			installed[e.ID] = e
-		}
-	}
-	var merged []entry
+	// Fetch the gamesdb metadata without holding the lock; the cache is
+	// re-read and merged below, right before writing, so an Install/Uninstall
+	// that completed during these requests is not lost.
+	var fetched []entry
 	seen := map[string]bool{}
-	for _, rel := range entries {
+	for _, rel := range rels {
 		if rel.PlatformID != "gog" {
 			continue
 		}
@@ -575,13 +663,27 @@ func (p *Provider) Refresh(ctx context.Context) (int, error) {
 		if !ok {
 			continue
 		}
-		e := entry{
+		fetched = append(fetched, entry{
 			ID: g.ID, Title: g.Title,
 			Developer: g.Developer, Platform: g.Platform,
 			Cover: g.Artwork.Cover, Square: g.Artwork.Square, Icon: g.Artwork.Icon,
 			LibraryPlatform: g.Platform,
+		})
+		seen[g.ID] = true
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cached := p.readCache()
+	installed := map[string]entry{}
+	for _, e := range cached {
+		if e.Installed {
+			installed[e.ID] = e
 		}
-		if inst, have := installed[g.ID]; have {
+	}
+	merged := make([]entry, 0, len(fetched)+len(installed))
+	for _, e := range fetched {
+		if inst, have := installed[e.ID]; have {
 			inst.Title = e.Title
 			inst.Developer = e.Developer
 			inst.Cover, inst.Square, inst.Icon = e.Cover, e.Square, e.Icon
@@ -589,9 +691,8 @@ func (p *Provider) Refresh(ctx context.Context) (int, error) {
 			e = inst
 		}
 		merged = append(merged, e)
-		seen[g.ID] = true
 	}
-	for _, e := range p.readCache() {
+	for _, e := range cached {
 		if !seen[e.ID] && e.Installed {
 			merged = append(merged, e)
 		}

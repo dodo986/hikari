@@ -3,12 +3,18 @@ package heroic
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"hikari/internal/config"
 	"hikari/internal/library"
+	"hikari/internal/providers/common"
 )
 
 type Importer struct {
@@ -31,12 +37,12 @@ type HeroicGameInfo struct {
 	Developer   string `json:"developer"`
 	IsInstalled bool   `json:"is_installed"`
 	Install     struct {
-		InstallPath string `json:"install_path"`
-		Platform    string `json:"platform"`
-		Version     string `json:"version"`
-		Executable  string `json:"executable"`
-		InstallSize string `json:"install_size"`
-		IsDLC       bool   `json:"is_dlc"`
+		InstallPath string     `json:"install_path"`
+		Platform    string     `json:"platform"`
+		Version     string     `json:"version"`
+		Executable  string     `json:"executable"`
+		InstallSize heroicSize `json:"install_size"`
+		IsDLC       bool       `json:"is_dlc"`
 	} `json:"install"`
 	ArtCover      string `json:"art_cover"`
 	ArtSquare     string `json:"art_square"`
@@ -64,7 +70,11 @@ func (i *Importer) List(ctx context.Context) ([]library.Game, error) {
 		"gog_library.json":       "gog",
 		"nile_library.json":      "nile",
 	} {
-		entries := readHeroicGameInfos(filepath.Join(i.root, "store_cache", cacheFile))
+		entries, err := readHeroicGameInfos(filepath.Join(i.root, "store_cache", cacheFile), cacheListKey(runner))
+		if err != nil {
+			slog.Warn("heroic: skipping unreadable library cache", "file", cacheFile, "err", err)
+			continue
+		}
 		for _, e := range entries {
 			g, ok := i.convert(e, runner)
 			if !ok {
@@ -103,7 +113,7 @@ func (i *Importer) convert(e HeroicGameInfo, runner string) (library.Game, bool)
 		Platform:      e.Install.Platform,
 		Version:       e.Install.Version,
 		Executable:    e.Install.Executable,
-		InstallSize:   e.Install.InstallSize,
+		InstallSize:   string(e.Install.InstallSize),
 		IsDLC:         e.Install.IsDLC,
 		Runner:        runnerName(store),
 		Source:        library.SourceHeroicImport,
@@ -142,16 +152,69 @@ func runnerName(store string) string {
 	return library.RunnerNone
 }
 
-func readHeroicGameInfos(path string) []HeroicGameInfo {
+// cacheListKey names the CacheStore field that holds a store's library. Heroic
+// writes "games" for GOG and "library" for legendary and nile.
+func cacheListKey(runner string) string {
+	if runner == "gog" {
+		return "games"
+	}
+	return "library"
+}
+
+// readHeroicGameInfos decodes a Heroic store cache. Heroic wraps the entries in
+// a CacheStore object ({"library":[...],"__timestamp.library":"..."} for
+// legendary and nile, {"games":[...]} for gog); older caches and our fixtures
+// are a bare array, so fall back to that. An empty cache is "{}", not "[]".
+func readHeroicGameInfos(path, listKey string) ([]HeroicGameInfo, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("heroic: read %s: %w", path, err)
+	}
+	var wrapper map[string]json.RawMessage
+	if err := json.Unmarshal(b, &wrapper); err == nil {
+		raw, ok := wrapper[listKey]
+		if !ok {
+			return nil, nil
+		}
+		var entries []HeroicGameInfo
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			return nil, fmt.Errorf("heroic: %s: %w", path, err)
+		}
+		return entries, nil
 	}
 	var entries []HeroicGameInfo
-	if json.Unmarshal(b, &entries) != nil {
-		return nil
+	if err := json.Unmarshal(b, &entries); err != nil {
+		return nil, fmt.Errorf("heroic: %s: %w", path, err)
 	}
-	return entries
+	return entries, nil
+}
+
+// heroicSize is the install size Heroic records. legendary writes an integer
+// number of bytes; older Heroic releases wrote a readable string ("5 GiB").
+// Both are accepted so one odd value cannot fail a whole file.
+type heroicSize string
+
+func (s *heroicSize) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	switch {
+	case raw == "", raw == "null":
+		return nil
+	case raw[0] == '"':
+		var v string
+		if err := json.Unmarshal(data, &v); err != nil {
+			*s = ""
+			return nil
+		}
+		*s = heroicSize(v)
+	default:
+		if f, err := strconv.ParseFloat(raw, 64); err == nil {
+			*s = heroicSize(common.HumanSize(f))
+		}
+	}
+	return nil
 }
 
 func (i *Importer) mergeLegendaryInstalled(games map[string]library.Game) {
@@ -160,11 +223,11 @@ func (i *Importer) mergeLegendaryInstalled(games map[string]library.Game) {
 		return
 	}
 	var installed map[string]struct {
-		InstallPath string `json:"install_path"`
-		Executable  string `json:"executable"`
-		Version     string `json:"version"`
-		Platform    string `json:"platform"`
-		InstallSize string `json:"install_size"`
+		InstallPath string     `json:"install_path"`
+		Executable  string     `json:"executable"`
+		Version     string     `json:"version"`
+		Platform    string     `json:"platform"`
+		InstallSize heroicSize `json:"install_size"`
 	}
 	if json.Unmarshal(b, &installed) != nil {
 		return
@@ -183,7 +246,7 @@ func (i *Importer) mergeLegendaryInstalled(games map[string]library.Game) {
 			Store: library.StoreEpic, ID: app, Title: app,
 			Installed: true, InstallPath: meta.InstallPath,
 			Platform: meta.Platform, Version: meta.Version,
-			Executable: meta.Executable, InstallSize: meta.InstallSize,
+			Executable: meta.Executable, InstallSize: string(meta.InstallSize),
 			Runner: library.RunnerLegendary, Source: library.SourceHeroicImport,
 		}
 	}

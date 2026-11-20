@@ -2,7 +2,9 @@ package art
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,9 +19,56 @@ type testGetter struct {
 	calls  int
 }
 
-func (g *testGetter) Get(url string) (*http.Response, error) {
+func (g *testGetter) Do(req *http.Request) (*http.Response, error) {
 	g.calls++
-	return g.server.Client().Get(url)
+	return g.server.Client().Do(req)
+}
+
+// Get keeps the fake usable against the pre-fix Getter interface, so the
+// context regression test below fails on old code instead of not compiling.
+func (g *testGetter) Get(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return g.Do(req)
+}
+
+// blockingGetter ignores a cancelled context on the pre-fix Get path and
+// returns as soon as the request context is done on the new Do path.
+type blockingGetter struct {
+	entered chan struct{}
+	release chan struct{}
+	seen    chan error
+}
+
+func (g *blockingGetter) enter() {
+	select {
+	case g.entered <- struct{}{}:
+	default:
+	}
+}
+
+func (g *blockingGetter) Do(req *http.Request) (*http.Response, error) {
+	g.enter()
+	select {
+	case <-req.Context().Done():
+	case <-g.release:
+	}
+	err := req.Context().Err()
+	if err != nil {
+		select {
+		case g.seen <- err:
+		default:
+		}
+	}
+	return nil, err
+}
+
+func (g *blockingGetter) Get(string) (*http.Response, error) {
+	g.enter()
+	<-g.release
+	return nil, context.Canceled
 }
 
 func newTestCache(t *testing.T) (*Cache, *testGetter) {
@@ -143,3 +192,88 @@ func TestExtSafety(t *testing.T) {
 }
 
 var timeNow = func() time.Time { return time.Now().UTC() }
+
+func TestFetchHonoursRequestContext(t *testing.T) {
+	g := &blockingGetter{
+		entered: make(chan struct{}, 1),
+		release: make(chan struct{}),
+		seen:    make(chan error, 1),
+	}
+	defer close(g.release)
+	c := NewWithGetter(t.TempDir(), g)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Fetch(ctx, "https://art.example/cover.jpg")
+		done <- err
+	}()
+
+	select {
+	case <-g.entered:
+	case <-time.After(time.Second):
+		t.Fatal("the getter was never called")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Fetch returned success after the context was cancelled")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Fetch ignored the cancelled request context")
+	}
+	select {
+	case got := <-g.seen:
+		if !errors.Is(got, context.Canceled) {
+			t.Fatalf("getter saw %v, want context.Canceled", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the getter never observed the cancelled request context")
+	}
+}
+
+// errReader fails after the caller has copied whatever the wrapped readers
+// already produced, which is what a half-written seed looks like.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+func TestSeedLeavesNoPartialFile(t *testing.T) {
+	dir := t.TempDir()
+	c := New(dir)
+	url := "https://art.example/cover.jpg"
+	if err := c.Seed(url, io.MultiReader(strings.NewReader("partial"), errReader{})); err == nil {
+		t.Fatal("Seed must surface the copy error")
+	}
+	if _, err := os.Stat(c.PathFor(url)); !os.IsNotExist(err) {
+		t.Fatal("Seed left a partial cache file behind")
+	}
+	assertDirEmpty(t, dir)
+}
+
+func TestSeedFileLeavesNoPartialFile(t *testing.T) {
+	dir := t.TempDir()
+	c := New(dir)
+	p, err := c.SeedFile(filepath.Join(dir, "picked.png"), io.MultiReader(strings.NewReader("partial"), errReader{}))
+	if err == nil {
+		t.Fatalf("SeedFile must surface the copy error, got %q", p)
+	}
+	if p != "" {
+		t.Fatalf("SeedFile returned %q on error", p)
+	}
+	assertDirEmpty(t, dir)
+}
+
+func assertDirEmpty(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Fatalf("leftover file after a failed write: %s", e.Name())
+	}
+}

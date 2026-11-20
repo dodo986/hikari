@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -42,15 +43,16 @@ func (c *GalaxyClient) Library(ctx context.Context, creds Credentials) ([]galaxy
 	var all []galaxyLibraryEntry
 	pageToken := ""
 	for {
-		url := fmt.Sprintf("%s/users/%s/releases?limit=100", c.libBase, creds.UserID)
+		q := url.Values{"limit": {"100"}}
 		if pageToken != "" {
-			url += "&page_token=" + pageToken
+			q.Set("page_token", pageToken)
 		}
+		endpoint := fmt.Sprintf("%s/users/%s/releases?%s", c.libBase, creds.UserID, q.Encode())
 		var page struct {
 			Items         []galaxyLibraryEntry `json:"items"`
 			NextPageToken string               `json:"next_page_token"`
 		}
-		if err := c.getJSON(ctx, url, creds.AccessToken, &page); err != nil {
+		if err := c.getJSON(ctx, endpoint, creds.AccessToken, &page); err != nil {
 			return nil, err
 		}
 		all = append(all, page.Items...)

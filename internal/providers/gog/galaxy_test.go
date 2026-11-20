@@ -190,6 +190,34 @@ func TestUsernameResolvesAndCaches(t *testing.T) {
 	}
 }
 
+func TestGalaxyLibraryEscapesPageToken(t *testing.T) {
+	const token = "a+b%c&d=e f"
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok := r.URL.Query().Get("page_token")
+		got = append(got, tok)
+		if tok == "" {
+			w.Write([]byte(`{"items":[{"platform_id":"gog","external_id":"1","owned":true}],"next_page_token":"a+b%c&d=e f"}`))
+			return
+		}
+		w.Write([]byte(`{"items":[{"platform_id":"gog","external_id":"2","owned":true}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewGalaxyClient()
+	c.libBase = srv.URL
+	entries, err := c.Library(context.Background(), Credentials{UserID: "u-7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "" || got[1] != token {
+		t.Fatalf("page tokens = %q, want [\"\" %q]", got, token)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries: %+v", entries)
+	}
+}
+
 func TestGalaxyRefreshNotLoggedIn(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gogdl")

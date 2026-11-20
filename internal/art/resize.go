@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +21,7 @@ func (c *Cache) Scaled(path string, width int) (string, error) {
 		return "", fmt.Errorf("width must be between 32 and 2048")
 	}
 	target := scaledPath(path, width)
-	if _, err := os.Stat(target); err == nil {
+	if decodable(target) {
 		return target, nil
 	}
 	source, err := os.Open(path)
@@ -43,16 +44,24 @@ func (c *Cache) Scaled(path string, width int) (string, error) {
 	scaled := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.CatmullRom.Scale(scaled, scaled.Bounds(), img, bounds, draw.Over, nil)
 
-	out, err := os.Create(target)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-	if err := jpeg.Encode(out, scaled, &jpeg.Options{Quality: 82}); err != nil {
-		os.Remove(target)
+	if err := writeFileAtomic(target, func(w io.Writer) error {
+		return jpeg.Encode(w, scaled, &jpeg.Options{Quality: 82})
+	}); err != nil {
 		return "", err
 	}
 	return target, nil
+}
+
+// decodable reports whether path already holds a complete image. A leftover
+// from a failed or interrupted encode would otherwise be reused forever.
+func decodable(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	_, _, err = image.DecodeConfig(f)
+	return err == nil
 }
 
 func scaledPath(path string, width int) string {

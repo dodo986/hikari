@@ -1,0 +1,22 @@
+{
+  "library": [
+    {
+      "app_name": "e1f2a3b4c5d6e7f8a9b0",
+      "runner": "legendary",
+      "title": "Mochi Master",
+      "developer": "Cache Store Studio",
+      "is_installed": false,
+      "install": {
+        "platform": "Windows",
+        "version": "2.0",
+        "install_size": 12884901888,
+        "is_dlc": false
+      },
+      "art_cover": "https://cdn.example.test/mochi-cover.jpg",
+      "art_square": "https://cdn.example.test/mochi-square.jpg",
+      "namespace": "ns-mochi",
+      "store_url": "https://store.example.test/mochimaster"
+    }
+  ],
+  "__timestamp.library": "2026-01-02T03:04:05.000Z"
+}

@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestAddListRemove(t *testing.T) {
 	if g.Store != library.StoreLocal || g.Runner != library.RunnerLocal || !g.Installed {
 		t.Fatalf("bad game: %+v", g)
 	}
-	if g.Metadata["args"] != "-windowed" {
+	if g.Metadata["args"] != `["-windowed"]` {
 		t.Fatalf("args not kept: %+v", g.Metadata)
 	}
 	games, err := p.List(context.Background())
@@ -135,4 +136,43 @@ func TestPlatformFollowsTheExecutable(t *testing.T) {
 	if len(games) != 1 || games[0].Platform != "Windows" {
 		t.Fatalf("List = %+v, want one Windows game", games)
 	}
+}
+
+// The registry keeps args as a list; joining them with spaces (the old format)
+// cannot represent an argument that contains one.
+func TestArgsSurviveSpaces(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "Game", "game.exe")
+	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exe, []byte("MZ"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := New(filepath.Join(t.TempDir(), "local_games.json"))
+	g, err := p.Add(Spec{
+		Title: "Spaced", Executable: exe, Platform: "Windows",
+		Args: []string{"-name", "My Game", "--flag=two words"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	games, err := p.List(context.Background())
+	if err != nil || len(games) != 1 {
+		t.Fatalf("list: %+v %v", games, err)
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(games[0].Metadata["args"]), &args); err != nil {
+		t.Fatalf("args are not a JSON list: %q (%v)", games[0].Metadata["args"], err)
+	}
+	want := []string{"-name", "My Game", "--flag=two words"}
+	if len(args) != len(want) {
+		t.Fatalf("args = %q, want %q", args, want)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args = %q, want %q", args, want)
+		}
+	}
+	_ = g
 }
