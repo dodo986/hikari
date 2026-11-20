@@ -31,6 +31,9 @@ install -m644 "$here/packaging/hikari-appimage.desktop" "$appdir/hikari.desktop"
 install -m644 "$here/packaging/hikari-appimage.desktop" "$appdir/usr/share/applications/hikari.desktop"
 install -m644 "$here/packaging/hikari.svg" "$appdir/hikari.svg"
 install -m644 "$here/packaging/hikari.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/hikari.svg"
+# appimagetool wants the icon at the AppDir root as .DirIcon; without it the
+# build warns today and will refuse in a future release.
+install -m644 "$here/packaging/hikari.svg" "$appdir/.DirIcon"
 install -m644 "$here/LICENSE" "$here/NOTICE" "$appdir/usr/share/licenses/hikari/"
 
 mkdir -p "$dist"
