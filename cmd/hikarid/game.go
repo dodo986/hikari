@@ -286,11 +286,21 @@ func (d *daemon) registerGame(srv *api.Server) {
 		}
 		d.jobsMu.Lock()
 		job := d.jobs[p.Store+"/"+p.ID]
+		var cancel context.CancelFunc
+		if job != nil {
+			cancel = job.cancel
+		}
 		d.jobsMu.Unlock()
 		if job == nil {
 			return nil, api.Errorf(api.CodeBusy, "no install is running for %s/%s", p.Store, p.ID)
 		}
-		job.cancel()
+		// beginJob claims the key with no cancel function: a job that has not
+		// started yet, or an uninstall, which runs synchronously inside its own
+		// request. Calling the nil function panicked the daemon.
+		if cancel == nil {
+			return nil, api.Errorf(api.CodeUnsupported, "the running operation on %s/%s cannot be canceled", p.Store, p.ID)
+		}
+		cancel()
 		return map[string]any{"state": "canceled"}, nil
 	})
 

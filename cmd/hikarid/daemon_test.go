@@ -42,6 +42,14 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func startDaemon(t *testing.T) (*daemon, *api.Client) {
 	t.Helper()
+	d, client, _ := startDaemonServer(t)
+	return d, client
+}
+
+// startDaemonServer is startDaemon, plus the api.Server, for tests that need to
+// attach another transport (the websocket the window uses) to the same daemon.
+func startDaemonServer(t *testing.T) (*daemon, *api.Client, *api.Server) {
+	t.Helper()
 	cfgRoot := t.TempDir()
 	dataRoot := t.TempDir()
 	runtime := t.TempDir()
@@ -96,12 +104,12 @@ func startDaemon(t *testing.T) (*daemon, *api.Client) {
 	for time.Now().Before(deadline) {
 		client, err := api.Dial(filepath.Join(runtime, "hikari.sock"))
 		if err == nil {
-			return d, client
+			return d, client, srv
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("daemon socket never came up")
-	return nil, nil
+	return nil, nil, nil
 }
 
 func awaitProgress(t *testing.T, client *api.Client, state string) {
@@ -166,7 +174,7 @@ func TestArtworkLocalFillsAsync(t *testing.T) {
 
 type loopbackGetter struct{ base string }
 
-func (g *loopbackGetter) Get(url string) (*http.Response, error) {
+func (g *loopbackGetter) Do(req *http.Request) (*http.Response, error) {
 	return http.Get(g.base + "/cover.jpg")
 }
 

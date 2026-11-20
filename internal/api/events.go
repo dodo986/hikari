@@ -33,16 +33,35 @@ func (s *Server) handleSubscribe(ctx context.Context, params json.RawMessage) (a
 	for _, t := range p.Topics {
 		topics[t] = true
 	}
-	sub := &subscriber{
-		conn:   conn,
-		topics: topics,
-		frames: make(chan []byte, 128),
-		done:   make(chan struct{}),
-	}
+	// Subscribing is an upsert per connection: a second events.subscribe on the
+	// same connection must not register a duplicate subscriber, which would
+	// deliver every event twice and leak a pump goroutine.
 	s.mu.Lock()
-	s.subs[sub] = struct{}{}
+	var sub *subscriber
+	for sc := range s.subs {
+		if sc.conn == conn {
+			sub = sc
+			break
+		}
+	}
+	fresh := sub == nil
+	if fresh {
+		sub = &subscriber{
+			conn:   conn,
+			topics: topics,
+			frames: make(chan []byte, 128),
+			done:   make(chan struct{}),
+		}
+		s.subs[sub] = struct{}{}
+	} else {
+		sub.mu.Lock()
+		sub.topics = topics
+		sub.mu.Unlock()
+	}
 	s.mu.Unlock()
-	go sub.pump()
+	if fresh {
+		go sub.pump()
+	}
 	if len(p.Topics) == 0 {
 		return map[string]any{"topics": []string{}}, nil
 	}
@@ -50,6 +69,8 @@ func (s *Server) handleSubscribe(ctx context.Context, params json.RawMessage) (a
 }
 
 func (sub *subscriber) wants(event string) bool {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
 	if len(sub.topics) == 0 {
 		return true
 	}

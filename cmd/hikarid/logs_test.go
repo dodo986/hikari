@@ -53,3 +53,31 @@ func TestGameLogWithoutANoteStaysUnchanged(t *testing.T) {
 		t.Fatalf("a healthy launch should not mention mods: %s", raw)
 	}
 }
+
+// The stop note explains a launch that never got going. A long session says
+// nothing about the loaders it got past, and neither a crashed one nor a clean
+// one should be told "the game stopped while X was loading Y".
+func TestStopNoteOnlyForShortRuns(t *testing.T) {
+	now := time.Now()
+	long := launch.RunLog{State: launch.StateCrashed, StartedAt: now.Add(-time.Hour), EndedAt: now}
+	if wantsStopNote(long, now) {
+		t.Fatal("an hour-long crashed session must not get the loader note")
+	}
+	long.State = launch.StateStopped
+	if wantsStopNote(long, now) {
+		t.Fatal("an hour-long clean exit must not get the loader note")
+	}
+	short := launch.RunLog{State: launch.StateCrashed, StartedAt: now.Add(-2 * time.Second), EndedAt: now}
+	if !wantsStopNote(short, now) {
+		t.Fatal("a crash two seconds in is exactly the case the note is for")
+	}
+	short.Running = true
+	if wantsStopNote(short, now) {
+		t.Fatal("a running game has no note yet")
+	}
+	short.Running = false
+	short.Canceled = true
+	if wantsStopNote(short, now) {
+		t.Fatal("a game the player stopped is not a mystery")
+	}
+}

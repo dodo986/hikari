@@ -67,12 +67,20 @@ type logResponse struct {
 // shortRun is how soon a finished launch still counts as "it never got going".
 const shortRun = 30 * time.Second
 
+// wantsStopNote is true only for a launch that ended right after it began. A
+// game the player stopped is not a mystery, and a long session says nothing
+// about the loaders it got past, whether it crashed or exited normally.
+func wantsStopNote(rec launch.RunLog, now time.Time) bool {
+	if rec.Running || rec.Canceled {
+		return false
+	}
+	return now.Sub(rec.StartedAt) <= shortRun
+}
+
 // stopNote reads the loader logs of a launch that ended at once, so the answer
 // to "why did nothing happen" is in the log the player is already looking at.
 func (d *daemon) stopNote(ctx context.Context, store, id string, rec launch.RunLog) *mods.StopNote {
-	// A game the player stopped is not a mystery, and a long session that
-	// crashed says nothing about the loaders it got past.
-	if rec.Running || rec.Canceled || rec.State != launch.StateCrashed && time.Since(rec.StartedAt) > shortRun {
+	if !wantsStopNote(rec, time.Now()) {
 		return nil
 	}
 	g, err := d.library.Get(ctx, store, id)

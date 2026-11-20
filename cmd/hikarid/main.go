@@ -82,19 +82,32 @@ func main() {
 	srv := api.NewServer(log)
 	d.register(srv, ctx)
 
-	if !*noWS {
+	if err := serve(ctx, log, d, srv, path, *noWS); err != nil {
+		log.Error("daemon stopped", "err", err)
+		os.Exit(1)
+	}
+}
+
+// serve runs the daemon until ctx is done. The socket is claimed FIRST: a
+// second daemon must fail there, before it can publish a websocket endpoint.
+// Publishing first would overwrite the running daemon's ws.json with a port
+// and token nobody serves, stranding every connected window.
+func serve(ctx context.Context, log *slog.Logger, d *daemon, srv *api.Server, socket string, noWS bool) error {
+	ln, err := srv.Listen(socket)
+	if err != nil {
+		return err
+	}
+	if !noWS {
 		ep, err := startWS(ctx, log, srv, d.art)
 		if err != nil {
-			log.Error("hikarid cannot serve the local websocket", "err", err)
-			os.Exit(1)
+			// The listener owns the socket file: closing it unlinks the path.
+			_ = ln.Close()
+			return fmt.Errorf("cannot serve the local websocket: %w", err)
 		}
 		defer removeEndpoint()
 		log.Info("hikarid websocket ready", "url", ep.URL, "token_file", config.WSEndpointPath())
 	}
 
-	log.Info("hikarid starting", "version", version, "commit", commit, "socket", path)
-	if err := srv.ListenAndServe(ctx, path); err != nil {
-		log.Error("daemon stopped", "err", err)
-		os.Exit(1)
-	}
+	log.Info("hikarid starting", "version", version, "commit", commit, "socket", socket)
+	return srv.Serve(ctx, ln)
 }

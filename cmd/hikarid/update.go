@@ -251,7 +251,7 @@ func (d *daemon) installAppPayload(ctx context.Context, info update.Info, goTool
 		}
 	}
 	out, err := runQuiet(ctx, filepath.Join(payload, "usr", "bin", "hikarid"), "--version")
-	if err != nil || !strings.Contains(out, info.Latest[:8]) {
+	if err != nil || !strings.Contains(out, shortCommit(info.Latest)) {
 		fail(fmt.Errorf("the new build does not run: %s", strings.TrimSpace(out)))
 		return
 	}

@@ -47,21 +47,81 @@ func (s *Server) Register(method string, h Handler) {
 	s.methods[method] = h
 }
 
-func (s *Server) ListenAndServe(ctx context.Context, path string) error {
+// Listen claims the socket path: an exclusive advisory lock on path+".lock"
+// makes the claim atomic, so only one daemon may remove a stale socket file and
+// bind. The lock is held for the daemon's lifetime and the kernel drops it if
+// the process dies, so a crashed daemon never wedges the next start. A second
+// daemon fails here, before it can publish an endpoint or serve a request.
+func (s *Server) Listen(path string) (net.Listener, error) {
 	if dir := filepath.Dir(path); dir != "" {
 		_ = os.MkdirAll(dir, 0o700)
 	}
+	lock, err := acquireSocketLock(path)
+	if err != nil {
+		return nil, err
+	}
 	if err := removeStaleSocket(path); err != nil {
-		return err
+		releaseSocketLock(lock)
+		return nil, err
 	}
 	old := syscall.Umask(0o077)
 	ln, err := net.Listen("unix", path)
 	syscall.Umask(old)
 	if err != nil {
-		return fmt.Errorf("hikari: cannot listen on %s: %w", path, err)
+		releaseSocketLock(lock)
+		return nil, fmt.Errorf("hikari: cannot listen on %s: %w", path, err)
 	}
+	return &lockedListener{Listener: ln, lock: lock}, nil
+}
 
-	s.log.Info("hikarid listening", "socket", path)
+// acquireSocketLock takes a non-blocking exclusive flock on path+".lock". The
+// leftover .lock file is harmless: the flock, not the file, is the claim.
+func acquireSocketLock(path string) (*os.File, error) {
+	lockPath := path + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("hikari: cannot open the socket lock %s: %w", lockPath, err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, fmt.Errorf("hikari: %s is already served (is hikarid already running?)", path)
+		}
+		return nil, fmt.Errorf("hikari: cannot lock %s: %w", lockPath, err)
+	}
+	return f, nil
+}
+
+func releaseSocketLock(f *os.File) {
+	if f == nil {
+		return
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	_ = f.Close()
+}
+
+// lockedListener keeps the socket and its advisory lock together, so closing
+// the listener that Serve owns releases the claim. The lock file itself is
+// never removed: a leftover file is fine, only the held flock matters.
+type lockedListener struct {
+	net.Listener
+	mu   sync.Mutex
+	lock *os.File
+}
+
+func (l *lockedListener) Close() error {
+	err := l.Listener.Close()
+	l.mu.Lock()
+	lock := l.lock
+	l.lock = nil
+	l.mu.Unlock()
+	releaseSocketLock(lock)
+	return err
+}
+
+// Serve accepts connections on an already claimed listener until ctx is done.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	s.log.Info("hikarid listening", "socket", ln.Addr().String())
 
 	go func() {
 		<-ctx.Done()
@@ -72,7 +132,9 @@ func (s *Server) ListenAndServe(ctx context.Context, path string) error {
 		conn, err := ln.Accept()
 		if err != nil {
 			s.closeAll()
-			_ = os.Remove(path)
+			// The listener owns the socket file: close it instead of removing
+			// by path, which could unlink a newer daemon's socket.
+			_ = ln.Close()
 			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
@@ -84,6 +146,14 @@ func (s *Server) ListenAndServe(ctx context.Context, path string) error {
 			s.removeConn(conn)
 		}()
 	}
+}
+
+func (s *Server) ListenAndServe(ctx context.Context, path string) error {
+	ln, err := s.Listen(path)
+	if err != nil {
+		return err
+	}
+	return s.Serve(ctx, ln)
 }
 
 func removeStaleSocket(path string) error {
@@ -106,19 +176,19 @@ func (s *Server) addConn(c peer) {
 
 func (s *Server) removeConn(c peer) {
 	s.mu.Lock()
-	sub := (*subscriber)(nil)
+	var subs []*subscriber
 	for sc := range s.subs {
 		if sc.conn == c {
-			sub = sc
+			subs = append(subs, sc)
 		}
 	}
-	if sub != nil {
-		delete(s.subs, sub)
+	for _, sc := range subs {
+		delete(s.subs, sc)
 	}
 	delete(s.conns, c)
 	s.mu.Unlock()
-	if sub != nil {
-		sub.stop()
+	for _, sc := range subs {
+		sc.stop()
 	}
 	_ = c.Close()
 }
@@ -157,6 +227,15 @@ func readLine(r *bufio.Reader, max int) ([]byte, error) {
 var errLineTooLong = errors.New("request line too long")
 
 func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
+	// A handler panic must not take the daemon down (the websocket path is
+	// protected by net/http's per-connection recover). Log it, drop this
+	// connection, and let Serve keep accepting.
+	defer func() {
+		if r := recover(); r != nil {
+			s.log.Error("handler panicked", "err", r)
+			_ = conn.Close()
+		}
+	}()
 	r := bufio.NewReader(conn)
 	var wmu sync.Mutex
 	for {

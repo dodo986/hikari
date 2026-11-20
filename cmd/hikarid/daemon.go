@@ -58,6 +58,11 @@ type daemon struct {
 	version string
 	commit  string
 
+	// baseCtx lives as long as the daemon, not as long as one client
+	// connection. Long running launches are started from it so a window that
+	// closes (which cancels the websocket request context) cannot kill a game.
+	baseCtx context.Context
+
 	fetchMu      sync.Mutex
 	fetchPending map[string]bool
 
@@ -203,6 +208,7 @@ func newDaemon(log *slog.Logger, demoMode bool) (*daemon, error) {
 }
 
 func (d *daemon) register(srv *api.Server, ctx context.Context) {
+	d.baseCtx = ctx
 	srv.Register("daemon.status", d.handleStatus)
 	srv.Register("daemon.stop", d.handleStop)
 	d.registerLibrary(srv)

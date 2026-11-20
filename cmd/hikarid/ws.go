@@ -126,6 +126,18 @@ func writeEndpoint(ep *Endpoint) error {
 	return atomicfile.WriteMode(path, append(b, '\n'), 0o600)
 }
 
+// removeEndpoint deletes the endpoint file only while it still describes this
+// process, so a losing start or a late shutdown cannot erase the endpoint of
+// the daemon that actually owns the socket.
 func removeEndpoint() {
-	_ = os.Remove(config.WSEndpointPath())
+	path := config.WSEndpointPath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var ep Endpoint
+	if json.Unmarshal(b, &ep) != nil || ep.PID != os.Getpid() {
+		return
+	}
+	_ = os.Remove(path)
 }

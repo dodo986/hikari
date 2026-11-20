@@ -35,6 +35,13 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 		if !g.Installed {
 			return nil, api.Errorf(api.CodeUnsupported, "%s is not installed", g.Title)
 		}
+		// The session outlives this request: the window closing (which cancels
+		// the websocket request context) must not kill a running game.
+		// game.stop is the way to end one.
+		sessionCtx := d.baseCtx
+		if sessionCtx == nil {
+			sessionCtx = context.Background()
+		}
 		if d.demo != nil && g.Source == library.SourceDemo {
 			if p.DryRun {
 				return nil, api.Errorf(api.CodeUnsupported, "demo games have no real launch command")
@@ -43,7 +50,7 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 			if dl, ok := d.library.Provider(g.Store).(library.DemoLauncher); ok {
 				life = dl.DemoLaunchLife(g)
 			}
-			if err := d.games.LaunchFake(c, g.Store, g.ID, life, func(state string, pid int) {
+			if err := d.games.LaunchFake(sessionCtx, g.Store, g.ID, life, func(state string, pid int) {
 				event := map[string]any{"store": g.Store, "id": g.ID, "state": state}
 				if pid != 0 {
 					event["pid"] = pid
@@ -75,7 +82,7 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 				Argv: []string{bin, "-applaunch", g.ID},
 				Env:  launch.WrapperEnv(g.Store, g.ID), Engine: "steam", WineType: launch.WineNative,
 			}
-			if err := d.games.Launch(c, g.Store, g.ID, plan, func(state string, pid int) {
+			if err := d.games.Launch(sessionCtx, g.Store, g.ID, plan, func(state string, pid int) {
 				event := map[string]any{"store": g.Store, "id": g.ID, "state": state}
 				if pid != 0 {
 					event["pid"] = pid
@@ -138,7 +145,7 @@ func (d *daemon) registerLaunch(srv *api.Server) {
 				launch.EOSOverlayDir(d.paths.DataDir), plan.Env)
 			return nil
 		}
-		if err := d.games.Launch(c, g.Store, g.ID, plan, func(state string, pid int) {
+		if err := d.games.Launch(sessionCtx, g.Store, g.ID, plan, func(state string, pid int) {
 			event := map[string]any{"store": g.Store, "id": g.ID, "state": state}
 			if pid != 0 {
 				event["pid"] = pid

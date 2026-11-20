@@ -217,6 +217,101 @@ func TestSubscriberRemovedOnDisconnect(t *testing.T) {
 	t.Fatal("subscriber not removed after disconnect")
 }
 
+// stubListener reports a fixed address and fails every accept, standing in for
+// a listener whose socket path is actually owned by another daemon.
+type stubListener struct {
+	addr   net.Addr
+	err    error
+	closed bool
+}
+
+func (l *stubListener) Accept() (net.Conn, error) { return nil, l.err }
+func (l *stubListener) Close() error              { l.closed = true; return nil }
+func (l *stubListener) Addr() net.Addr            { return l.addr }
+
+// Regression: Serve used to os.Remove(ln.Addr().String()) on any accept error,
+// which unlinked whatever was at that path even when a newer daemon owned it.
+func TestServeDoesNotUnlinkAnotherListenersSocket(t *testing.T) {
+	live, err := net.Listen("unix", filepath.Join(t.TempDir(), "hikari.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer live.Close()
+	path := live.Addr().String()
+
+	s := NewServer(slog.New(slog.DiscardHandler))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stub := &stubListener{addr: live.Addr(), err: errors.New("accept exploded")}
+	if err := s.Serve(ctx, stub); err == nil {
+		t.Fatal("Serve must surface a non-cancel accept error")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("Serve unlinked a socket owned by another listener: %v", err)
+	}
+	if !stub.closed {
+		t.Fatal("Serve must close the listener it was given")
+	}
+}
+
+// Regression: a second events.subscribe on one connection registered a second
+// subscriber, so the client received every event twice and one subscriber (plus
+// its pump goroutine) leaked past disconnect.
+func TestSubscribeTwiceIsAnUpsert(t *testing.T) {
+	s, path := startServer(t)
+	c := dial(t, path)
+	if err := c.Subscribe("install.progress"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe("install.progress"); err != nil {
+		t.Fatal(err)
+	}
+
+	s.Publish("install.progress", map[string]any{"percent": 7})
+	if _, err := c.AwaitEvent("install.progress", time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AwaitEvent("install.progress", 250*time.Millisecond); err == nil {
+		t.Fatal("a duplicate subscription delivered the event twice")
+	}
+
+	_ = c.Close()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		n := len(s.subs)
+		s.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("subscriber not removed after disconnect")
+}
+
+// Regression: a handler panic escaped serveConn's bare goroutine and killed the
+// whole daemon. It must be contained to the one connection.
+func TestHandlerPanicKeepsTheDaemonAlive(t *testing.T) {
+	s, path := startServer(t)
+	s.Register("test.panic", func(ctx context.Context, params json.RawMessage) (any, error) {
+		panic("handler exploded")
+	})
+	s.Register("test.echo", func(ctx context.Context, params json.RawMessage) (any, error) {
+		return map[string]any{"ok": true}, nil
+	})
+
+	victim := dial(t, path)
+	if err := victim.Call("test.panic", nil, nil); err == nil {
+		t.Fatal("a panicking handler must not answer")
+	}
+
+	survivor := dial(t, path)
+	var out map[string]bool
+	if err := survivor.Call("test.echo", nil, &out); err != nil || !out["ok"] {
+		t.Fatalf("daemon stopped serving after a handler panic: %v %v", out, err)
+	}
+}
+
 func TestReadLineStopsAtLimit(t *testing.T) {
 	r := bufio.NewReader(bytes.NewReader(bytes.Repeat([]byte("a"), maxRequestLine+64)))
 	if _, err := readLine(r, maxRequestLine); !errors.Is(err, errLineTooLong) {
